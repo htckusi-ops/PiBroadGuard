@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     pibg_nmap_host_timeout: str = "60s"
     pibg_nmap_max_rate: int = 100
 
+    # phpIPAM
+    pibg_phpipam_url: str = ""
+    pibg_phpipam_app_id: str = "pibroadguard"
+    pibg_phpipam_token: str = ""
+
     @property
     def database_url(self) -> str:
         return f"sqlite:///{self.pibg_db_path}"

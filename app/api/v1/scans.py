@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from typing import List
+from typing import AsyncGenerator, List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db, SessionLocal
@@ -13,6 +14,7 @@ from app.models.finding import Finding
 from app.models.scan_result import ScanResult
 from app.schemas.scan import ScanResultRead, ScanStatusRead
 from app.services import nmap_service, rule_engine, scoring_service
+from app.services.nmap_service import scan_queues
 from app.core.config import settings
 
 logger = logging.getLogger("pibroadguard.scan")
@@ -29,6 +31,7 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str):
             ip, profile,
             host_timeout=settings.pibg_nmap_host_timeout,
             max_rate=settings.pibg_nmap_max_rate,
+            assessment_id=assessment_id,
         )
         assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
         if not assessment:
@@ -67,13 +70,13 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str):
                 recommendation=t["recommendation"],
                 broadcast_context=t["broadcast_context"],
                 compensating_control_required=t["compensating_control_required"],
+                remediation_sources=t.get("remediation_sources"),
                 status="open",
             )
             db.add(finding)
         db.commit()
 
         # Recalculate scores
-        findings = db.query(Finding).filter(Finding.assessment_id == assessment_id).all()
         scores = scoring_service.recalculate(triggered)
         assessment.technical_score = scores["technical"]
         assessment.operational_score = scores["operational"]
@@ -84,10 +87,13 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str):
         assessment.status = "scan_complete"
         db.commit()
 
+        port_count = len(result.get("results", []))
         _scan_status[assessment_id] = {
             "status": "complete",
-            "message": f"Scan abgeschlossen. {len(result.get('results', []))} offene Ports, {len(triggered)} Findings.",
-            "port_count": len(result.get("results", [])),
+            "message": f"Scan abgeschlossen. {port_count} offene Ports, {len(triggered)} Findings.",
+            "port_count": port_count,
+            "elapsed_seconds": result.get("elapsed_seconds"),
+            "nmap_version": result.get("nmap_version"),
         }
         logger.info(f"Scan {assessment_id} complete: {len(triggered)} findings")
 
@@ -98,6 +104,10 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str):
             db_a.status = "draft"
             db.commit()
         _scan_status[assessment_id] = {"status": "error", "message": str(e)}
+        # Signal SSE clients of error
+        q = scan_queues.get(assessment_id)
+        if q:
+            await q.put(f"data: FEHLER: {e}\n\ndata: __DONE__\n\n")
     finally:
         db.close()
 
@@ -132,8 +142,55 @@ def start_scan(
     return {"message": "Scan gestartet", "assessment_id": assessment_id}
 
 
+@router.get("/assessments/{assessment_id}/scan/stream")
+async def stream_scan_output(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """SSE endpoint streaming live nmap output for a running scan."""
+    assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
+    if not assessment:
+        raise HTTPException(404, "Assessment nicht gefunden")
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        # Wait up to 5s for queue to appear (scan may start slightly after)
+        for _ in range(50):
+            if assessment_id in scan_queues:
+                break
+            await asyncio.sleep(0.1)
+
+        queue = scan_queues.get(assessment_id)
+        if queue is None:
+            yield "data: Kein aktiver Scan gefunden\n\ndata: __DONE__\n\n"
+            return
+
+        while True:
+            try:
+                msg = await asyncio.wait_for(queue.get(), timeout=30.0)
+                yield msg
+                if "__DONE__" in msg:
+                    scan_queues.pop(assessment_id, None)
+                    break
+            except asyncio.TimeoutError:
+                yield "data: keepalive\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/assessments/{assessment_id}/scan/status", response_model=ScanStatusRead)
-def get_scan_status(assessment_id: int, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
+def get_scan_status(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
     assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
     if not assessment:
         raise HTTPException(404, "Assessment nicht gefunden")
@@ -147,7 +204,11 @@ def get_scan_status(assessment_id: int, db: Session = Depends(get_db), user: str
 
 
 @router.get("/assessments/{assessment_id}/scan/results", response_model=List[ScanResultRead])
-def get_scan_results(assessment_id: int, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
+def get_scan_results(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
     assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
     if not assessment:
         raise HTTPException(404, "Assessment nicht gefunden")

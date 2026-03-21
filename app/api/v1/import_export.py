@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import verify_credentials
 from app.models.assessment import Assessment
+from app.models.device import Device
 from app.services import package_service
 
 logger = logging.getLogger("pibroadguard.import")
@@ -30,7 +31,8 @@ def export_assessment(
     assessment.status = "exported"
     db.commit()
 
-    filename = f"assessment-{assessment_id}.bdsa"
+    device = db.query(Device).filter(Device.id == assessment.device_id).first()
+    filename = package_service.build_export_filename(device, assessment_id, encrypted=False)
     return Response(
         content=data,
         media_type="application/octet-stream",

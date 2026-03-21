@@ -1,3 +1,4 @@
+import json
 import logging
 import yaml
 from pathlib import Path
@@ -127,6 +128,7 @@ def apply_rules(
                 "broadcast_context": rule.get("broadcast_context", ""),
                 "compensating_control_required": rule.get("ask_compensation", False),
                 "affects_score": rule.get("affects_score", "technical"),
+                "remediation_sources": json.dumps([{"type": "yaml", "label": "Broadcast-Regelwerk", "detail": rule.get("rule_key", "")}]),
             })
 
     logger.info(f"Rule engine triggered {len(triggered)} findings")

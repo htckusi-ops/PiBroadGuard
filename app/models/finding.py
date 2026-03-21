@@ -27,6 +27,7 @@ class Finding(Base):
     nvd_solution = Column(Text)
     vendor_advisory_url = Column(String)
     cwe_recommendation = Column(Text)
+    remediation_sources = Column(Text)  # JSON array of source attribution
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     assessment = relationship("Assessment", back_populates="findings")

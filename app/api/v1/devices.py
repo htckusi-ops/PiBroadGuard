@@ -1,6 +1,6 @@
 import logging
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -8,6 +8,7 @@ from app.core.security import verify_credentials
 from app.models.assessment import Assessment
 from app.models.device import Device
 from app.schemas.device import DeviceCreate, DeviceRead, DeviceUpdate
+from app.services import dns_service
 
 logger = logging.getLogger("pibroadguard.api")
 router = APIRouter(tags=["devices"])
@@ -71,3 +72,13 @@ def delete_device(device_id: int, db: Session = Depends(get_db), user: str = Dep
     device.deleted = True
     db.commit()
     logger.info(f"Soft-deleted device {device_id}")
+
+
+@router.get("/dns/reverse")
+async def reverse_dns(
+    ip: str = Query(..., description="IPv4 or IPv6 address to resolve"),
+    user: str = Depends(verify_credentials),
+):
+    """Perform a reverse DNS lookup for the given IP address."""
+    hostname = await dns_service.reverse_lookup(ip)
+    return {"ip": ip, "hostname": hostname}

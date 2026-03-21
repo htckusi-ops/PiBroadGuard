@@ -22,6 +22,12 @@ class Device(Base):
     owner_team = Column(String)
     notes = Column(String)
     deleted = Column(Boolean, default=False)
+    # v1.5 extensions
+    rdns_hostname = Column(String)
+    mac_address = Column(String)
+    mac_vendor = Column(String)
+    phpipam_id = Column(Integer)
+    phpipam_synced_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
