@@ -1,0 +1,21 @@
+# Data
+data/pibroadguard.db
+data/logs/*.log
+data/backups/*.db
+data/backups/*.enc
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp

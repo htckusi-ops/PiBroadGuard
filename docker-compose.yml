@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  pibroadguard:
+    build: .
+    image: pibroadguard:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./app/rules:/app/rules
+    environment:
+      - PIBG_USERNAME=${PIBG_USERNAME:-admin}
+      - PIBG_PASSWORD=${PIBG_PASSWORD:-changeme}
+      - PIBG_DB_PATH=/app/data/pibroadguard.db
+      - PIBG_LOG_PATH=/app/data/logs/pibroadguard.log
+      - PIBG_NVD_API_KEY=${PIBG_NVD_API_KEY:-}
+      - PIBG_SHARED_SECRET=${PIBG_SHARED_SECRET:-}
+      - PIBG_LOG_LEVEL=${PIBG_LOG_LEVEL:-INFO}
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – USB-Export</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="app">
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center gap-3 shadow">
+    <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+    <span class="text-slate-400">/</span>
+    <span class="text-slate-200">USB-Export</span>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-6">
+    <div class="bg-white rounded-lg shadow-sm p-6">
+
+      <!-- Step Indicator -->
+      <div class="flex items-center mb-8">
+        <div v-for="(s, i) in steps" :key="i" class="flex items-center">
+          <div :class="step > i ? 'bg-blue-600 text-white' : step === i ? 'bg-blue-100 text-blue-700 border-2 border-blue-600' : 'bg-slate-100 text-slate-400'"
+               class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">{{ i+1 }}</div>
+          <div class="ml-2 text-sm" :class="step === i ? 'text-slate-800 font-medium' : 'text-slate-400'">{{ s }}</div>
+          <div v-if="i < steps.length-1" class="mx-4 flex-1 h-0.5 bg-slate-200 min-w-8"></div>
+        </div>
+      </div>
+
+      <!-- Step 1: USB auswählen -->
+      <div v-if="step === 0">
+        <h2 class="font-semibold text-slate-800 mb-4">USB-Medium auswählen</h2>
+        <div class="flex items-center gap-3 mb-3">
+          <button @click="loadUsb" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded text-sm">&#8635; Aktualisieren</button>
+        </div>
+        <div v-if="usbDevices.length === 0" class="text-slate-400 text-sm mb-4">Kein USB-Medium gefunden.</div>
+        <div v-for="u in usbDevices" :key="u.path"
+             @click="selectedUsb = u"
+             :class="selectedUsb?.path === u.path ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:border-slate-400'"
+             class="border-2 rounded-lg p-3 mb-2 cursor-pointer flex items-center justify-between">
+          <div>
+            <span class="font-medium text-slate-800">{{ u.label }}</span>
+            <span class="ml-2 text-slate-400 text-sm">{{ u.path }}</span>
+          </div>
+          <div class="text-sm text-slate-500">{{ u.filesystem }} | {{ formatBytes(u.free_bytes) }} frei</div>
+        </div>
+        <div class="mt-4">
+          <p class="text-slate-500 text-sm mb-1">Pfad manuell eingeben:</p>
+          <div class="flex gap-2">
+            <input v-model="manualPath" placeholder="/mnt/usb" class="border border-slate-300 rounded px-3 py-2 text-sm flex-1">
+            <button @click="validateManualPath" class="bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded text-sm">Prüfen</button>
+          </div>
+          <p v-if="pathValidation" :class="pathValidation.valid ? 'text-green-600' : 'text-red-600'" class="text-xs mt-1">
+            {{ pathValidation.valid ? '✅ Pfad gültig' : '❌ ' + pathValidation.error }}
+          </p>
+        </div>
+        <button @click="step++" :disabled="!selectedUsb && (!manualPath || !pathValidation?.valid)"
+          class="mt-5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white px-6 py-2 rounded font-medium text-sm">
+          Weiter →
+        </button>
+      </div>
+
+      <!-- Step 2: Exportinhalt -->
+      <div v-if="step === 1">
+        <h2 class="font-semibold text-slate-800 mb-4">Exportinhalt wählen</h2>
+        <div class="space-y-3 mb-5">
+          <label v-for="t in exportTypes" :key="t.value" class="flex items-start gap-3 cursor-pointer p-3 border rounded-lg hover:bg-slate-50" :class="exportType === t.value ? 'border-blue-400 bg-blue-50' : 'border-slate-200'">
+            <input type="radio" :value="t.value" v-model="exportType" class="mt-1">
+            <div>
+              <div class="font-medium text-sm text-slate-800">{{ t.label }}</div>
+              <div class="text-xs text-slate-500">{{ t.desc }}</div>
+            </div>
+          </label>
+        </div>
+
+        <!-- Assessment selection -->
+        <div v-if="exportType !== 'full_backup'" class="mb-4">
+          <label class="block text-sm font-medium text-slate-700 mb-2">Assessments auswählen:</label>
+          <div class="space-y-2 max-h-48 overflow-y-auto">
+            <label v-for="a in exportableAssessments" :key="a.id" class="flex items-center gap-2 text-sm">
+              <input type="checkbox" :value="a.id" v-model="selectedAssessments">
+              Assessment #{{ a.id }} – {{ a.device_name }} ({{ a.status }})
+            </label>
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <button @click="step--" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-5 py-2 rounded text-sm">← Zurück</button>
+          <button @click="step++" :disabled="exportType !== 'full_backup' && selectedAssessments.length === 0"
+            class="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white px-6 py-2 rounded font-medium text-sm">Weiter →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Verschlüsselung + Bestätigung -->
+      <div v-if="step === 2">
+        <h2 class="font-semibold text-slate-800 mb-4">Verschlüsselung und Bestätigung</h2>
+        <div class="bg-slate-50 border border-slate-200 rounded p-4 mb-5">
+          <label class="flex items-center gap-3 cursor-pointer mb-3">
+            <input type="checkbox" v-model="encrypt" class="w-4 h-4">
+            <div>
+              <div class="font-medium text-sm text-slate-800">Verschlüsseln (AES-256-GCM)</div>
+              <div class="text-xs text-slate-500">Empfohlen – Shared Secret muss auf Import-System vorhanden sein</div>
+            </div>
+          </label>
+          <div v-if="!encrypt" class="text-amber-600 text-sm">
+            ⚠️ Ohne Verschlüsselung sind die Daten auf dem USB-Stick ungeschützt.
+          </div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded p-4 mb-5">
+          <h3 class="font-medium text-slate-700 mb-2 text-sm">Zusammenfassung</h3>
+          <div class="text-sm text-slate-600 space-y-1">
+            <div>Ziel: <strong>{{ (selectedUsb?.path || manualPath) }}</strong></div>
+            <div>Typ: <strong>{{ exportTypes.find(t=>t.value===exportType)?.label }}</strong></div>
+            <div v-if="selectedAssessments.length">Assessments: <strong>{{ selectedAssessments.join(', ') }}</strong></div>
+            <div>Verschlüsselung: <strong>{{ encrypt ? 'Ja (AES-256-GCM)' : 'Nein' }}</strong></div>
+          </div>
+        </div>
+
+        <label class="flex items-center gap-2 text-sm mb-5 cursor-pointer">
+          <input type="checkbox" v-model="exportConfirmed" class="w-4 h-4">
+          Ich bestätige, dass der USB-Stick sicher transportiert wird. (Vertrauliche Infrastrukturinformationen)
+        </label>
+
+        <div class="flex gap-3">
+          <button @click="step--" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-5 py-2 rounded text-sm">← Zurück</button>
+          <button @click="doExport" :disabled="!exportConfirmed || exporting"
+            class="bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white px-6 py-2 rounded font-medium text-sm">
+            {{ exporting ? 'Exportiere...' : '&#128190; Jetzt auf USB schreiben' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Done -->
+      <div v-if="step === 3">
+        <div class="text-center py-4">
+          <div class="text-5xl mb-3">✅</div>
+          <h2 class="font-bold text-slate-800 text-xl mb-2">Export erfolgreich</h2>
+          <p class="text-slate-500 text-sm mb-5">{{ exportResult.length }} Datei(en) exportiert</p>
+          <div v-for="r in exportResult" :key="r.filename" class="text-sm text-slate-600 text-left border-b border-slate-100 py-2 flex justify-between">
+            <span>{{ r.filename }}</span>
+            <span class="text-slate-400">{{ formatBytes(r.size_bytes) }}</span>
+          </div>
+          <div class="flex gap-3 justify-center mt-5">
+            <button @click="ejectUsb" class="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2 rounded text-sm font-medium">
+              &#128268; USB sicher auswerfen
+            </button>
+            <a href="/app/index.html" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded text-sm font-medium">
+              Zum Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="error" class="mt-3 p-3 bg-red-50 text-red-700 rounded text-sm">{{ error }}</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const { createApp, ref, onMounted } = Vue;
+createApp({
+  setup() {
+    const step = ref(0);
+    const steps = ['USB-Medium', 'Exportinhalt', 'Verschlüsselung', 'Fertig'];
+    const usbDevices = ref([]);
+    const selectedUsb = ref(null);
+    const manualPath = ref('');
+    const pathValidation = ref(null);
+    const exportType = ref('single');
+    const exportTypes = [
+      { value: 'single', label: 'Einzelnes Assessment', desc: 'Ein Assessment als .bdsa-Paket' },
+      { value: 'batch', label: 'Mehrere Assessments', desc: 'Mehrere .bdsa-Pakete auf einmal' },
+      { value: 'reports_only', label: 'Nur Reports', desc: 'Reports ohne Scan-Rohdaten' },
+      { value: 'full_backup', label: 'Komplettes DB-Backup', desc: 'Alle Geräte, Assessments, Reports' },
+    ];
+    const selectedAssessments = ref([]);
+    const exportableAssessments = ref([]);
+    const encrypt = ref(true);
+    const exportConfirmed = ref(false);
+    const exporting = ref(false);
+    const exportResult = ref([]);
+    const error = ref('');
+
+    function formatBytes(b) { if (b > 1e9) return (b/1e9).toFixed(1) + ' GB'; if (b > 1e6) return (b/1e6).toFixed(0) + ' MB'; return (b/1e3).toFixed(0) + ' KB'; }
+
+    async function loadUsb() {
+      const resp = await fetch('/api/v1/usb/devices');
+      if (resp.ok) usbDevices.value = await resp.json();
+    }
+
+    async function validateManualPath() {
+      // Simple client-side check – backend validates on export
+      if (manualPath.value) {
+        pathValidation.value = { valid: true };
+        selectedUsb.value = null;
+      }
+    }
+
+    async function loadExportable() {
+      const resp = await fetch('/api/v1/devices');
+      if (!resp.ok) return;
+      const devices = await resp.json();
+      // We'll just list all devices and let user pick
+      exportableAssessments.value = devices.map(d => ({
+        id: d.id,
+        device_name: `${d.manufacturer} ${d.model}`,
+        status: d.last_assessment_status || 'kein Assessment'
+      }));
+    }
+
+    async function doExport() {
+      exporting.value = true; error.value = '';
+      const target = selectedUsb.value?.path || manualPath.value;
+      try {
+        const resp = await fetch('/api/v1/usb/export', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            target_path: target, export_type: exportType.value,
+            assessment_ids: selectedAssessments.value, encrypt: encrypt.value, include_raw: true
+          })
+        });
+        if (resp.ok) {
+          const r = await resp.json();
+          exportResult.value = r.exported || [];
+          step.value = 3;
+        } else {
+          const e = await resp.json();
+          error.value = e.detail || 'Export fehlgeschlagen';
+        }
+      } catch (e) { error.value = e.message; }
+      finally { exporting.value = false; }
+    }
+
+    async function ejectUsb() {
+      const path = selectedUsb.value?.path || manualPath.value;
+      if (!path) return;
+      await fetch('/api/v1/usb/eject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+      alert('USB ausgeworfen. Stick kann jetzt sicher entfernt werden.');
+    }
+
+    onMounted(() => { loadUsb(); loadExportable(); });
+    return { step, steps, usbDevices, selectedUsb, manualPath, pathValidation, exportType, exportTypes, selectedAssessments, exportableAssessments, encrypt, exportConfirmed, exporting, exportResult, error, loadUsb, validateManualPath, doExport, ejectUsb, formatBytes };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

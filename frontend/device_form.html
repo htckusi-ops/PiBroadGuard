@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – Gerät erfassen</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="app">
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center gap-3 shadow">
+    <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+    <span class="text-slate-400">/</span>
+    <span class="text-slate-200">{{ isEdit ? 'Gerät bearbeiten' : 'Neues Gerät erfassen' }}</span>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-6">
+    <div class="bg-white rounded-lg shadow-sm p-6">
+      <h1 class="text-xl font-bold text-slate-800 mb-6">{{ isEdit ? 'Gerät bearbeiten' : 'Neues Gerät erfassen' }}</h1>
+
+      <form @submit.prevent="save" class="space-y-4">
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Hersteller *</label>
+            <input v-model="form.manufacturer" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="z.B. Grass Valley">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Modell *</label>
+            <input v-model="form.model" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="z.B. AMPP Node">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Gerätetyp *</label>
+            <select v-model="form.device_type" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+              <option value="">Typ wählen...</option>
+              <option value="encoder">Encoder</option>
+              <option value="decoder">Decoder</option>
+              <option value="matrix">Matrix</option>
+              <option value="intercom">Intercom</option>
+              <option value="monitor">Monitor/Multiviewer</option>
+              <option value="kvm">KVM</option>
+              <option value="audio">Audio-Interface</option>
+              <option value="control">Steuerungssystem</option>
+              <option value="appliance">Appliance</option>
+              <option value="other">Sonstige</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">IP-Adresse *</label>
+            <input v-model="form.ip_address" required pattern="^(\d{1,3}\.){3}\d{1,3}$" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono" placeholder="192.168.1.100">
+            <p v-if="ipError" class="text-red-500 text-xs mt-1">{{ ipError }}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Firmware-Version</label>
+            <input v-model="form.firmware_version" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="z.B. 3.2.1">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Hostname</label>
+            <input v-model="form.hostname" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="z.B. studio-encoder-01">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Seriennummer</label>
+            <input v-model="form.serial_number" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Asset-Tag</label>
+            <input v-model="form.asset_tag" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Standort</label>
+            <input v-model="form.location" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="z.B. Studio A / Rack 3">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Netzwerksegment</label>
+            <input v-model="form.network_segment" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="z.B. VLAN 20 – Broadcast">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Produktionskritikalität</label>
+            <select v-model="form.production_criticality" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+              <option value="">—</option>
+              <option value="critical">Kritisch</option>
+              <option value="high">Hoch</option>
+              <option value="medium">Mittel</option>
+              <option value="low">Niedrig</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Verantwortliches Team</label>
+            <input v-model="form.owner_team" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="z.B. Broadcast Engineering">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Notizen</label>
+          <textarea v-model="form.notes" rows="3" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Zusätzliche Informationen..."></textarea>
+        </div>
+
+        <div v-if="error" class="p-3 bg-red-50 text-red-700 rounded text-sm">{{ error }}</div>
+        <div v-if="success" class="p-3 bg-green-50 text-green-700 rounded text-sm">{{ success }}</div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="submit" :disabled="saving" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded font-medium text-sm">
+            {{ saving ? 'Speichern...' : (isEdit ? 'Aktualisieren' : 'Gerät erstellen') }}
+          </button>
+          <a href="/app/index.html" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-6 py-2 rounded font-medium text-sm">Abbrechen</a>
+          <button v-if="isEdit" type="button" @click="deleteDevice" class="ml-auto bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded text-sm">Löschen</button>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+createApp({
+  setup() {
+    const params = new URLSearchParams(window.location.search);
+    const deviceId = params.get('id');
+    const isEdit = ref(!!deviceId);
+    const saving = ref(false);
+    const error = ref('');
+    const success = ref('');
+    const ipError = ref('');
+
+    const form = ref({
+      manufacturer: '', model: '', device_type: '', ip_address: '',
+      firmware_version: '', hostname: '', serial_number: '', asset_tag: '',
+      location: '', network_segment: '', production_criticality: '',
+      owner_team: '', notes: ''
+    });
+
+    async function load() {
+      if (!deviceId) return;
+      const resp = await fetch(`/api/v1/devices/${deviceId}`);
+      if (resp.ok) {
+        const d = await resp.json();
+        Object.assign(form.value, d);
+      }
+    }
+
+    async function save() {
+      error.value = ''; success.value = ''; ipError.value = '';
+      saving.value = true;
+      try {
+        const url = isEdit.value ? `/api/v1/devices/${deviceId}` : '/api/v1/devices';
+        const method = isEdit.value ? 'PUT' : 'POST';
+        const resp = await fetch(url, {
+          method, headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form.value)
+        });
+        if (resp.ok) {
+          const d = await resp.json();
+          success.value = isEdit.value ? 'Gerät aktualisiert.' : 'Gerät erstellt.';
+          setTimeout(() => window.location.href = `/app/assessment.html?device_id=${d.id}`, 1000);
+        } else {
+          const err = await resp.json();
+          error.value = err.detail || JSON.stringify(err);
+        }
+      } catch (e) { error.value = e.message; }
+      finally { saving.value = false; }
+    }
+
+    async function deleteDevice() {
+      if (!confirm('Gerät wirklich löschen?')) return;
+      const resp = await fetch(`/api/v1/devices/${deviceId}`, { method: 'DELETE' });
+      if (resp.ok) window.location.href = '/app/index.html';
+      else error.value = 'Fehler beim Löschen';
+    }
+
+    onMounted(load);
+    return { form, isEdit, saving, error, success, ipError, save, deleteDevice };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

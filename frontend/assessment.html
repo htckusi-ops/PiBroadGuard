@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – Assessment</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="app">
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center gap-3 shadow">
+    <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+    <span class="text-slate-400">/</span>
+    <span class="text-slate-200">Assessment</span>
+    <span v-if="device" class="text-slate-400">– {{ device.manufacturer }} {{ device.model }}</span>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Score Overview -->
+    <div v-if="assessment" class="bg-white rounded-lg shadow-sm p-5 mb-4">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h1 class="text-xl font-bold text-slate-800">{{ device?.manufacturer }} {{ device?.model }}</h1>
+          <p class="text-slate-500 text-sm">Assessment #{{ assessment.id }} | Status: {{ assessment.status }}</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span :class="ratingBgClass(assessment.overall_rating)" class="px-3 py-1 rounded font-bold text-sm">
+            {{ ratingLabel(assessment.overall_rating) }}
+          </span>
+          <button @click="recalculate" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm">
+            &#8635; Neu berechnen
+          </button>
+        </div>
+      </div>
+
+      <!-- Score Bars -->
+      <div class="grid grid-cols-5 gap-3">
+        <div v-for="(info, key) in scoreDims" :key="key" class="text-center">
+          <div class="text-xs text-slate-500 mb-1">{{ info.label }}</div>
+          <div class="h-2 bg-slate-200 rounded-full overflow-hidden mb-1">
+            <div :style="{ width: (assessment[key + '_score'] || 0) + '%' }"
+                 :class="scoreBarColor(assessment[key + '_score'])"
+                 class="h-full rounded-full transition-all"></div>
+          </div>
+          <div class="text-sm font-bold" :class="scoreTextColor(assessment[key + '_score'])">
+            {{ assessment[key + '_score'] ?? 100 }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div class="flex border-b border-slate-200">
+        <button v-for="tab in tabs" :key="tab.id"
+          @click="activeTab = tab.id"
+          :class="activeTab === tab.id ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50' : 'text-slate-600 hover:bg-slate-50'"
+          class="px-5 py-3 text-sm font-medium transition-colors">
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <!-- Tab: Übersicht -->
+      <div v-if="activeTab === 'overview'" class="p-5">
+        <div v-if="!assessment">
+          <p class="text-slate-500 mb-3">Kein Assessment vorhanden.</p>
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Scan-Profil</label>
+            <select v-model="newProfile" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+              <option value="passive">Passive (schonend, empfohlen für Produktion)</option>
+              <option value="standard">Standard (Top 1000 Ports)</option>
+              <option value="extended">Extended (inkl. UDP)</option>
+            </select>
+          </div>
+          <button @click="createAssessment" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
+            Assessment starten
+          </button>
+        </div>
+        <div v-else>
+          <div class="grid grid-cols-2 gap-4 mb-5">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Reviewer</label>
+              <input v-model="editReviewer" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Re-Assessment fällig</label>
+              <input type="date" v-model="editReassessmentDue" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+            </div>
+          </div>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Zusammenfassung</label>
+            <textarea v-model="editSummary" rows="3" class="w-full border border-slate-300 rounded px-3 py-2 text-sm"></textarea>
+          </div>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Entscheid</label>
+            <select v-model="editDecision" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+              <option value="">—</option>
+              <option value="approved">Freigegeben</option>
+              <option value="approved_with_conditions">Freigegeben mit Auflagen</option>
+              <option value="deferred">Zurückgestellt</option>
+              <option value="rejected">Abgelehnt</option>
+            </select>
+          </div>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Entscheid-Notizen</label>
+            <textarea v-model="editDecisionNotes" rows="2" class="w-full border border-slate-300 rounded px-3 py-2 text-sm"></textarea>
+          </div>
+          <div class="flex gap-3">
+            <button @click="saveAssessmentMeta" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">Speichern</button>
+            <a v-if="assessment.status === 'scan_complete' || assessment.status === 'exported'"
+               :href="`/api/v1/assessments/${assessment.id}/export`"
+               class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded text-sm font-medium">
+               &#8681; .bdsa-Paket exportieren
+            </a>
+          </div>
+          <div v-if="saveMsg" class="mt-3 text-green-600 text-sm">{{ saveMsg }}</div>
+        </div>
+      </div>
+
+      <!-- Tab: Scan -->
+      <div v-if="activeTab === 'scan'" class="p-5">
+        <div v-if="!assessment" class="text-slate-500">Zuerst Assessment erstellen.</div>
+        <div v-else>
+          <!-- Authorization Modal Trigger -->
+          <div v-if="!scanRunning && assessment.status !== 'scan_running'">
+            <h2 class="font-semibold text-slate-800 mb-3">Scan-Autorisierung und Start</h2>
+            <div class="bg-amber-50 border border-amber-200 rounded p-4 mb-4 text-sm text-amber-800">
+              ⚠️ Vor dem Start eines Nmap-Scans muss eine Betriebsfreigabe dokumentiert sein (gemäss NIST SP 800-115 / IEC 62443-2-1). Broadcast-Geräte können empfindlich auf Scans reagieren.
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Freigabe erteilt durch – Name *</label>
+                <input v-model="auth.name" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Max Mustermann">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Rolle *</label>
+                <input v-model="auth.role" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Broadcast Engineering Lead">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Kontakt</label>
+                <input v-model="auth.contact" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="E-Mail oder Telefon">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Scan-Profil</label>
+                <select v-model="auth.profile" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+                  <option value="passive">Passive – schonend (empfohlen)</option>
+                  <option value="standard">Standard – Top 1000 Ports</option>
+                  <option value="extended">Extended – inkl. UDP</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Zeitfenster von</label>
+                <input type="datetime-local" v-model="auth.timeStart" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Zeitfenster bis</label>
+                <input type="datetime-local" v-model="auth.timeEnd" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Hinweise</label>
+              <input v-model="auth.notes" class="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-3" placeholder="z.B. Scan nur im Wartungsfenster">
+            </div>
+            <label class="flex items-center gap-2 text-sm mb-4 cursor-pointer">
+              <input type="checkbox" v-model="auth.confirmed" class="w-4 h-4">
+              Ich bestätige, dass eine Betriebsfreigabe für diesen Scan eingeholt wurde.
+            </label>
+            <button @click="startScan"
+              :disabled="!auth.name || !auth.role || !auth.confirmed"
+              class="bg-green-600 hover:bg-green-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded font-medium text-sm">
+              Scan starten →
+            </button>
+          </div>
+
+          <!-- Scan running -->
+          <div v-if="scanRunning || assessment.status === 'scan_running'" class="text-center py-8">
+            <div class="animate-spin text-4xl mb-3">&#9881;</div>
+            <p class="text-slate-600 font-medium">{{ scanMsg || 'Scan läuft...' }}</p>
+            <p class="text-slate-400 text-sm mt-1">Automatische Aktualisierung alle 2 Sekunden</p>
+          </div>
+
+          <!-- Scan done -->
+          <div v-if="assessment.status === 'scan_complete' || assessment.status === 'exported'">
+            <div class="bg-green-50 border border-green-200 rounded p-4 mb-4 text-green-800 text-sm">
+              ✅ Scan abgeschlossen. {{ scanResults.length }} Ports erfasst, {{ findings.length }} Findings generiert.
+            </div>
+          </div>
+
+          <div v-if="scanError" class="mt-3 text-red-600 text-sm">{{ scanError }}</div>
+        </div>
+      </div>
+
+      <!-- Tab: Manuelle Fragen -->
+      <div v-if="activeTab === 'manual'" class="p-5">
+        <div v-if="!assessment" class="text-slate-500">Zuerst Assessment erstellen.</div>
+        <div v-else>
+          <p class="text-slate-500 text-sm mb-4">Beantworten Sie die folgenden Fragen zur Sicherheitsbewertung des Geräts.</p>
+          <div v-for="(questions, cat) in manualQuestions" :key="cat" class="mb-6">
+            <h3 class="font-semibold text-slate-700 capitalize mb-3 border-b border-slate-200 pb-1">{{ catLabel(cat) }}</h3>
+            <div class="space-y-3">
+              <div v-for="q in questions" :key="q.question_key" class="grid grid-cols-3 gap-3 items-start">
+                <div class="col-span-1 text-sm text-slate-700 pt-2">{{ q.question }}</div>
+                <div class="col-span-1">
+                  <select v-model="q.answer_value" class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white">
+                    <option value="">—</option>
+                    <option value="yes">Ja</option>
+                    <option value="no">Nein</option>
+                    <option value="partial">Teilweise</option>
+                    <option value="unknown">Unbekannt</option>
+                  </select>
+                </div>
+                <div class="col-span-1">
+                  <input v-model="q.comment" placeholder="Kommentar..." class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                </div>
+              </div>
+            </div>
+          </div>
+          <button @click="saveManual" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
+            Antworten speichern
+          </button>
+          <span v-if="manualSaved" class="ml-3 text-green-600 text-sm">Gespeichert.</span>
+        </div>
+      </div>
+
+      <!-- Tab: Findings -->
+      <div v-if="activeTab === 'findings'" class="p-5">
+        <div v-if="findings.length === 0" class="text-slate-500">Keine Findings vorhanden. Scan durchführen oder manuelle Fragen beantworten.</div>
+        <div v-for="f in findings" :key="f.id" class="border border-slate-200 rounded-lg p-4 mb-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span :class="severityClass(f.severity)" class="px-2 py-0.5 rounded text-xs font-bold">{{ f.severity?.toUpperCase() }}</span>
+            <span class="font-semibold text-slate-800">{{ f.title }}</span>
+            <span v-if="f.kev_listed" class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold">⚠️ CISA KEV</span>
+          </div>
+          <p class="text-sm text-slate-600 mb-1"><strong>Befund:</strong> {{ f.evidence || '—' }}</p>
+          <p class="text-sm text-slate-600 mb-1"><strong>Broadcast-Kontext:</strong> {{ f.broadcast_context || '—' }}</p>
+          <div class="bg-blue-50 border-l-4 border-blue-400 p-3 mb-2 text-sm">
+            <strong>Empfehlung:</strong> {{ f.recommendation || '—' }}
+            <div v-if="f.kev_required_action" class="mt-1 text-red-700">⚠️ CISA KEV: {{ f.kev_required_action }}</div>
+            <div v-if="f.nvd_solution" class="mt-1">NVD: {{ f.nvd_solution }}</div>
+          </div>
+          <div class="flex items-center gap-3 flex-wrap">
+            <div>
+              <label class="text-xs text-slate-500 mr-1">Status:</label>
+              <select v-model="f.status" @change="updateFinding(f)" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
+                <option value="open">Offen</option>
+                <option value="compensated">Kompensiert</option>
+                <option value="accepted">Akzeptiert</option>
+                <option value="false_positive">False Positive</option>
+              </select>
+            </div>
+            <div v-if="f.compensating_control_required" class="flex-1">
+              <input v-model="f.compensating_control_description" @blur="updateFinding(f)"
+                placeholder="Kompensationsmassnahme beschreiben..."
+                class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Report -->
+      <div v-if="activeTab === 'report'" class="p-5">
+        <div v-if="!assessment" class="text-slate-500">Zuerst Assessment erstellen.</div>
+        <div v-else>
+          <p class="text-slate-500 text-sm mb-4">Report-Downloads für Assessment #{{ assessment.id }}</p>
+          <div class="flex gap-3 flex-wrap">
+            <a :href="`/api/v1/assessments/${assessment.id}/report/html`" target="_blank"
+               class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
+              &#128196; HTML-Report öffnen
+            </a>
+            <a :href="`/api/v1/assessments/${assessment.id}/report/md`"
+               class="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2 rounded font-medium text-sm">
+              &#8681; Markdown herunterladen
+            </a>
+            <a :href="`/api/v1/assessments/${assessment.id}/report/json`"
+               class="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2 rounded font-medium text-sm">
+              &#8681; JSON herunterladen
+            </a>
+          </div>
+          <div class="mt-5 p-4 bg-slate-50 rounded border border-slate-200 text-sm">
+            <strong>Gesamtbewertung:</strong>
+            <span :class="ratingBgClass(assessment.overall_rating)" class="ml-2 px-2 py-0.5 rounded font-bold text-xs">
+              {{ ratingLabel(assessment.overall_rating) }}
+            </span>
+            <br><span class="text-slate-500">Entscheid: {{ decisionLabel(assessment.decision) }}</span>
+          </div>
+        </div>
+      </div>
+
+    </div> <!-- /tabs -->
+
+    <div v-if="globalError" class="mt-4 p-3 bg-red-50 text-red-700 rounded text-sm">{{ globalError }}</div>
+  </main>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+createApp({
+  setup() {
+    const params = new URLSearchParams(window.location.search);
+    const deviceId = params.get('device_id');
+    const assessmentIdParam = params.get('assessment_id');
+
+    const device = ref(null);
+    const assessment = ref(null);
+    const scanResults = ref([]);
+    const findings = ref([]);
+    const manualQuestions = ref({});
+    const manualSaved = ref(false);
+    const globalError = ref('');
+    const saveMsg = ref('');
+    const scanError = ref('');
+    const scanMsg = ref('');
+    const scanRunning = ref(false);
+    const activeTab = ref('overview');
+    const newProfile = ref('passive');
+
+    const editReviewer = ref('');
+    const editSummary = ref('');
+    const editDecision = ref('');
+    const editDecisionNotes = ref('');
+    const editReassessmentDue = ref('');
+
+    const auth = ref({ name: '', role: '', contact: '', profile: 'passive', notes: '', timeStart: '', timeEnd: '', confirmed: false });
+
+    let pollInterval = null;
+
+    const tabs = [
+      { id: 'overview', label: '📋 Übersicht' },
+      { id: 'scan', label: '🔍 Scan' },
+      { id: 'manual', label: '📝 Manuelle Fragen' },
+      { id: 'findings', label: '⚠️ Findings' },
+      { id: 'report', label: '📄 Report' },
+    ];
+    const scoreDims = { technical: { label: 'Technisch' }, operational: { label: 'Betrieb' }, compensation: { label: 'Kompensation' }, lifecycle: { label: 'Lifecycle' }, vendor: { label: 'Hersteller' } };
+
+    function ratingLabel(r) { return { green: '🟢 Grün', yellow: '🟡 Gelb', orange: '🟠 Orange', red: '🔴 Rot' }[r] || r || '—'; }
+    function ratingBgClass(r) { return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800' }[r] || 'bg-slate-100 text-slate-600'; }
+    function decisionLabel(d) { return { approved: 'Freigegeben', approved_with_conditions: 'Freigegeben mit Auflagen', deferred: 'Zurückgestellt', rejected: 'Abgelehnt' }[d] || d || '—'; }
+    function severityClass(s) { return { critical: 'bg-red-100 text-red-800', high: 'bg-orange-100 text-orange-800', medium: 'bg-yellow-100 text-yellow-800', low: 'bg-green-100 text-green-800', info: 'bg-blue-100 text-blue-800' }[s] || ''; }
+    function scoreBarColor(v) { if (v >= 75) return 'bg-green-500'; if (v >= 55) return 'bg-yellow-400'; if (v >= 35) return 'bg-orange-400'; return 'bg-red-500'; }
+    function scoreTextColor(v) { if (v >= 75) return 'text-green-700'; if (v >= 55) return 'text-yellow-700'; if (v >= 35) return 'text-orange-700'; return 'text-red-700'; }
+    function catLabel(c) { return { auth: '🔑 Authentisierung', patch: '🔄 Updates / Lifecycle', hardening: '🛡️ Härtung', monitoring: '📡 Monitoring', operational: '⚙️ Betrieb', vendor: '🏭 Hersteller' }[c] || c; }
+
+    async function loadDevice() {
+      if (!deviceId) return;
+      const resp = await fetch(`/api/v1/devices/${deviceId}`);
+      if (resp.ok) device.value = await resp.json();
+    }
+
+    async function loadLatestAssessment() {
+      if (!deviceId && !assessmentIdParam) return;
+      let url = assessmentIdParam ? `/api/v1/assessments/${assessmentIdParam}` : null;
+      if (!url) {
+        // Get assessments for device
+        const resp = await fetch(`/api/v1/devices/${deviceId}`);
+        if (!resp.ok) return;
+      }
+      if (assessmentIdParam) {
+        const resp = await fetch(url);
+        if (resp.ok) {
+          assessment.value = await resp.json();
+          await Promise.all([loadResults(), loadFindings(), loadManual()]);
+        }
+      }
+    }
+
+    async function loadResults() {
+      if (!assessment.value) return;
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/results`);
+      if (resp.ok) scanResults.value = await resp.json();
+    }
+    async function loadFindings() {
+      if (!assessment.value) return;
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/findings`);
+      if (resp.ok) findings.value = await resp.json();
+    }
+    async function loadManual() {
+      if (!assessment.value) return;
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/manual-findings`);
+      if (resp.ok) manualQuestions.value = await resp.json();
+    }
+
+    async function createAssessment() {
+      const resp = await fetch(`/api/v1/devices/${deviceId}/assessments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scan_profile: newProfile.value })
+      });
+      if (resp.ok) {
+        assessment.value = await resp.json();
+        window.history.replaceState({}, '', `?device_id=${deviceId}&assessment_id=${assessment.value.id}`);
+        await loadManual();
+      }
+    }
+
+    async function startScan() {
+      scanError.value = '';
+      // Authorize first
+      const authResp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/authorize`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authorized_by_name: auth.value.name, authorized_by_role: auth.value.role,
+          authorized_by_contact: auth.value.contact, scan_profile: auth.value.profile,
+          notes: auth.value.notes, time_window_start: auth.value.timeStart || null,
+          time_window_end: auth.value.timeEnd || null
+        })
+      });
+      if (!authResp.ok) { scanError.value = 'Autorisierung fehlgeschlagen'; return; }
+
+      // Update profile
+      assessment.value.scan_profile = auth.value.profile;
+      await fetch(`/api/v1/assessments/${assessment.value.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scan_profile: auth.value.profile })
+      });
+
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan`, { method: 'POST' });
+      if (resp.ok) {
+        scanRunning.value = true;
+        assessment.value.status = 'scan_running';
+        startPolling();
+      } else {
+        const err = await resp.json();
+        scanError.value = err.detail || 'Scan konnte nicht gestartet werden';
+      }
+    }
+
+    function startPolling() {
+      if (pollInterval) return;
+      pollInterval = setInterval(async () => {
+        const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/status`);
+        if (resp.ok) {
+          const s = await resp.json();
+          scanMsg.value = s.message || '';
+          if (s.status === 'complete' || s.status === 'scan_complete') {
+            clearInterval(pollInterval); pollInterval = null;
+            scanRunning.value = false;
+            const aResp = await fetch(`/api/v1/assessments/${assessment.value.id}`);
+            if (aResp.ok) assessment.value = await aResp.json();
+            await Promise.all([loadResults(), loadFindings()]);
+          } else if (s.status === 'error') {
+            clearInterval(pollInterval); pollInterval = null;
+            scanRunning.value = false;
+            scanError.value = s.message || 'Scan fehlgeschlagen';
+          }
+        }
+      }, 2000);
+    }
+
+    async function saveAssessmentMeta() {
+      saveMsg.value = '';
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reviewer: editReviewer.value, summary: editSummary.value,
+          decision: editDecision.value, decision_notes: editDecisionNotes.value,
+          reassessment_due: editReassessmentDue.value || null
+        })
+      });
+      if (resp.ok) { assessment.value = await resp.json(); saveMsg.value = 'Gespeichert.'; setTimeout(() => saveMsg.value = '', 3000); }
+    }
+
+    async function saveManual() {
+      const items = [];
+      for (const [cat, qs] of Object.entries(manualQuestions.value)) {
+        for (const q of qs) {
+          if (q.answer_value) items.push({ category: cat, question_key: q.question_key, answer_value: q.answer_value, comment: q.comment || '', source: q.source || '' });
+        }
+      }
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/manual-findings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items)
+      });
+      if (resp.ok) { manualSaved.value = true; setTimeout(() => manualSaved.value = false, 3000); }
+    }
+
+    async function updateFinding(f) {
+      await fetch(`/api/v1/assessments/${assessment.value.id}/findings/${f.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: f.status, compensating_control_description: f.compensating_control_description })
+      });
+    }
+
+    async function recalculate() {
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/recalculate`, { method: 'POST' });
+      if (resp.ok) { const r = await resp.json(); Object.assign(assessment.value, r); }
+    }
+
+    onMounted(async () => {
+      await loadDevice();
+      if (assessmentIdParam) {
+        await loadLatestAssessment();
+        if (assessment.value) {
+          editReviewer.value = assessment.value.reviewer || '';
+          editSummary.value = assessment.value.summary || '';
+          editDecision.value = assessment.value.decision || '';
+          editDecisionNotes.value = assessment.value.decision_notes || '';
+          editReassessmentDue.value = assessment.value.reassessment_due || '';
+          if (assessment.value.status === 'scan_running') { scanRunning.value = true; startPolling(); }
+        }
+      }
+    });
+
+    onUnmounted(() => { if (pollInterval) clearInterval(pollInterval); });
+
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, saveAssessmentMeta, saveManual, updateFinding, recalculate };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

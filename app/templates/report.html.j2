@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>PiBroadGuard Report – {{ device.manufacturer }} {{ device.model }}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 1100px; margin: 0 auto; padding: 2rem; color: #1e293b; }
+  h1 { color: #0f172a; border-bottom: 3px solid #3b82f6; padding-bottom: 0.5rem; }
+  h2 { color: #1e40af; margin-top: 2rem; }
+  h3 { color: #1e293b; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th { background: #1e40af; color: white; padding: 0.5rem; text-align: left; }
+  td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: bold; font-size: 0.8rem; }
+  .green { background: #dcfce7; color: #166534; }
+  .yellow { background: #fef9c3; color: #854d0e; }
+  .orange { background: #ffedd5; color: #9a3412; }
+  .red { background: #fee2e2; color: #991b1b; }
+  .critical { background: #fecaca; color: #991b1b; }
+  .high { background: #fed7aa; color: #9a3412; }
+  .medium { background: #fef9c3; color: #854d0e; }
+  .low { background: #dcfce7; color: #166534; }
+  .info { background: #dbeafe; color: #1e40af; }
+  .finding { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+  .finding-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .kev-warning { background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 0.5rem 1rem; margin: 0.5rem 0; }
+  .recommendations { background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 0.5rem 1rem; margin: 0.5rem 0; }
+  .meta { color: #64748b; font-size: 0.9rem; }
+  @media print { .no-print { display: none; } }
+</style>
+</head>
+<body>
+
+<h1>PiBroadGuard – Broadcast Device Security Assessment Report</h1>
+
+<table>
+  <tr><th>Gerät</th><td>{{ device.manufacturer }} {{ device.model }}</td></tr>
+  <tr><th>Assessment-ID</th><td>#{{ assessment.id }}</td></tr>
+  <tr><th>Datum</th><td>{{ assessment.created_at | date }}</td></tr>
+  <tr><th>Reviewer</th><td>{{ assessment.reviewer or "ausstehend" }}</td></tr>
+  <tr><th>Entscheid</th><td><strong>{{ assessment.decision | decision_label }}</strong></td></tr>
+  <tr><th>Gesamtbewertung</th><td>
+    <span class="badge {{ assessment.overall_rating or 'info' }}">{{ assessment.overall_rating | rating_label }}</span>
+  </td></tr>
+</table>
+
+<h2>Executive Summary</h2>
+<p>{{ assessment.summary or "Kein Summary vorhanden." }}</p>
+
+<h3>Score-Übersicht</h3>
+<table>
+  <tr><th>Dimension</th><th>Score</th><th>Standard-Referenz</th></tr>
+  <tr><td>Technisch</td><td>{{ assessment.technical_score }}/100</td><td>IEC 62443-4-2 / NIST SP 800-82</td></tr>
+  <tr><td>Betrieb</td><td>{{ assessment.operational_score }}/100</td><td>IEC 62443-3-2 / NIST SP 800-82 Ch.4</td></tr>
+  <tr><td>Kompensation</td><td>{{ assessment.compensation_score }}/100</td><td>IEC 62443: Compensating Countermeasures</td></tr>
+  <tr><td>Lifecycle</td><td>{{ assessment.lifecycle_score }}/100</td><td>IEC 62443-4-1 / NIST SP 800-30</td></tr>
+  <tr><td>Hersteller</td><td>{{ assessment.vendor_score }}/100</td><td>IEC 62443-4-1 PSIRT / SDL</td></tr>
+</table>
+
+<h2>Angewandte Methodik und Standards</h2>
+<table>
+  <tr><th>Standard</th><th>Relevanz</th></tr>
+  <tr><td>IEC 62443-3-2</td><td>Security Risk Assessment für OT/ICS-Systeme</td></tr>
+  <tr><td>IEC 62443-4-2</td><td>Component Security Requirements (Gerätebewertung)</td></tr>
+  <tr><td>NIST SP 800-82r3</td><td>Guide to OT Security</td></tr>
+  <tr><td>NIST SP 800-115</td><td>Technical Guide to Security Testing</td></tr>
+  <tr><td>NIST SP 800-30r1</td><td>Risk Assessment Methodology</td></tr>
+</table>
+<p class="meta">
+  Scan-Tool: Nmap {{ nmap_version }}, Profil: {{ assessment.scan_profile or "—" }}<br>
+  {% if auth %}Scan-Autorisierung: {{ auth.authorized_by_name }} ({{ auth.authorized_by_role }}), erteilt am {{ auth.authorization_date | date }}<br>{% endif %}
+  Bewertungsdatum: {{ assessment.created_at | date }}
+</p>
+
+<h2>Gerätestammdaten</h2>
+<table>
+  <tr><th>Hersteller</th><td>{{ device.manufacturer }}</td></tr>
+  <tr><th>Modell</th><td>{{ device.model }}</td></tr>
+  <tr><th>Gerätetyp</th><td>{{ device.device_type }}</td></tr>
+  <tr><th>IP-Adresse</th><td>{{ device.ip_address }}</td></tr>
+  <tr><th>Firmware</th><td>{{ device.firmware_version or "—" }}</td></tr>
+  <tr><th>Standort</th><td>{{ device.location or "—" }}</td></tr>
+  <tr><th>Netzwerksegment</th><td>{{ device.network_segment or "—" }}</td></tr>
+  <tr><th>Produktionskritikalität</th><td>{{ device.production_criticality or "—" }}</td></tr>
+  <tr><th>Verantwortliches Team</th><td>{{ device.owner_team or "—" }}</td></tr>
+</table>
+
+<h2>Scan-Resultate ({{ scan_results | length }} Ports)</h2>
+{% if scan_results %}
+<table>
+  <tr><th>Port</th><th>Protokoll</th><th>Service</th><th>Produkt</th><th>Version</th><th>Status</th></tr>
+  {% for s in scan_results %}
+  <tr>
+    <td>{{ s.port }}</td><td>{{ s.protocol }}</td>
+    <td>{{ s.service_name or "—" }}</td>
+    <td>{{ s.service_product or "—" }}</td>
+    <td>{{ s.service_version or "—" }}</td>
+    <td>{{ s.state }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>Keine Scan-Resultate vorhanden.</p>
+{% endif %}
+
+<h2>Findings ({{ findings | length }})</h2>
+{% for f in findings %}
+<div class="finding">
+  <div class="finding-header">
+    <span class="badge {{ f.severity or 'info' }}">{{ f.severity | upper }}</span>
+    <strong>{{ f.title }}</strong>
+    {% if f.kev_listed %}<span class="badge red">⚠️ CISA KEV</span>{% endif %}
+  </div>
+  <p><strong>Befund:</strong> {{ f.evidence or "—" }}</p>
+  <p><strong>Risiko:</strong> {{ f.description or "—" }}</p>
+  <p><strong>Broadcast-Kontext:</strong> {{ f.broadcast_context or "—" }}</p>
+
+  <div class="recommendations">
+    <strong>Empfehlung (Regelwerk):</strong> {{ f.recommendation or "—" }}
+    {% if f.kev_listed %}
+    <div class="kev-warning">
+      ⚠️ <strong>Aktiv ausgenutzt (CISA KEV):</strong> {{ f.kev_required_action or "Patch anwenden" }}
+    </div>
+    {% endif %}
+    {% if f.nvd_solution %}<p><strong>NVD-Empfehlung:</strong> {{ f.nvd_solution }}</p>{% endif %}
+    {% if f.vendor_advisory_url %}<p><strong>Hersteller-Advisory:</strong> <a href="{{ f.vendor_advisory_url }}">{{ f.vendor_advisory_url }}</a></p>{% endif %}
+    {% if f.cwe_recommendation %}<p><strong>{{ f.cwe_id }}:</strong> {{ f.cwe_recommendation }}</p>{% endif %}
+  </div>
+
+  <p><strong>Status:</strong> {{ f.status | status_label }}
+  {% if f.compensating_control_description %} | <strong>Kompensation:</strong> {{ f.compensating_control_description }}{% endif %}
+  </p>
+</div>
+{% endfor %}
+
+<h2>Entscheid</h2>
+<p><strong>{{ assessment.decision | decision_label }}</strong></p>
+<p>{{ assessment.decision_notes or "—" }}</p>
+<p>Re-Assessment fällig: {{ assessment.reassessment_due | date }}</p>
+
+{% if action_items %}
+<h2>Plan of Action and Milestones (POA&M)</h2>
+<table>
+  <tr><th>Priorität</th><th>Massnahme</th><th>Verantwortlich</th><th>Fällig</th><th>Status</th></tr>
+  {% for item in action_items %}
+  <tr>
+    <td>{{ item.priority | prio_label }}</td>
+    <td>{{ item.title }}</td>
+    <td>{{ item.responsible_team or "—" }}</td>
+    <td>{{ item.due_date | date }}</td>
+    <td>{{ item.status | status_label }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<hr>
+<p class="meta">Report generiert am {{ generated_at.strftime("%d.%m.%Y %H:%M") }} UTC durch PiBroadGuard v1.0</p>
+
+</body>
+</html>

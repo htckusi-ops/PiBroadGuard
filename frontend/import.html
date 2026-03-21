@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – Import</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="app">
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center gap-3 shadow">
+    <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+    <span class="text-slate-400">/</span>
+    <span class="text-slate-200">Scan-Paket importieren</span>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-6">
+    <div class="bg-white rounded-lg shadow-sm p-6">
+      <h1 class="text-xl font-bold text-slate-800 mb-5">&#8679; Scan-Paket importieren</h1>
+
+      <!-- Source Selection -->
+      <div class="mb-5">
+        <label class="block text-sm font-medium text-slate-700 mb-2">Quelle</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" v-model="source" value="file"> Datei hochladen
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" v-model="source" value="usb"> Vom USB-Stick lesen
+          </label>
+        </div>
+      </div>
+
+      <!-- File Upload -->
+      <div v-if="source === 'file'" class="mb-5">
+        <div class="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+             @dragover.prevent @drop.prevent="onDrop" @click="$refs.fileInput.click()">
+          <div class="text-4xl mb-2">&#128196;</div>
+          <p class="text-slate-500">Datei auswählen oder hier ablegen</p>
+          <p class="text-slate-400 text-sm">.bdsa oder .bdsa.enc</p>
+          <input ref="fileInput" type="file" accept=".bdsa,.enc" class="hidden" @change="onFileSelect">
+        </div>
+        <div v-if="selectedFile" class="mt-2 text-sm text-slate-600">
+          Ausgewählt: <strong>{{ selectedFile.name }}</strong>
+        </div>
+        <button v-if="selectedFile && !preview" @click="verifyFile" :disabled="verifying"
+          class="mt-3 bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded text-sm font-medium disabled:bg-slate-300">
+          {{ verifying ? 'Prüfe...' : 'Paket prüfen' }}
+        </button>
+      </div>
+
+      <!-- USB Import -->
+      <div v-if="source === 'usb'" class="mb-5">
+        <div class="flex items-center gap-3 mb-3">
+          <select v-model="usbPath" class="flex-1 border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+            <option value="">USB-Stick wählen...</option>
+            <option v-for="u in usbDevices" :key="u.path" :value="u.path">
+              {{ u.label }} – {{ u.path }} ({{ formatBytes(u.free_bytes) }} frei)
+            </option>
+          </select>
+          <button @click="loadUsb" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded text-sm">&#8635;</button>
+          <button v-if="usbPath" @click="scanUsb" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm">Pakete suchen</button>
+        </div>
+        <div v-if="usbPackages.length > 0">
+          <div v-for="pkg in usbPackages" :key="pkg.filename" class="flex items-center gap-3 p-3 border border-slate-200 rounded mb-2">
+            <input type="checkbox" v-model="pkg.selected" class="w-4 h-4">
+            <div class="flex-1">
+              <span class="text-sm font-medium text-slate-800">{{ pkg.filename }}</span>
+              <span v-if="pkg.encrypted" class="ml-2 text-xs bg-slate-100 text-slate-600 px-1 rounded">🔐</span>
+            </div>
+            <span class="text-xs text-slate-400">{{ formatBytes(pkg.size_bytes) }}</span>
+          </div>
+          <button @click="importFromUsb" :disabled="importing"
+            class="mt-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-5 py-2 rounded font-medium text-sm">
+            {{ importing ? 'Importiere...' : 'Ausgewählte importieren' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div v-if="preview" class="border border-slate-200 rounded-lg p-4 bg-slate-50 mb-5">
+        <h3 class="font-semibold text-slate-700 mb-3">Paket-Vorschau</h3>
+        <div class="grid grid-cols-2 gap-2 text-sm">
+          <div class="text-slate-500">BDSA-Version:</div>
+          <div>{{ preview.manifest?.bdsa_version }} <span v-if="preview.valid" class="text-green-600">✅ kompatibel</span></div>
+          <div class="text-slate-500">Assessment-ID:</div>
+          <div>{{ preview.manifest?.assessment_id }}</div>
+          <div class="text-slate-500">Erstellt auf:</div>
+          <div>{{ preview.manifest?.created_on_host }}</div>
+          <div class="text-slate-500">Scan-Profil:</div>
+          <div>{{ preview.manifest?.scan_profile }}</div>
+          <div class="text-slate-500">Erstellt am:</div>
+          <div>{{ preview.manifest?.created_at?.substring(0, 16) }}</div>
+          <div class="text-slate-500">Integrität:</div>
+          <div>
+            <span v-if="preview.valid" class="text-green-600 font-medium">✅ Alle Checksummen gültig</span>
+            <span v-else class="text-red-600 font-medium">❌ Fehler: {{ preview.errors?.join(', ') }}</span>
+          </div>
+        </div>
+        <div v-if="preview.warnings?.length" class="mt-2 text-amber-600 text-sm">
+          ⚠️ {{ preview.warnings.join(', ') }}
+        </div>
+        <div class="flex gap-3 mt-4">
+          <button @click="doImport" :disabled="!preview.valid || importing"
+            class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-5 py-2 rounded font-medium text-sm">
+            {{ importing ? 'Importiere...' : 'Importieren und anreichern →' }}
+          </button>
+          <button @click="preview = null; selectedFile = null" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded text-sm">Abbrechen</button>
+        </div>
+      </div>
+
+      <!-- Success -->
+      <div v-if="importResult" class="p-4 bg-green-50 border border-green-200 rounded text-green-800 text-sm">
+        ✅ Import erfolgreich! Assessment #{{ importResult.assessment_id }} erstellt.
+        <a :href="`/app/assessment.html?assessment_id=${importResult.assessment_id}`" class="text-blue-600 hover:underline ml-2">
+          Zum Assessment →
+        </a>
+      </div>
+
+      <div v-if="error" class="p-3 bg-red-50 text-red-700 rounded text-sm mt-3">{{ error }}</div>
+    </div>
+
+    <!-- Import History -->
+    <div class="bg-white rounded-lg shadow-sm p-5 mt-4">
+      <h2 class="font-semibold text-slate-700 mb-3">Import-Verlauf</h2>
+      <div v-if="history.length === 0" class="text-slate-400 text-sm">Keine Importe vorhanden.</div>
+      <table v-else class="w-full text-sm">
+        <thead><tr class="text-left text-slate-500 text-xs">
+          <th class="pb-2">Datum</th><th class="pb-2">Quelle</th><th class="pb-2">Assessment</th><th class="pb-2">Status</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="h in history" :key="h.id" class="border-t border-slate-100">
+            <td class="py-2 text-slate-600">{{ h.imported_at?.substring(0, 16) }}</td>
+            <td class="py-2 text-slate-600">{{ h.source_host || '—' }}</td>
+            <td class="py-2">
+              <a v-if="h.assessment_id" :href="`/app/assessment.html?assessment_id=${h.assessment_id}`"
+                 class="text-blue-600 hover:underline">#{{ h.assessment_id }}</a>
+              <span v-else>—</span>
+            </td>
+            <td class="py-2"><span :class="h.status === 'success' ? 'text-green-600' : 'text-red-600'">{{ h.status }}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script>
+const { createApp, ref, onMounted } = Vue;
+createApp({
+  setup() {
+    const source = ref('file');
+    const selectedFile = ref(null);
+    const fileData = ref(null);
+    const preview = ref(null);
+    const verifying = ref(false);
+    const importing = ref(false);
+    const importResult = ref(null);
+    const error = ref('');
+    const usbDevices = ref([]);
+    const usbPath = ref('');
+    const usbPackages = ref([]);
+    const history = ref([]);
+
+    function formatBytes(b) { if (b > 1e9) return (b/1e9).toFixed(1) + ' GB'; if (b > 1e6) return (b/1e6).toFixed(0) + ' MB'; return (b/1e3).toFixed(0) + ' KB'; }
+
+    function onDrop(e) { const f = e.dataTransfer.files[0]; if (f) { selectedFile.value = f; readFile(f); } }
+    function onFileSelect(e) { const f = e.target.files[0]; if (f) { selectedFile.value = f; readFile(f); } }
+    function readFile(f) { const r = new FileReader(); r.onload = e => { fileData.value = e.target.result; }; r.readAsArrayBuffer(f); }
+
+    async function verifyFile() {
+      if (!selectedFile.value) return;
+      verifying.value = true; error.value = '';
+      const fd = new FormData();
+      fd.append('file', selectedFile.value);
+      try {
+        const resp = await fetch('/api/v1/import/verify', { method: 'POST', body: fd });
+        if (resp.ok) preview.value = await resp.json();
+        else error.value = 'Verifikation fehlgeschlagen';
+      } catch (e) { error.value = e.message; }
+      finally { verifying.value = false; }
+    }
+
+    async function doImport() {
+      if (!selectedFile.value) return;
+      importing.value = true; error.value = '';
+      const fd = new FormData();
+      fd.append('file', selectedFile.value);
+      try {
+        const resp = await fetch('/api/v1/import', { method: 'POST', body: fd });
+        if (resp.ok) { importResult.value = await resp.json(); await loadHistory(); }
+        else { const e = await resp.json(); error.value = e.detail || 'Import fehlgeschlagen'; }
+      } catch (e) { error.value = e.message; }
+      finally { importing.value = false; }
+    }
+
+    async function loadUsb() {
+      const resp = await fetch('/api/v1/usb/devices');
+      if (resp.ok) usbDevices.value = await resp.json();
+    }
+
+    async function scanUsb() {
+      if (!usbPath.value) return;
+      const resp = await fetch(`/api/v1/usb/import/scan?path=${encodeURIComponent(usbPath.value)}`);
+      if (resp.ok) { usbPackages.value = (await resp.json()).map(p => ({ ...p, selected: true })); }
+    }
+
+    async function importFromUsb() {
+      const selected = usbPackages.value.filter(p => p.selected).map(p => p.filename);
+      if (!selected.length) return;
+      importing.value = true; error.value = '';
+      const resp = await fetch('/api/v1/usb/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_path: usbPath.value, filenames: selected })
+      });
+      if (resp.ok) {
+        const r = await resp.json();
+        const first = r.imported?.find(i => i.result);
+        if (first) { importResult.value = first.result; await loadHistory(); }
+      } else { const e = await resp.json(); error.value = e.detail || 'Import fehlgeschlagen'; }
+      importing.value = false;
+    }
+
+    async function loadHistory() {
+      const resp = await fetch('/api/v1/import/history');
+      if (resp.ok) history.value = await resp.json();
+    }
+
+    onMounted(() => { loadHistory(); loadUsb(); });
+    return { source, selectedFile, preview, verifying, importing, importResult, error, usbDevices, usbPath, usbPackages, history, onDrop, onFileSelect, verifyFile, doImport, loadUsb, scanUsb, importFromUsb, formatBytes };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
