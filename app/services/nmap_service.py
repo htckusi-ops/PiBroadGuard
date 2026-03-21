@@ -1,24 +1,30 @@
 import asyncio
 import ipaddress
 import logging
+import os
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 logger = logging.getLogger("pibroadguard.scan")
 
+# SSE queues: assessment_id → asyncio.Queue of str messages
+scan_queues: Dict[int, asyncio.Queue] = {}
+
 SCAN_PROFILES = {
     "passive": [
-        "-sV", "--version-light", "-T2",
-        "-p", "21,22,23,25,80,161,443,502,554,8080,8443,9100",
+        "-Pn", "-sT", "-sV", "--version-light", "-T2",
+        "-p", "21,22,23,25,53,80,102,161,443,502,554,623,1194,1883,2222,4840,8080,8443,9100,47808",
     ],
     "standard": [
-        "-sV", "-T3", "--top-ports", "1000", "--version-intensity", "5",
+        "-Pn", "-sT", "-sV", "-T3", "-p", "1-65535", "--version-intensity", "5",
     ],
     "extended": [
-        "-sV", "-sU", "--top-ports", "500", "-T3", "--version-intensity", "7",
+        "-Pn", "-sT", "-sU", "-sV", "-T3",
+        "-p", "T:1-65535,U:161,623,1194,1883,4840,47808",
+        "--version-intensity", "7",
     ],
 }
 
@@ -28,15 +34,24 @@ def _validate_ip(ip: str) -> str:
 
 
 def _parse_nmap_xml(xml_data: str) -> List[dict]:
+    """Parse nmap XML output. Includes open and open|filtered states."""
     results = []
     try:
         root = ET.fromstring(xml_data)
         for host in root.findall("host"):
+            # Extract MAC and vendor if present
+            mac_address = ""
+            mac_vendor = ""
+            for addr in host.findall("address"):
+                if addr.get("addrtype") == "mac":
+                    mac_address = addr.get("addr", "")
+                    mac_vendor = addr.get("vendor", "")
+
             for port_elem in host.findall(".//port"):
                 state_elem = port_elem.find("state")
                 service_elem = port_elem.find("service")
                 state = state_elem.get("state") if state_elem is not None else "unknown"
-                if state not in ("open", "filtered"):
+                if state not in ("open", "filtered", "open|filtered"):
                     continue
                 result = {
                     "port": int(port_elem.get("portid", 0)),
@@ -46,6 +61,8 @@ def _parse_nmap_xml(xml_data: str) -> List[dict]:
                     "service_product": "",
                     "service_version": "",
                     "extra_info": "",
+                    "mac_address": mac_address,
+                    "mac_vendor": mac_vendor,
                 }
                 if service_elem is not None:
                     result["service_name"] = service_elem.get("name", "")
@@ -58,7 +75,36 @@ def _parse_nmap_xml(xml_data: str) -> List[dict]:
     return results
 
 
-async def run_scan(ip: str, profile: str, host_timeout: str = "60s", max_rate: int = 100) -> dict:
+def _extract_nmap_version(xml_data: str) -> str:
+    """Extract nmap version from XML scanner attribute."""
+    try:
+        root = ET.fromstring(xml_data)
+        return root.get("version", "unknown")
+    except ET.ParseError:
+        return "unknown"
+
+
+def _count_total_ports_scanned(xml_data: str) -> int:
+    """Extract total ports scanned from scanstats element."""
+    try:
+        root = ET.fromstring(xml_data)
+        stats = root.find("runstats/hosts") or root.find("runstats")
+        scanstats = root.find("scanstats")
+        if scanstats is not None:
+            total = scanstats.get("totalhosts", "0")
+            return int(total) if total.isdigit() else 0
+    except (ET.ParseError, ValueError):
+        pass
+    return 0
+
+
+async def run_scan(
+    ip: str,
+    profile: str,
+    host_timeout: str = "60s",
+    max_rate: int = 100,
+    assessment_id: Optional[int] = None,
+) -> dict:
     safe_ip = _validate_ip(ip)
     flags = SCAN_PROFILES.get(profile, SCAN_PROFILES["passive"])
 
@@ -72,8 +118,14 @@ async def run_scan(ip: str, profile: str, host_timeout: str = "60s", max_rate: i
         safe_ip,
     ]
 
-    logger.info(f"Starting nmap scan: profile={profile} target={safe_ip}")
+    logger.info(f"Starting nmap scan: profile={profile} target={safe_ip} cmd={' '.join(cmd)}")
     start = datetime.now(timezone.utc)
+
+    queue = None
+    if assessment_id is not None:
+        queue = asyncio.Queue()
+        scan_queues[assessment_id] = queue
+        await queue.put(f"data: Starte Scan ({profile}) auf {safe_ip}...\n\n")
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -81,27 +133,53 @@ async def run_scan(ip: str, profile: str, host_timeout: str = "60s", max_rate: i
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+
+        # Stream stdout lines to SSE queue
+        async def _stream_output():
+            if proc.stdout:
+                async for line in proc.stdout:
+                    text = line.decode(errors="replace").rstrip()
+                    if text and queue is not None:
+                        await queue.put(f"data: {text}\n\n")
+
+        await asyncio.gather(_stream_output(), proc.wait())
         elapsed = (datetime.now(timezone.utc) - start).total_seconds()
 
         with open(output_file, "r", errors="replace") as f:
             xml_data = f.read()
 
         if proc.returncode != 0:
-            logger.error(f"Nmap exited with code {proc.returncode}: {stderr.decode()}")
+            logger.error(f"Nmap exited with code {proc.returncode}")
 
-        logger.info(f"Scan completed in {elapsed:.1f}s, exit code={proc.returncode}")
+        nmap_version = _extract_nmap_version(xml_data)
+        parsed = _parse_nmap_xml(xml_data)
+
+        logger.info(
+            f"Scan completed: elapsed={elapsed:.1f}s exit={proc.returncode} "
+            f"ports={len(parsed)} nmap={nmap_version}"
+        )
+
+        if queue is not None:
+            await queue.put(
+                f"data: Scan abgeschlossen: {len(parsed)} Ports gefunden "
+                f"({elapsed:.1f}s)\n\n"
+            )
+            await queue.put("data: __DONE__\n\n")
+
         return {
             "returncode": proc.returncode,
             "xml": xml_data,
-            "results": _parse_nmap_xml(xml_data),
+            "results": parsed,
             "elapsed_seconds": elapsed,
+            "nmap_version": nmap_version,
+            "total_ports_scanned": len(parsed),
         }
     except FileNotFoundError:
         logger.error("nmap binary not found")
+        if queue is not None:
+            await queue.put("data: FEHLER: nmap nicht gefunden\n\ndata: __DONE__\n\n")
         raise RuntimeError("nmap is not installed or not in PATH")
     finally:
-        import os
         try:
             os.unlink(output_file)
         except OSError:
@@ -114,7 +192,11 @@ async def check_nmap_capabilities() -> dict:
             ["nmap", "--version"], capture_output=True, text=True, timeout=10
         )
         version_line = result.stdout.splitlines()[0] if result.stdout else "unknown"
-        version = version_line.split("version ")[-1].split(" ")[0] if "version" in version_line else "unknown"
+        version = (
+            version_line.split("version ")[-1].split(" ")[0]
+            if "version" in version_line
+            else "unknown"
+        )
 
         # Quick test for raw socket availability
         test = subprocess.run(

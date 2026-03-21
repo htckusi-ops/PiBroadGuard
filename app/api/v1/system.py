@@ -1,5 +1,7 @@
+import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -152,3 +154,193 @@ async def nmap_capabilities(user: str = Depends(verify_credentials)):
 
 
 from app.services import nmap_service
+
+_I18N_DIR = Path(__file__).parent.parent.parent / "i18n"
+_PHPIPAM_NOT_CONFIGURED = "phpIPAM nicht konfiguriert (PIBG_PHPIPAM_URL / PIBG_PHPIPAM_TOKEN fehlt)"
+_SUPPORTED_LANGS = {"de", "en"}
+
+
+@router.get("/i18n/{lang}")
+def get_translations(lang: str):
+    """Return i18n translations for the given language (de or en)."""
+    if lang not in _SUPPORTED_LANGS:
+        raise HTTPException(400, f"Unsupported language: {lang}. Supported: {', '.join(_SUPPORTED_LANGS)}")
+    path = _I18N_DIR / f"{lang}.json"
+    if not path.exists():
+        raise HTTPException(404, f"Translation file not found: {lang}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@router.get("/i18n")
+def list_languages():
+    """List available UI languages."""
+    return {"languages": [{"code": "de", "label": "Deutsch"}, {"code": "en", "label": "English"}]}
+
+
+@router.get("/device-types")
+def get_device_types(
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Return all active device types for dropdowns."""
+    from app.models.device_type import DeviceType
+    return db.query(DeviceType).filter(DeviceType.active == True).order_by(DeviceType.sort_order).all()
+
+
+@router.post("/device-types")
+def create_device_type(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    from app.models.device_type import DeviceType
+    dt = DeviceType(
+        name=payload["name"],
+        label_de=payload.get("label_de", payload["name"]),
+        label_en=payload.get("label_en", payload["name"]),
+        sort_order=payload.get("sort_order", 99),
+        active=True,
+    )
+    db.add(dt)
+    db.commit()
+    db.refresh(dt)
+    return dt
+
+
+@router.put("/device-types/{dt_id}")
+def update_device_type(
+    dt_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    from app.models.device_type import DeviceType
+    dt = db.query(DeviceType).filter(DeviceType.id == dt_id).first()
+    if not dt:
+        raise HTTPException(404, "Device type not found")
+    for k in ("label_de", "label_en", "sort_order", "active"):
+        if k in payload:
+            setattr(dt, k, payload[k])
+    db.commit()
+    db.refresh(dt)
+    return dt
+
+
+@router.delete("/device-types/{dt_id}")
+def delete_device_type(
+    dt_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    from app.models.device_type import DeviceType
+    dt = db.query(DeviceType).filter(DeviceType.id == dt_id).first()
+    if not dt:
+        raise HTTPException(404, "Device type not found")
+    dt.active = False
+    db.commit()
+    return {"deleted": True}
+
+
+# ── phpIPAM endpoints ────────────────────────────────────────────────────────
+
+_PHPIPAM_NOT_CONFIGURED = "phpIPAM nicht konfiguriert (PIBG_PHPIPAM_URL / PIBG_PHPIPAM_TOKEN fehlt)"
+
+
+@router.get("/phpipam/status")
+async def phpipam_status(user: str = Depends(verify_credentials)):
+    """Return phpIPAM configuration status and test connection."""
+    from app.services.phpipam_service import get_phpipam_service
+    svc = get_phpipam_service()
+    if not svc:
+        return {"configured": False, "message": _PHPIPAM_NOT_CONFIGURED}
+    result = await svc.test_connection()
+    return {"configured": True, **result}
+
+
+@router.get("/phpipam/lookup")
+async def phpipam_lookup(
+    ip: str,
+    user: str = Depends(verify_credentials),
+):
+    """Lookup a single IP in phpIPAM."""
+    from app.services.phpipam_service import get_phpipam_service
+    svc = get_phpipam_service()
+    if not svc:
+        raise HTTPException(503, _PHPIPAM_NOT_CONFIGURED)
+    host = await svc.lookup_by_ip(ip)
+    if not host:
+        raise HTTPException(404, f"IP {ip} nicht in phpIPAM gefunden")
+    return host
+
+
+@router.get("/phpipam/subnets")
+async def phpipam_subnets(user: str = Depends(verify_credentials)):
+    """List all subnets from phpIPAM."""
+    from app.services.phpipam_service import get_phpipam_service
+    svc = get_phpipam_service()
+    if not svc:
+        raise HTTPException(503, _PHPIPAM_NOT_CONFIGURED)
+    return await svc.get_subnets()
+
+
+@router.get("/phpipam/subnets/{subnet_id}/hosts")
+async def phpipam_subnet_hosts(subnet_id: int, user: str = Depends(verify_credentials)):
+    """Get all hosts in a phpIPAM subnet."""
+    from app.services.phpipam_service import get_phpipam_service
+    svc = get_phpipam_service()
+    if not svc:
+        raise HTTPException(503, _PHPIPAM_NOT_CONFIGURED)
+    return await svc.get_hosts_in_subnet(subnet_id)
+
+
+@router.post("/phpipam/import")
+async def phpipam_bulk_import(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Bulk import hosts from phpIPAM as devices."""
+    from app.services.phpipam_service import get_phpipam_service
+    from app.models.device import Device
+    from datetime import datetime, timezone
+
+    svc = get_phpipam_service()
+    if not svc:
+        raise HTTPException(503, _PHPIPAM_NOT_CONFIGURED)
+
+    hosts = payload.get("hosts", [])
+    device_type = payload.get("device_type", "other")
+    created = []
+    skipped = []
+
+    for host in hosts:
+        ip = host.get("ip_address", "")
+        if not ip:
+            skipped.append({"reason": "no ip", "host": host})
+            continue
+        existing = db.query(Device).filter(Device.ip_address == ip, Device.deleted == False).first()
+        if existing:
+            skipped.append({"reason": "duplicate_ip", "ip": ip})
+            continue
+
+        device = Device(
+            manufacturer="",
+            model=host.get("description", "") or "phpIPAM Import",
+            device_type=device_type,
+            hostname=host.get("hostname", ""),
+            ip_address=ip,
+            mac_address=host.get("mac_address", ""),
+            notes=host.get("note", ""),
+            phpipam_id=host.get("phpipam_id"),
+            phpipam_synced_at=datetime.now(timezone.utc),
+        )
+        db.add(device)
+        created.append(ip)
+
+    db.commit()
+    return {
+        "created": len(created),
+        "skipped": len(skipped),
+        "created_ips": created,
+        "skipped_details": skipped,
+    }

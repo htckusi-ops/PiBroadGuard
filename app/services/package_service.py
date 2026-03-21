@@ -23,6 +23,38 @@ logger = logging.getLogger("pibroadguard.package")
 BDSA_VERSION = "1.0"
 
 
+def build_export_filename(device: Optional[Device], assessment_id: int, encrypted: bool = False) -> str:
+    """
+    Build a descriptive export filename.
+    Priority: manual hostname → rDNS hostname → IP (dots→underscores) → assessment ID fallback.
+    """
+    import re
+
+    def _safe(s: str) -> str:
+        """Sanitize a string for use in a filename."""
+        s = s.strip().lower()
+        s = re.sub(r"[^a-z0-9\-_]", "_", s)
+        s = re.sub(r"_+", "_", s).strip("_")
+        return s[:40]
+
+    date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
+
+    host_part = ""
+    if device:
+        if device.hostname:
+            host_part = _safe(device.hostname)
+        elif device.rdns_hostname:
+            host_part = _safe(device.rdns_hostname)
+        elif device.ip_address:
+            host_part = _safe(device.ip_address.replace(".", "_"))
+
+    if not host_part:
+        host_part = f"assessment_{assessment_id}"
+
+    ext = ".bdsa.enc" if encrypted else ".bdsa"
+    return f"assessment-{date_part}-{host_part}{ext}"
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

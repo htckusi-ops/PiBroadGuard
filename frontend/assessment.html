@@ -175,10 +175,16 @@
           </div>
 
           <!-- Scan running -->
-          <div v-if="scanRunning || assessment.status === 'scan_running'" class="text-center py-8">
-            <div class="animate-spin text-4xl mb-3">&#9881;</div>
-            <p class="text-slate-600 font-medium">{{ scanMsg || 'Scan läuft...' }}</p>
-            <p class="text-slate-400 text-sm mt-1">Automatische Aktualisierung alle 2 Sekunden</p>
+          <div v-if="scanRunning || assessment.status === 'scan_running'">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="animate-spin text-2xl">&#9881;</div>
+              <p class="text-slate-600 font-medium">{{ scanMsg || 'Scan läuft...' }}</p>
+            </div>
+            <!-- Live scan output (SSE) -->
+            <div v-if="scanOutput.length" class="bg-slate-900 rounded p-3 font-mono text-xs text-green-400 max-h-64 overflow-y-auto" ref="scanOutputEl">
+              <div v-for="(line, i) in scanOutput" :key="i">{{ line }}</div>
+            </div>
+            <p class="text-slate-400 text-xs mt-1">Live-Output via SSE · Automatische Aktualisierung</p>
           </div>
 
           <!-- Scan done -->
@@ -228,10 +234,20 @@
       <div v-if="activeTab === 'findings'" class="p-5">
         <div v-if="findings.length === 0" class="text-slate-500">Keine Findings vorhanden. Scan durchführen oder manuelle Fragen beantworten.</div>
         <div v-for="f in findings" :key="f.id" class="border border-slate-200 rounded-lg p-4 mb-3">
-          <div class="flex items-center gap-2 mb-2">
+          <div class="flex items-center gap-2 mb-2 flex-wrap">
             <span :class="severityClass(f.severity)" class="px-2 py-0.5 rounded text-xs font-bold">{{ f.severity?.toUpperCase() }}</span>
             <span class="font-semibold text-slate-800">{{ f.title }}</span>
             <span v-if="f.kev_listed" class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold">⚠️ CISA KEV</span>
+            <!-- Source attribution badges -->
+            <template v-if="f.remediation_sources">
+              <template v-for="src in parseRemediationSources(f.remediation_sources)" :key="src.type">
+                <span v-if="src.type === 'yaml'" class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">📋 Regelwerk</span>
+                <span v-else-if="src.type === 'kev'" class="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-xs">🔴 KEV</span>
+                <span v-else-if="src.type === 'nvd'" class="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-xs">📊 NVD</span>
+                <span v-else-if="src.type === 'cwe'" class="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-xs">🔑 CWE</span>
+                <span v-else class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-xs">{{ src.label }}</span>
+              </template>
+            </template>
           </div>
           <p class="text-sm text-slate-600 mb-1"><strong>Befund:</strong> {{ f.evidence || '—' }}</p>
           <p class="text-sm text-slate-600 mb-1"><strong>Broadcast-Kontext:</strong> {{ f.broadcast_context || '—' }}</p>
@@ -292,10 +308,16 @@
 
     <div v-if="globalError" class="mt-4 p-3 bg-red-50 text-red-700 rounded text-sm">{{ globalError }}</div>
   </main>
+
+  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
+    <span>PiBroadGuard – Broadcast Device Security Assessment Tool</span>
+    <span>IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1</span>
+    <span>v1.0 | März 2026</span>
+  </footer>
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted, nextTick } = Vue;
 createApp({
   setup() {
     const params = new URLSearchParams(window.location.search);
@@ -313,6 +335,8 @@ createApp({
     const scanError = ref('');
     const scanMsg = ref('');
     const scanRunning = ref(false);
+    const scanOutput = ref([]);
+    const scanOutputEl = ref(null);
     const activeTab = ref('overview');
     const newProfile = ref('passive');
 
@@ -325,6 +349,7 @@ createApp({
     const auth = ref({ name: '', role: '', contact: '', profile: 'passive', notes: '', timeStart: '', timeEnd: '', confirmed: false });
 
     let pollInterval = null;
+    let sseSource = null;
 
     const tabs = [
       { id: 'overview', label: '📋 Übersicht' },
@@ -418,12 +443,34 @@ createApp({
       const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan`, { method: 'POST' });
       if (resp.ok) {
         scanRunning.value = true;
+        scanOutput.value = [];
         assessment.value.status = 'scan_running';
+        startSSE();
         startPolling();
       } else {
         const err = await resp.json();
         scanError.value = err.detail || 'Scan konnte nicht gestartet werden';
       }
+    }
+
+    function startSSE() {
+      if (sseSource) { sseSource.close(); sseSource = null; }
+      const url = `/api/v1/assessments/${assessment.value.id}/scan/stream`;
+      sseSource = new EventSource(url);
+      sseSource.onmessage = (e) => {
+        const line = e.data;
+        if (line === '__DONE__') {
+          sseSource.close(); sseSource = null;
+          return;
+        }
+        if (line === 'keepalive') return;
+        scanOutput.value.push(line);
+        // Auto-scroll
+        nextTick(() => {
+          if (scanOutputEl.value) scanOutputEl.value.scrollTop = scanOutputEl.value.scrollHeight;
+        });
+      };
+      sseSource.onerror = () => { sseSource.close(); sseSource = null; };
     }
 
     function startPolling() {
@@ -501,9 +548,17 @@ createApp({
       }
     });
 
-    onUnmounted(() => { if (pollInterval) clearInterval(pollInterval); });
+    onUnmounted(() => {
+      if (pollInterval) clearInterval(pollInterval);
+      if (sseSource) { sseSource.close(); sseSource = null; }
+    });
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, saveAssessmentMeta, saveManual, updateFinding, recalculate };
+    function parseRemediationSources(raw) {
+      if (!raw) return [];
+      try { return JSON.parse(raw); } catch { return []; }
+    }
+
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources };
   }
 }).mount('#app');
 </script>

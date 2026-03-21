@@ -17,6 +17,11 @@ class ScanResult(Base):
     state = Column(String)
     extra_info = Column(String)
     raw_nmap_output = Column(Text)
+    # v1.5 scan metadata
+    scan_duration_seconds = Column(Integer)
+    nmap_exit_code = Column(Integer)
+    nmap_version = Column(String)
+    total_ports_scanned = Column(Integer)
     scanned_at = Column(DateTime(timezone=True), server_default=func.now())
 
     assessment = relationship("Assessment", back_populates="scan_results")
