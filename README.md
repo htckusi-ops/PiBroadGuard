@@ -63,7 +63,7 @@ git pull origin main
 docker compose up -d --build
 
 # 3. Datenbankmigrationen anwenden (neue Tabellen/Spalten)
-docker compose exec bdsa alembic upgrade head
+docker compose exec pibroadguard alembic upgrade head
 ```
 
 Daten (SQLite-Datenbank in `./data/`) bleiben beim Update erhalten.
