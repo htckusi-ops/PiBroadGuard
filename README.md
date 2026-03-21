@@ -49,6 +49,44 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now pibroadguard
 ```
 
+## Update (Docker)
+
+**Wichtig:** Alle Befehle müssen im Projektverzeichnis (`cd pibroadguard`) ausgeführt werden.
+
+```bash
+cd pibroadguard
+
+# 1. Neuen Code holen
+git pull origin main
+
+# 2. Image neu bauen und Container neu starten
+docker compose up -d --build
+
+# 3. Datenbankmigrationen anwenden (neue Tabellen/Spalten)
+docker compose exec pibroadguard alembic upgrade head
+```
+
+Daten (SQLite-Datenbank in `./data/`) bleiben beim Update erhalten.
+
+## Update (systemd)
+
+```bash
+cd pibroadguard
+
+# 1. Neuen Code holen
+git pull origin main
+
+# 2. Abhängigkeiten aktualisieren
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Datenbankmigrationen anwenden
+alembic upgrade head
+
+# 4. Service neu starten
+sudo systemctl restart pibroadguard
+```
+
 ## Zweiphasiger Betrieb (Air-Gap)
 
 ```
