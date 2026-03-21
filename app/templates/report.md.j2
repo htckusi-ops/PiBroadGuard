@@ -1,0 +1,133 @@
+# Broadcast Device Security Assessment Report
+**Gerät:** {{ device.manufacturer }} {{ device.model }}
+**Assessment-ID:** {{ assessment.id }}
+**Datum:** {{ assessment.created_at | date }}
+**Reviewer:** {{ assessment.reviewer or "ausstehend" }}
+**Status:** {{ assessment.decision | decision_label | upper }}
+
+---
+
+## Executive Summary
+
+{{ assessment.summary or "Kein Summary vorhanden." }}
+
+**Gesamtbewertung:** {{ assessment.overall_rating | rating_label }}
+
+| Dimension | Score | Standard-Referenz |
+|-----------|-------|-------------------|
+| Technisch | {{ assessment.technical_score }}/100 | IEC 62443-4-2 / NIST SP 800-82 |
+| Betrieb | {{ assessment.operational_score }}/100 | IEC 62443-3-2 / NIST SP 800-82 Ch.4 |
+| Kompensation | {{ assessment.compensation_score }}/100 | IEC 62443: Compensating Countermeasures |
+| Lifecycle | {{ assessment.lifecycle_score }}/100 | IEC 62443-4-1 / NIST SP 800-30 |
+| Hersteller | {{ assessment.vendor_score }}/100 | IEC 62443-4-1 PSIRT / SDL |
+
+---
+
+## Angewandte Methodik und Standards
+
+| Standard | Relevanz |
+|----------|----------|
+| IEC 62443-3-2 | Security Risk Assessment für OT/ICS-Systeme (Risikobewertung, Zonen) |
+| IEC 62443-4-2 | Component Security Requirements (Gerätebewertung) |
+| NIST SP 800-82r3 | Guide to OT Security (OT-Risikomanagement) |
+| NIST SP 800-115 | Technical Guide to Security Testing (Scan-Methodik) |
+| NIST SP 800-30r1 | Risk Assessment Methodology (Impact × Likelihood) |
+
+**Scan-Tool:** Nmap {{ nmap_version }}, Profil: {{ assessment.scan_profile or "—" }}
+{% if auth %}
+**Scan-Autorisierung:** {{ auth.authorized_by_name }} ({{ auth.authorized_by_role }}), erteilt am {{ auth.authorization_date | date }}
+{% endif %}
+**CVE-Datenquellen:** NIST NVD API v2, CISA KEV Catalog
+**Bewertungsdatum:** {{ assessment.created_at | date }}
+
+---
+
+## Gerätestammdaten
+
+| Feld | Wert |
+|------|------|
+| Hersteller | {{ device.manufacturer }} |
+| Modell | {{ device.model }} |
+| Gerätetyp | {{ device.device_type }} |
+| IP-Adresse | {{ device.ip_address }} |
+| Firmware | {{ device.firmware_version or "—" }} |
+| Standort | {{ device.location or "—" }} |
+| Netzwerksegment | {{ device.network_segment or "—" }} |
+| Produktionskritikalität | {{ device.production_criticality or "—" }} |
+| Verantwortliches Team | {{ device.owner_team or "—" }} |
+
+---
+
+## Scan-Resultate ({{ scan_results | length }} Ports erfasst)
+
+| Port | Protokoll | Service | Produkt | Version | Status |
+|------|-----------|---------|---------|---------|--------|
+{% for s in scan_results %}
+| {{ s.port }} | {{ s.protocol }} | {{ s.service_name or "—" }} | {{ s.service_product or "—" }} | {{ s.service_version or "—" }} | {{ s.state }} |
+{% endfor %}
+
+---
+
+## Findings ({{ findings | length }} total)
+
+{% for f in findings %}
+### [{{ f.severity | upper }}] {{ f.title }}
+
+**Befund:** {{ f.evidence or "—" }}
+**Risiko:** {{ f.description or "—" }}
+**Broadcast-Kontext:** {{ f.broadcast_context or "—" }}
+
+#### Lösungsvorschläge
+
+**Empfehlung (PiBroadGuard-Regelwerk):**
+{{ f.recommendation or "—" }}
+
+{% if f.kev_listed %}
+> ⚠️ **Aktiv ausgenutzt (CISA KEV):** Diese Schwachstelle ist im CISA Known Exploited Vulnerabilities Catalog gelistet. Empfohlene Massnahme: {{ f.kev_required_action or "Patch anwenden" }}
+{% endif %}
+
+{% if f.nvd_solution %}
+**Empfehlung (NIST NVD):** {{ f.nvd_solution }}
+{% endif %}
+
+{% if f.vendor_advisory_url %}
+**Hersteller-Advisory:** {{ f.vendor_advisory_url }}
+{% endif %}
+
+{% if f.cwe_recommendation %}
+**Generelle Massnahme ({{ f.cwe_id }}):** {{ f.cwe_recommendation }}
+{% endif %}
+
+**Status:** {{ f.status | status_label }}
+{% if f.compensating_control_description %}
+**Kompensation:** {{ f.compensating_control_description }}
+{% endif %}
+
+---
+{% endfor %}
+
+## Entscheid
+
+**{{ assessment.decision | decision_label }}**
+
+{{ assessment.decision_notes or "—" }}
+
+**Re-Assessment fällig:** {{ assessment.reassessment_due | date }}
+
+---
+
+## Plan of Action and Milestones (POA&M)
+
+{% if action_items %}
+| Priorität | Massnahme | Verantwortlich | Fällig | Status |
+|-----------|-----------|----------------|--------|--------|
+{% for item in action_items %}
+| {{ item.priority | prio_label }} | {{ item.title }} | {{ item.responsible_team or "—" }} | {{ item.due_date | date }} | {{ item.status | status_label }} |
+{% endfor %}
+{% else %}
+Keine Massnahmeneinträge vorhanden.
+{% endif %}
+
+---
+
+*Report generiert am {{ generated_at.strftime("%d.%m.%Y %H:%M") }} UTC durch PiBroadGuard*

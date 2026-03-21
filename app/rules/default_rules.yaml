@@ -1,0 +1,202 @@
+# PiBroadGuard – Default Rules v1.0
+# Regelwerk für Broadcast Device Security Assessment
+
+- rule_key: telnet_open
+  title: "Telnet aktiv (Port 23)"
+  description: "Telnet überträgt alle Daten inkl. Credentials im Klartext."
+  condition:
+    type: port_open
+    port: 23
+  severity: high
+  broadcast_context: "Bei Broadcast-Geräten gelegentlich betriebsnotwendig – Kompensation prüfen"
+  recommendation: "Deaktivieren oder auf Management-VLAN mit ACL beschränken"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: ftp_open
+  title: "FTP aktiv (Port 21)"
+  description: "FTP überträgt Daten und Credentials unverschlüsselt."
+  condition:
+    type: port_open
+    port: 21
+  severity: high
+  broadcast_context: "Teils für Firmware-Updates genutzt – Alternativprozess prüfen"
+  recommendation: "Deaktivieren oder auf SFTP migrieren"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: http_no_https
+  title: "HTTP ohne HTTPS verfügbar"
+  description: "Unverschlüsseltes Web-Interface ermöglicht Credential-Sniffing."
+  condition:
+    type: port_open
+    port: 80
+  severity: medium
+  broadcast_context: "Management-Interface unverschlüsselt – kritisch bei Credentials-Übertragung"
+  recommendation: "HTTPS aktivieren oder HTTP deaktivieren; bei Nicht-Härtbarkeit: Management-VLAN"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: snmp_v1_v2
+  title: "SNMP v1/v2c aktiv (Port 161 UDP)"
+  description: "SNMP v1/v2c verwendet schwache Community-String-Authentifizierung."
+  condition:
+    type: port_open
+    port: 161
+    protocol: udp
+  severity: medium
+  broadcast_context: "SNMP v1/v2c häufig in Broadcast-Monitoring – Community String prüfen"
+  recommendation: "SNMPv3 bevorzugen; falls nicht möglich: Read-only Community, IP-ACL"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: ssh_open
+  title: "SSH aktiv (Port 22)"
+  description: "SSH ist grundsätzlich sicher, aber Version und Auth-Methode sollten geprüft werden."
+  condition:
+    type: port_open
+    port: 22
+  severity: info
+  broadcast_context: "SSH ist grundsätzlich akzeptabel – Version und Auth-Methode prüfen"
+  recommendation: "Sicherstellen: SSHv2, keine Root-Logins, keine Passwort-Auth falls möglich"
+  ask_compensation: false
+  affects_score: technical
+
+- rule_key: smb_open
+  title: "SMB aktiv (Port 445)"
+  description: "SMB auf Broadcast-Geräten ist ungewöhnlich und kann auf unnötige Dienste hinweisen."
+  condition:
+    type: port_open
+    port: 445
+  severity: high
+  broadcast_context: "SMB auf Broadcast-Geräten ungewöhnlich – Notwendigkeit klären"
+  recommendation: "Deaktivieren falls nicht betriebsnotwendig; SMBv1 zwingend deaktivieren"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: rdp_open
+  title: "RDP aktiv (Port 3389)"
+  description: "RDP-Zugang erhöht die Angriffsfläche erheblich."
+  condition:
+    type: port_open
+    port: 3389
+  severity: high
+  broadcast_context: "Fernwartung via RDP – Netzwerkzugang prüfen"
+  recommendation: "Auf Management-VLAN beschränken; NLA erzwingen; MFA prüfen"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: modbus_open
+  title: "Modbus/TCP aktiv (Port 502)"
+  description: "Modbus/TCP hat keine Authentifizierung und ermöglicht direkte Steuerung."
+  condition:
+    type: port_open
+    port: 502
+  severity: high
+  broadcast_context: "Industrial-Protokoll auf Broadcast-Geräten – Netzwerksegmentierung kritisch"
+  recommendation: "Streng auf notwendige Clients beschränken; Firewall-Regeln prüfen"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: rtsp_open
+  title: "RTSP aktiv (Port 554)"
+  description: "RTSP-Zugang kann unkontrollierten Zugriff auf Audio-/Videostreams ermöglichen."
+  condition:
+    type: port_open
+    port: 554
+  severity: medium
+  broadcast_context: "RTSP für Broadcast-Streaming häufig notwendig – Zugangskontrolle prüfen"
+  recommendation: "Authentifizierung aktivieren; Zugriff auf autorisierte Clients beschränken"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: no_lifecycle_info
+  title: "Kein dokumentierter Lifecycle / EOL-Datum"
+  description: "Ohne dokumentiertes EOL-Datum ist langfristige Security-Planung nicht möglich."
+  condition:
+    type: manual_answer
+    question_key: lifecycle_documented
+    answer: "no"
+  severity: medium
+  broadcast_context: "Langfristiger Betrieb ohne Sicherheitsgarantie – Risikoakzeptanz dokumentieren"
+  recommendation: "Hersteller anfragen; befristete Einsatzgenehmigung mit Nachfolgerplanung"
+  ask_compensation: false
+  affects_score: lifecycle
+
+- rule_key: no_security_updates
+  title: "Keine separaten Security-Updates verfügbar"
+  description: "Sicherheitslücken können nur durch aufwändige Firmware-Upgrades behoben werden."
+  condition:
+    type: manual_answer
+    question_key: security_updates_available
+    answer: "no"
+  severity: medium
+  broadcast_context: "Sicherheitslücken nur via Firmware-Upgrade behebbar – Aufwand erhöht"
+  recommendation: "Update-Aufwand in Betriebsplanung einbeziehen; Monitoring verstärken"
+  ask_compensation: false
+  affects_score: lifecycle
+
+- rule_key: default_credentials
+  title: "Default-Credentials vorhanden und nicht änderbar"
+  description: "Nicht änderbare Default-Passwörter sind ein kritisches Sicherheitsrisiko."
+  condition:
+    type: manual_answer
+    question_key: default_creds_changeable
+    answer: "no"
+  severity: critical
+  broadcast_context: "Bekannte Default-Passwörter bei Broadcast-Geräten weit verbreitet"
+  recommendation: "Gerät nur in vollständig isoliertem Segment betreiben; Freigabe nur mit starker Kompensation"
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: no_syslog
+  title: "Kein Syslog-Export möglich"
+  description: "Ohne Syslog sind Security-Events nicht zentral auswertbar."
+  condition:
+    type: manual_answer
+    question_key: syslog_supported
+    answer: "no"
+  severity: low
+  broadcast_context: "Eingeschränkte Detection-Fähigkeit – kompensierendes Netzwerk-Monitoring prüfen"
+  recommendation: "Netzwerkbasiertes Logging als Kompensation (Netflow, IDS)"
+  ask_compensation: false
+  affects_score: operational
+
+- rule_key: no_psirt
+  title: "Kein PSIRT / Security-Kontakt beim Hersteller"
+  description: "Ohne PSIRT ist keine strukturierte Sicherheitskommunikation mit dem Hersteller möglich."
+  condition:
+    type: manual_answer
+    question_key: psirt_available
+    answer: "no"
+  severity: low
+  broadcast_context: "Sicherheitsmeldungen nicht strukturiert möglich – erhöhtes Reaktionsrisiko"
+  recommendation: "Allgemeinen Support-Kanal dokumentieren; externe Quellen (NVD, CERT) überwachen"
+  ask_compensation: false
+  affects_score: vendor
+
+- rule_key: no_hardening_guide
+  title: "Kein Hardening-Guide vom Hersteller verfügbar"
+  description: "Ohne Hardening-Guide ist sichere Konfiguration erschwert."
+  condition:
+    type: manual_answer
+    question_key: hardening_guide_available
+    answer: "no"
+  severity: low
+  broadcast_context: "Eigenständige Härtung ohne Herstellerunterstützung notwendig"
+  recommendation: "CIS Benchmarks oder interne Hardening-Richtlinien als Grundlage verwenden"
+  ask_compensation: false
+  affects_score: vendor
+
+- rule_key: no_mfa
+  title: "Keine MFA-Unterstützung"
+  description: "Ohne MFA besteht erhöhtes Risiko durch gestohlene Credentials."
+  condition:
+    type: manual_answer
+    question_key: mfa_possible
+    answer: "no"
+  severity: low
+  broadcast_context: "MFA auf Broadcast-Geräten selten verfügbar – Netzwerksegmentierung als Kompensation"
+  recommendation: "Netzwerkbasierte Zugangskontrolle als Kompensation; Jump-Host verwenden"
+  ask_compensation: true
+  affects_score: technical

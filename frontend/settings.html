@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – Einstellungen</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="app">
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center gap-3 shadow">
+    <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+    <span class="text-slate-400">/</span>
+    <span class="text-slate-200">Einstellungen</span>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-6 space-y-4">
+
+    <!-- Connectivity -->
+    <div class="bg-white rounded-lg shadow-sm p-5">
+      <h2 class="font-bold text-slate-800 mb-4">&#127760; Konnektivität</h2>
+      <div class="grid grid-cols-2 gap-3 text-sm mb-4">
+        <div class="text-slate-500">Aktueller Status:</div>
+        <div>
+          <span :class="conn.effective_mode === 'online' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                class="px-2 py-0.5 rounded font-semibold text-xs">
+            {{ conn.effective_mode === 'online' ? '🟢 Online' : '🔴 Offline' }}
+          </span>
+          <span v-if="conn.override_active" class="ml-1 text-xs text-slate-400">(manuell)</span>
+        </div>
+        <div class="text-slate-500">Automatisch erkannt:</div>
+        <div>{{ conn.nvd_reachable ? '✅ Erreichbar' : '❌ Nicht erreichbar' }} (nvd.nist.gov)</div>
+        <div class="text-slate-500">Letzter Check:</div>
+        <div>{{ conn.last_check?.substring(0, 16) || '—' }}</div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-2">Modus:</label>
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 cursor-pointer text-sm">
+            <input type="radio" v-model="connMode" value="auto">
+            <strong>Automatisch erkennen</strong> (empfohlen)
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm">
+            <input type="radio" v-model="connMode" value="force_online">
+            Online erzwingen (CVE/KEV immer aktiv)
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm">
+            <input type="radio" v-model="connMode" value="force_offline">
+            Offline erzwingen (kein externer Zugriff, z.B. Pi im Produktionsnetz)
+          </label>
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <button @click="checkNow" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm">Jetzt prüfen</button>
+        <button @click="saveConnMode" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">Speichern</button>
+      </div>
+      <p v-if="connSaved" class="text-green-600 text-sm mt-2">Gespeichert.</p>
+    </div>
+
+    <!-- KEV Cache -->
+    <div class="bg-white rounded-lg shadow-sm p-5">
+      <h2 class="font-bold text-slate-800 mb-4">&#128737; KEV-Cache (CISA)</h2>
+      <div class="grid grid-cols-2 gap-3 text-sm mb-4">
+        <div class="text-slate-500">Letzter Sync:</div>
+        <div>
+          {{ conn.kev_cache_age_hours ? `vor ${conn.kev_cache_age_hours.toFixed(0)} Stunden` : '—' }}
+          <span v-if="conn.kev_cache_age_hours > 48" class="ml-1 text-amber-600 text-xs">⚠️ Veraltet</span>
+        </div>
+      </div>
+      <button @click="kevSync" :disabled="kevSyncing || conn.effective_mode !== 'online'"
+        class="bg-slate-600 hover:bg-slate-700 disabled:bg-slate-300 text-white px-4 py-2 rounded text-sm font-medium">
+        {{ kevSyncing ? 'Synchronisiere...' : 'KEV jetzt synchronisieren' }}
+      </button>
+      <p v-if="conn.effective_mode !== 'online'" class="text-slate-400 text-xs mt-1">Offline-Modus – KEV-Sync nicht verfügbar</p>
+      <p v-if="kevMsg" :class="kevError ? 'text-red-600' : 'text-green-600'" class="text-sm mt-2">{{ kevMsg }}</p>
+    </div>
+
+    <!-- Backup -->
+    <div class="bg-white rounded-lg shadow-sm p-5">
+      <h2 class="font-bold text-slate-800 mb-4">&#128451; Datenbank-Backup</h2>
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-2">Ziel:</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="radio" v-model="backupDest" value="local"> Lokal speichern</label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="radio" v-model="backupDest" value="usb"> Auf USB-Stick</label>
+        </div>
+        <div v-if="backupDest === 'usb'" class="mt-2">
+          <input v-model="backupUsbPath" placeholder="/media/pi/..." class="border border-slate-300 rounded px-3 py-2 text-sm w-full">
+        </div>
+      </div>
+      <label class="flex items-center gap-2 text-sm mb-4 cursor-pointer">
+        <input type="checkbox" v-model="backupEncrypt" class="w-4 h-4">
+        Verschlüsseln (AES-256-GCM)
+      </label>
+      <div class="flex gap-3">
+        <button @click="doBackup" :disabled="backing"
+          class="bg-slate-600 hover:bg-slate-700 disabled:bg-slate-300 text-white px-4 py-2 rounded text-sm font-medium">
+          {{ backing ? 'Backup läuft...' : '&#128451; Backup erstellen' }}
+        </button>
+      </div>
+      <p v-if="backupMsg" :class="backupError ? 'text-red-600' : 'text-green-600'" class="text-sm mt-2">{{ backupMsg }}</p>
+
+      <!-- Backup List -->
+      <div v-if="backups.length > 0" class="mt-4">
+        <h3 class="text-sm font-medium text-slate-700 mb-2">Vorhandene Backups:</h3>
+        <div v-for="b in backups" :key="b.filename" class="flex items-center justify-between text-sm py-1 border-b border-slate-100">
+          <span class="text-slate-700">{{ b.filename }} <span v-if="b.encrypted" class="text-xs text-slate-400">🔐</span></span>
+          <div class="flex items-center gap-3">
+            <span class="text-slate-400 text-xs">{{ formatBytes(b.size_bytes) }}</span>
+            <a :href="`/api/v1/system/backup/${b.filename}`" class="text-blue-600 hover:underline text-xs">&#8681; Download</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="bg-white rounded-lg shadow-sm p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-bold text-slate-800">&#128203; System-Log</h2>
+        <div class="flex gap-2">
+          <select v-model="logLines" @change="loadLogs" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
+            <option value="50">50 Zeilen</option>
+            <option value="100">100 Zeilen</option>
+            <option value="200">200 Zeilen</option>
+          </select>
+          <button @click="loadLogs" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1 rounded text-xs">&#8635;</button>
+          <a href="/api/v1/system/logs/download" class="bg-slate-600 hover:bg-slate-700 text-white px-3 py-1 rounded text-xs">&#8681; Download</a>
+        </div>
+      </div>
+      <div class="bg-slate-900 text-green-300 font-mono text-xs p-3 rounded max-h-64 overflow-y-auto">
+        <div v-if="logs.length === 0" class="text-slate-500">Keine Log-Einträge.</div>
+        <div v-for="(line, i) in logs" :key="i"
+             :class="line.includes('ERROR') ? 'text-red-400' : line.includes('WARNING') ? 'text-yellow-400' : 'text-green-300'">
+          {{ line.trim() }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Nmap Capabilities -->
+    <div class="bg-white rounded-lg shadow-sm p-5">
+      <h2 class="font-bold text-slate-800 mb-3">&#128270; Nmap-Diagnose</h2>
+      <div v-if="nmapCaps" class="text-sm space-y-1">
+        <div><span class="text-slate-500">Version:</span> {{ nmapCaps.version || '—' }}</div>
+        <div><span class="text-slate-500">Verfügbar:</span> <span :class="nmapCaps.available ? 'text-green-600' : 'text-red-600'">{{ nmapCaps.available ? '✅ Ja' : '❌ Nein' }}</span></div>
+        <div><span class="text-slate-500">Raw Sockets (SYN-Scan):</span> <span :class="nmapCaps.raw_sockets ? 'text-green-600' : 'text-amber-600'">{{ nmapCaps.raw_sockets ? '✅ Ja' : '⚠️ Nein (nur Connect-Scan)' }}</span></div>
+        <div v-if="!nmapCaps.raw_sockets" class="text-amber-600 text-xs mt-1">
+          Lösung: <code class="bg-slate-100 px-1 rounded">sudo setcap cap_net_raw+ep $(which nmap)</code>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const { createApp, ref, onMounted } = Vue;
+createApp({
+  setup() {
+    const conn = ref({ effective_mode: 'unknown', mode_setting: 'auto', override_active: false, nvd_reachable: false });
+    const connMode = ref('auto');
+    const connSaved = ref(false);
+    const kevSyncing = ref(false);
+    const kevMsg = ref('');
+    const kevError = ref(false);
+    const backupDest = ref('local');
+    const backupUsbPath = ref('');
+    const backupEncrypt = ref(false);
+    const backing = ref(false);
+    const backupMsg = ref('');
+    const backupError = ref(false);
+    const backups = ref([]);
+    const logs = ref([]);
+    const logLines = ref(50);
+    const nmapCaps = ref(null);
+
+    function formatBytes(b) { if (b > 1e9) return (b/1e9).toFixed(1) + ' GB'; if (b > 1e6) return (b/1e6).toFixed(0) + ' MB'; return (b/1e3).toFixed(0) + ' KB'; }
+
+    async function loadConn() {
+      const resp = await fetch('/api/v1/system/connectivity');
+      if (resp.ok) { conn.value = await resp.json(); connMode.value = conn.value.mode_setting; }
+    }
+    async function saveConnMode() {
+      const resp = await fetch('/api/v1/system/connectivity/mode', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: connMode.value })
+      });
+      if (resp.ok) { connSaved.value = true; setTimeout(() => connSaved.value = false, 3000); await loadConn(); }
+    }
+    async function checkNow() {
+      await fetch('/api/v1/system/connectivity/check', { method: 'POST' });
+      await loadConn();
+    }
+    async function kevSync() {
+      kevSyncing.value = true; kevMsg.value = ''; kevError.value = false;
+      const resp = await fetch('/api/v1/system/kev-sync', { method: 'POST' });
+      if (resp.ok) { const r = await resp.json(); kevMsg.value = `Synchronisiert: ${r.synced} Einträge`; await loadConn(); }
+      else { kevMsg.value = 'Sync fehlgeschlagen'; kevError.value = true; }
+      kevSyncing.value = false;
+    }
+    async function doBackup() {
+      backing.value = true; backupMsg.value = ''; backupError.value = false;
+      const resp = await fetch('/api/v1/system/backup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination: backupDest.value, usb_path: backupUsbPath.value || null, encrypt: backupEncrypt.value })
+      });
+      if (resp.ok) { backupMsg.value = 'Backup erstellt.'; await loadBackups(); }
+      else { const e = await resp.json(); backupMsg.value = e.detail || 'Fehler'; backupError.value = true; }
+      backing.value = false;
+    }
+    async function loadBackups() {
+      const resp = await fetch('/api/v1/system/backup/list');
+      if (resp.ok) backups.value = await resp.json();
+    }
+    async function loadLogs() {
+      const resp = await fetch(`/api/v1/system/logs?lines=${logLines.value}`);
+      if (resp.ok) { const r = await resp.json(); logs.value = r.lines || []; }
+    }
+    async function loadNmapCaps() {
+      const resp = await fetch('/api/v1/system/nmap-caps');
+      if (resp.ok) nmapCaps.value = await resp.json();
+    }
+
+    onMounted(() => { loadConn(); loadBackups(); loadLogs(); loadNmapCaps(); });
+    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, logs, logLines, nmapCaps, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

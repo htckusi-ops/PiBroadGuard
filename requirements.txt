@@ -1,0 +1,30 @@
+# Web Framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# Datenbank
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+
+# Schemas / Config
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+python-dotenv>=1.0.0
+
+# Templates
+jinja2>=3.1.0
+
+# HTTP Client (NVD API, KEV Sync)
+httpx>=0.27.0
+
+# Verschlüsselung
+cryptography>=42.0.0
+
+# Rate Limiting
+slowapi>=0.1.9
+
+# YAML
+pyyaml>=6.0.0
+
+# Datei-Upload
+python-multipart>=0.0.9

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – Dashboard</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="app">
+
+  <!-- Header -->
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
+    <div class="flex items-center gap-3">
+      <span class="text-lg font-bold text-blue-400">PiBroadGuard</span>
+      <span class="text-slate-400 text-sm">Broadcast Device Security Assessment</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <span :class="connectivityBadgeClass" class="text-xs px-2 py-1 rounded font-semibold cursor-pointer" @click="goSettings">
+        {{ connectivityLabel }}
+      </span>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">&#9881; Einstellungen</a>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-lg p-4 shadow-sm">
+        <div class="text-2xl font-bold text-slate-800">{{ devices.length }}</div>
+        <div class="text-slate-500 text-sm">Geräte</div>
+      </div>
+      <div class="bg-white rounded-lg p-4 shadow-sm">
+        <div class="text-2xl font-bold text-red-600">{{ criticalCount }}</div>
+        <div class="text-slate-500 text-sm">Kritisch (rot)</div>
+      </div>
+      <div class="bg-white rounded-lg p-4 shadow-sm">
+        <div class="text-2xl font-bold text-orange-500">{{ openFindingsCount }}</div>
+        <div class="text-slate-500 text-sm">Offene Findings</div>
+      </div>
+      <div class="bg-white rounded-lg p-4 shadow-sm">
+        <div class="text-2xl font-bold text-green-600">{{ approvedCount }}</div>
+        <div class="text-slate-500 text-sm">Freigegeben</div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="flex items-center gap-3 mb-4 flex-wrap">
+      <h1 class="text-xl font-bold text-slate-800 flex-1">Geräteliste</h1>
+      <select v-model="filterRating" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+        <option value="">Alle Bewertungen</option>
+        <option value="green">🟢 Grün</option>
+        <option value="yellow">🟡 Gelb</option>
+        <option value="orange">🟠 Orange</option>
+        <option value="red">🔴 Rot</option>
+        <option value="">Kein Assessment</option>
+      </select>
+      <select v-model="filterType" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+        <option value="">Alle Typen</option>
+        <option value="encoder">Encoder</option>
+        <option value="decoder">Decoder</option>
+        <option value="matrix">Matrix</option>
+        <option value="intercom">Intercom</option>
+        <option value="monitor">Monitor/Multiviewer</option>
+        <option value="other">Sonstige</option>
+      </select>
+      <input v-model="search" placeholder="Suchen..." class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white w-48">
+      <a href="/app/device_form.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+        + Neues Gerät
+      </a>
+      <a href="/app/import.html" class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+        &#8679; Import
+      </a>
+    </div>
+
+    <!-- Device Table -->
+    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-slate-700 text-white">
+            <th class="text-left px-4 py-3">Gerät</th>
+            <th class="text-left px-4 py-3">Typ</th>
+            <th class="text-left px-4 py-3">IP-Adresse</th>
+            <th class="text-left px-4 py-3">Firmware</th>
+            <th class="text-left px-4 py-3">Kritikalität</th>
+            <th class="text-left px-4 py-3">Assessment</th>
+            <th class="text-left px-4 py-3">Bewertung</th>
+            <th class="text-left px-4 py-3">Aktionen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading"><td colspan="8" class="text-center py-8 text-slate-400">Lade...</td></tr>
+          <tr v-else-if="filteredDevices.length === 0">
+            <td colspan="8" class="text-center py-8 text-slate-400">Keine Geräte vorhanden. <a href="/app/device_form.html" class="text-blue-600 hover:underline">Erstes Gerät erfassen</a></td>
+          </tr>
+          <tr v-for="d in filteredDevices" :key="d.id" class="border-t border-slate-100 hover:bg-slate-50">
+            <td class="px-4 py-3">
+              <div class="font-medium text-slate-800">{{ d.manufacturer }} {{ d.model }}</div>
+              <div class="text-slate-400 text-xs">{{ d.asset_tag || d.serial_number || '' }}</div>
+            </td>
+            <td class="px-4 py-3 text-slate-600">{{ d.device_type }}</td>
+            <td class="px-4 py-3 font-mono text-slate-700">{{ d.ip_address }}</td>
+            <td class="px-4 py-3 text-slate-600">{{ d.firmware_version || '—' }}</td>
+            <td class="px-4 py-3">
+              <span :class="criticalityClass(d.production_criticality)" class="px-2 py-0.5 rounded text-xs font-semibold">
+                {{ d.production_criticality || '—' }}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-slate-600">{{ d.last_assessment_status || '—' }}</td>
+            <td class="px-4 py-3">
+              <span v-if="d.last_assessment_rating" :class="ratingClass(d.last_assessment_rating)" class="px-2 py-0.5 rounded text-xs font-bold">
+                {{ ratingLabel(d.last_assessment_rating) }}
+              </span>
+              <span v-else class="text-slate-400 text-xs">—</span>
+            </td>
+            <td class="px-4 py-3">
+              <div class="flex gap-2">
+                <a :href="'/app/assessment.html?device_id=' + d.id" class="text-blue-600 hover:underline text-xs">Assessment</a>
+                <a :href="'/app/device_form.html?id=' + d.id" class="text-slate-500 hover:underline text-xs">Bearbeiten</a>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-if="error" class="mt-4 p-3 bg-red-50 text-red-700 rounded">{{ error }}</div>
+  </main>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const devices = ref([]);
+    const loading = ref(true);
+    const error = ref('');
+    const filterRating = ref('');
+    const filterType = ref('');
+    const search = ref('');
+    const connectivity = ref({ effective_mode: 'unknown', mode_setting: 'auto', override_active: false });
+
+    const connectivityLabel = computed(() => {
+      const m = connectivity.value.effective_mode;
+      const manual = connectivity.value.override_active;
+      return m === 'online'
+        ? `🟢 Online (${manual ? 'Manuell' : 'Auto'})`
+        : `🔴 Offline (${manual ? 'Manuell' : 'Auto'})`;
+    });
+    const connectivityBadgeClass = computed(() =>
+      connectivity.value.effective_mode === 'online'
+        ? 'bg-green-700 text-green-100'
+        : 'bg-red-800 text-red-100'
+    );
+
+    const filteredDevices = computed(() => {
+      return devices.value.filter(d => {
+        if (filterRating.value && d.last_assessment_rating !== filterRating.value) return false;
+        if (filterType.value && d.device_type !== filterType.value) return false;
+        if (search.value) {
+          const q = search.value.toLowerCase();
+          return (d.manufacturer + ' ' + d.model + ' ' + d.ip_address).toLowerCase().includes(q);
+        }
+        return true;
+      });
+    });
+
+    const criticalCount = computed(() => devices.value.filter(d => d.last_assessment_rating === 'red').length);
+    const openFindingsCount = computed(() => 0); // would need separate API call
+    const approvedCount = computed(() => devices.value.filter(d => d.last_assessment_status === 'completed').length);
+
+    function ratingLabel(r) {
+      return { green: '🟢 Grün', yellow: '🟡 Gelb', orange: '🟠 Orange', red: '🔴 Rot' }[r] || r;
+    }
+    function ratingClass(r) {
+      return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800' }[r] || '';
+    }
+    function criticalityClass(c) {
+      return { critical: 'bg-red-100 text-red-800', high: 'bg-orange-100 text-orange-800', medium: 'bg-yellow-100 text-yellow-800', low: 'bg-green-100 text-green-800' }[c] || 'bg-slate-100 text-slate-600';
+    }
+    function goSettings() { window.location.href = '/app/settings.html'; }
+
+    async function load() {
+      try {
+        const [devResp, connResp] = await Promise.all([
+          fetch('/api/v1/devices'),
+          fetch('/api/v1/system/connectivity'),
+        ]);
+        if (devResp.ok) devices.value = await devResp.json();
+        else error.value = 'Fehler beim Laden der Geräte';
+        if (connResp.ok) connectivity.value = await connResp.json();
+      } catch (e) {
+        error.value = 'Verbindungsfehler: ' + e.message;
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    onMounted(load);
+    return { devices, loading, error, filterRating, filterType, search, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, ratingLabel, ratingClass, criticalityClass, goSettings };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
