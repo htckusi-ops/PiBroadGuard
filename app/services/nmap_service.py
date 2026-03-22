@@ -19,13 +19,22 @@ SCAN_PROFILES = {
         "-p", "21,22,23,25,53,80,102,161,443,502,554,623,1194,1883,2222,4840,8080,8443,9100,47808",
     ],
     "standard": [
-        "-Pn", "-sT", "-sV", "-T3", "-p", "1-65535", "--version-intensity", "5",
+        "-Pn", "-sT", "-sV", "-T3", "--top-ports", "1000", "--version-intensity", "5",
     ],
     "extended": [
         "-Pn", "-sT", "-sU", "-sV", "-T3",
-        "-p", "T:1-65535,U:161,623,1194,1883,4840,47808",
+        "-p", "T:1-1000,U:161,623,1194,1883,4840,47808",
         "--version-intensity", "7",
     ],
+}
+
+# Per-profile host timeouts (overrides the global setting when tighter).
+# -T2 with up to ~10s RTT per port: 20 ports worst-case = 200s, use 300s.
+# -T3 with top-1000: typically < 120s on LAN, use 300s as safe upper bound.
+PROFILE_HOST_TIMEOUT = {
+    "passive":  "300s",
+    "standard": "300s",
+    "extended": "600s",   # includes UDP which is slower
 }
 
 
@@ -101,24 +110,29 @@ def _count_total_ports_scanned(xml_data: str) -> int:
 async def run_scan(
     ip: str,
     profile: str,
-    host_timeout: str = "60s",
+    host_timeout: str = "300s",
     max_rate: int = 100,
     assessment_id: Optional[int] = None,
 ) -> dict:
     safe_ip = _validate_ip(ip)
     flags = SCAN_PROFILES.get(profile, SCAN_PROFILES["passive"])
 
+    # Per-profile timeout takes precedence over the global setting when it
+    # would be too short (e.g. the Pi default of 60s fails for -T2 scans
+    # where a single filtered port can take 10 s).
+    effective_timeout = PROFILE_HOST_TIMEOUT.get(profile, host_timeout)
+
     with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
         output_file = tmp.name
 
     cmd = ["nmap"] + flags + [
-        "--host-timeout", host_timeout,
+        "--host-timeout", effective_timeout,
         "--max-rate", str(max_rate),
         "-oX", output_file,
         safe_ip,
     ]
 
-    logger.info(f"Starting nmap scan: profile={profile} target={safe_ip} cmd={' '.join(cmd)}")
+    logger.info(f"Starting nmap scan: profile={profile} target={safe_ip} timeout={effective_timeout} cmd={' '.join(cmd)}")
     start = datetime.now(timezone.utc)
 
     queue = None
@@ -134,15 +148,25 @@ async def run_scan(
             stderr=asyncio.subprocess.PIPE,
         )
 
-        # Stream stdout lines to SSE queue
-        async def _stream_output():
+        # Stream stdout to SSE queue AND drain stderr concurrently.
+        # Both pipes must be consumed to prevent the subprocess from blocking
+        # when its write-buffer fills up.
+        async def _stream_stdout():
             if proc.stdout:
                 async for line in proc.stdout:
                     text = line.decode(errors="replace").rstrip()
                     if text and queue is not None:
                         await queue.put(f"data: {text}\n\n")
 
-        await asyncio.gather(_stream_output(), proc.wait())
+        async def _drain_stderr():
+            if proc.stderr:
+                stderr_lines = []
+                async for line in proc.stderr:
+                    stderr_lines.append(line.decode(errors="replace").rstrip())
+                if stderr_lines:
+                    logger.debug(f"nmap stderr: {' | '.join(stderr_lines)}")
+
+        await asyncio.gather(_stream_stdout(), _drain_stderr(), proc.wait())
         elapsed = (datetime.now(timezone.utc) - start).total_seconds()
 
         with open(output_file, "r", errors="replace") as f:

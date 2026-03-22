@@ -13,6 +13,7 @@ from app.models.device import Device
 from app.models.finding import Finding
 from app.models.manual_finding import ManualFinding
 from app.models.scan_authorization import ScanAuthorization
+from app.models.scan_result import ScanResult
 from app.models.vendor_info import VendorInformation
 from app.models.action_items import ActionItem
 from app.schemas.assessment import (
@@ -272,3 +273,36 @@ def create_action_item(
     db.commit()
     db.refresh(item)
     return item
+
+
+@router.get("/devices/{device_id}/assessments", response_model=List[AssessmentRead])
+def list_device_assessments(
+    device_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """List all assessments for a device, newest first."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(404, "Gerät nicht gefunden")
+    return (
+        db.query(Assessment)
+        .filter(Assessment.device_id == device_id)
+        .order_by(Assessment.created_at.desc())
+        .all()
+    )
+
+
+@router.delete("/assessments/{assessment_id}", status_code=204)
+def delete_assessment(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Delete an assessment and all its related data."""
+    assessment = _get_assessment_or_404(assessment_id, db)
+    for model in (ScanResult, Finding, ManualFinding, ScanAuthorization,
+                  VendorInformation, ActionItem, AuditLog):
+        db.query(model).filter(model.assessment_id == assessment_id).delete()
+    db.delete(assessment)
+    db.commit()
