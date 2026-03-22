@@ -1,19 +1,27 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PiBroadGuard – Assessment</title>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="/app/i18n.js"></script>
 </head>
 <body class="bg-slate-100 min-h-screen">
 <div id="app">
-  <header class="bg-slate-800 text-white px-6 py-3 flex items-center gap-3 shadow">
-    <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
-    <span class="text-slate-400">/</span>
-    <span class="text-slate-200">Assessment</span>
-    <span v-if="device" class="text-slate-400">– {{ device.manufacturer }} {{ device.model }}</span>
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
+    <div class="flex items-center gap-3">
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <span class="text-slate-400">/</span>
+      <span class="text-slate-200">Assessment</span>
+      <span v-if="device" class="text-slate-400">– {{ device.manufacturer }} {{ device.model }}</span>
+    </div>
+    <div class="flex items-center gap-1">
+      <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
+      <span class="text-slate-600 text-xs">|</span>
+      <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+    </div>
   </header>
 
   <main class="max-w-7xl mx-auto px-4 py-6">
@@ -30,7 +38,7 @@
             {{ ratingLabel(assessment.overall_rating) }}
           </span>
           <button @click="recalculate" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm">
-            &#8635; Neu berechnen
+            &#8635; Recalculate
           </button>
         </div>
       </div>
@@ -62,20 +70,20 @@
         </button>
       </div>
 
-      <!-- Tab: Übersicht -->
+      <!-- Tab: Overview -->
       <div v-if="activeTab === 'overview'" class="p-5">
         <div v-if="!assessment">
-          <p class="text-slate-500 mb-3">Kein Assessment vorhanden.</p>
+          <p class="text-slate-500 mb-3">No assessment yet.</p>
           <div class="mb-3">
-            <label class="block text-sm font-medium text-slate-700 mb-1">Scan-Profil</label>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
             <select v-model="newProfile" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white">
-              <option value="passive">Passive (schonend, empfohlen für Produktion)</option>
-              <option value="standard">Standard (Top 1000 Ports)</option>
-              <option value="extended">Extended (inkl. UDP)</option>
+              <option value="passive">{{ t('scan_profile_passive', 'Passive') }} – {{ t('scan_profile_passive_desc', 'Broadcast-specific ports, T2, gentle') }}</option>
+              <option value="standard">{{ t('scan_profile_standard', 'Standard') }} – {{ t('scan_profile_standard_desc', 'All ports 1-65535, T3') }}</option>
+              <option value="extended">{{ t('scan_profile_extended', 'Extended') }} – {{ t('scan_profile_extended_desc', 'All TCP + key UDP ports') }}</option>
             </select>
           </div>
           <button @click="createAssessment" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
-            Assessment starten
+            {{ t('btn_new_assessment', 'Start Assessment') }}
           </button>
         </div>
         <div v-else>
@@ -85,34 +93,34 @@
               <input v-model="editReviewer" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Re-Assessment fällig</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Re-Assessment Due</label>
               <input type="date" v-model="editReassessmentDue" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
             </div>
           </div>
           <div class="mb-4">
-            <label class="block text-sm font-medium text-slate-700 mb-1">Zusammenfassung</label>
+            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('report_executive_summary', 'Summary') }}</label>
             <textarea v-model="editSummary" rows="3" class="w-full border border-slate-300 rounded px-3 py-2 text-sm"></textarea>
           </div>
           <div class="mb-4">
-            <label class="block text-sm font-medium text-slate-700 mb-1">Entscheid</label>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Decision</label>
             <select v-model="editDecision" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white">
               <option value="">—</option>
-              <option value="approved">Freigegeben</option>
-              <option value="approved_with_conditions">Freigegeben mit Auflagen</option>
-              <option value="deferred">Zurückgestellt</option>
-              <option value="rejected">Abgelehnt</option>
+              <option value="approved">Approved</option>
+              <option value="approved_with_conditions">Approved with Conditions</option>
+              <option value="deferred">Deferred</option>
+              <option value="rejected">Rejected</option>
             </select>
           </div>
           <div class="mb-4">
-            <label class="block text-sm font-medium text-slate-700 mb-1">Entscheid-Notizen</label>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Decision Notes</label>
             <textarea v-model="editDecisionNotes" rows="2" class="w-full border border-slate-300 rounded px-3 py-2 text-sm"></textarea>
           </div>
           <div class="flex gap-3">
-            <button @click="saveAssessmentMeta" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">Speichern</button>
+            <button @click="saveAssessmentMeta" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">{{ t('btn_save', 'Save') }}</button>
             <a v-if="assessment.status === 'scan_complete' || assessment.status === 'exported'"
                :href="`/api/v1/assessments/${assessment.id}/export`"
                class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded text-sm font-medium">
-               &#8681; .bdsa-Paket exportieren
+               &#8681; Export .bdsa Package
             </a>
           </div>
           <div v-if="saveMsg" class="mt-3 text-green-600 text-sm">{{ saveMsg }}</div>
@@ -121,56 +129,57 @@
 
       <!-- Tab: Scan -->
       <div v-if="activeTab === 'scan'" class="p-5">
-        <div v-if="!assessment" class="text-slate-500">Zuerst Assessment erstellen.</div>
+        <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
-          <!-- Authorization Modal Trigger -->
+          <!-- Authorization form -->
           <div v-if="!scanRunning && assessment.status !== 'scan_running'">
-            <h2 class="font-semibold text-slate-800 mb-3">Scan-Autorisierung und Start</h2>
+            <h2 class="font-semibold text-slate-800 mb-3">{{ t('scan_authorization_title', 'Scan Authorization') }}</h2>
             <div class="bg-amber-50 border border-amber-200 rounded p-4 mb-4 text-sm text-amber-800">
-              ⚠️ Vor dem Start eines Nmap-Scans muss eine Betriebsfreigabe dokumentiert sein (gemäss NIST SP 800-115 / IEC 62443-2-1). Broadcast-Geräte können empfindlich auf Scans reagieren.
+              ⚠️ {{ t('scan_authorization_hint', 'Before starting an Nmap scan, operational authorization must be documented (per NIST SP 800-115 / IEC 62443-2-1).') }}
+              {{ t('scan_warning_broadcast', 'Broadcast devices may be sensitive to network scans. The "Passive" profile is recommended for production devices.') }}
             </div>
             <div class="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Freigabe erteilt durch – Name *</label>
-                <input v-model="auth.name" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Max Mustermann">
+                <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_name', 'Authorized by – Name') }} *</label>
+                <input v-model="auth.name" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Jane Smith">
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Rolle *</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_role', 'Role') }} *</label>
                 <input v-model="auth.role" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Broadcast Engineering Lead">
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Kontakt</label>
-                <input v-model="auth.contact" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="E-Mail oder Telefon">
+                <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_contact', 'Contact') }}</label>
+                <input v-model="auth.contact" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Email or phone">
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Scan-Profil</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
                 <select v-model="auth.profile" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
-                  <option value="passive">Passive – schonend (empfohlen)</option>
-                  <option value="standard">Standard – Top 1000 Ports</option>
-                  <option value="extended">Extended – inkl. UDP</option>
+                  <option value="passive">{{ t('scan_profile_passive', 'Passive') }} – gentle (recommended)</option>
+                  <option value="standard">{{ t('scan_profile_standard', 'Standard') }} – top 1000 ports</option>
+                  <option value="extended">{{ t('scan_profile_extended', 'Extended') }} – incl. UDP</option>
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Zeitfenster von</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_window', 'Time Window From') }}</label>
                 <input type="datetime-local" v-model="auth.timeStart" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Zeitfenster bis</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Time Window Until</label>
                 <input type="datetime-local" v-model="auth.timeEnd" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
               </div>
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Hinweise</label>
-              <input v-model="auth.notes" class="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-3" placeholder="z.B. Scan nur im Wartungsfenster">
+              <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_notes', 'Notes') }}</label>
+              <input v-model="auth.notes" class="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-3" placeholder="e.g. Scan only during maintenance window">
             </div>
             <label class="flex items-center gap-2 text-sm mb-4 cursor-pointer">
               <input type="checkbox" v-model="auth.confirmed" class="w-4 h-4">
-              Ich bestätige, dass eine Betriebsfreigabe für diesen Scan eingeholt wurde.
+              {{ t('scan_authorization_confirm', 'I confirm that operational authorization for this scan has been obtained and the scan risks are understood.') }}
             </label>
             <button @click="startScan"
               :disabled="!auth.name || !auth.role || !auth.confirmed"
               class="bg-green-600 hover:bg-green-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded font-medium text-sm">
-              Scan starten →
+              {{ t('btn_start_scan', 'Start Scan') }} →
             </button>
           </div>
 
@@ -178,19 +187,18 @@
           <div v-if="scanRunning || assessment.status === 'scan_running'">
             <div class="flex items-center gap-3 mb-3">
               <div class="animate-spin text-2xl">&#9881;</div>
-              <p class="text-slate-600 font-medium">{{ scanMsg || 'Scan läuft...' }}</p>
+              <p class="text-slate-600 font-medium">{{ scanMsg || 'Scan running...' }}</p>
             </div>
-            <!-- Live scan output (SSE) -->
             <div v-if="scanOutput.length" class="bg-slate-900 rounded p-3 font-mono text-xs text-green-400 max-h-64 overflow-y-auto" ref="scanOutputEl">
               <div v-for="(line, i) in scanOutput" :key="i">{{ line }}</div>
             </div>
-            <p class="text-slate-400 text-xs mt-1">Live-Output via SSE · Automatische Aktualisierung</p>
+            <p class="text-slate-400 text-xs mt-1">Live output via SSE · Auto-refresh</p>
           </div>
 
           <!-- Scan done -->
           <div v-if="assessment.status === 'scan_complete' || assessment.status === 'exported'">
             <div class="bg-green-50 border border-green-200 rounded p-4 mb-4 text-green-800 text-sm">
-              ✅ Scan abgeschlossen. {{ scanResults.length }} Ports erfasst, {{ findings.length }} Findings generiert.
+              ✅ Scan complete. {{ scanResults.length }} ports found, {{ findings.length }} findings generated.
             </div>
           </div>
 
@@ -198,11 +206,11 @@
         </div>
       </div>
 
-      <!-- Tab: Manuelle Fragen -->
+      <!-- Tab: Manual Questions -->
       <div v-if="activeTab === 'manual'" class="p-5">
-        <div v-if="!assessment" class="text-slate-500">Zuerst Assessment erstellen.</div>
+        <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
-          <p class="text-slate-500 text-sm mb-4">Beantworten Sie die folgenden Fragen zur Sicherheitsbewertung des Geräts.</p>
+          <p class="text-slate-500 text-sm mb-4">Answer the following questions for the security assessment of this device.</p>
           <div v-for="(questions, cat) in manualQuestions" :key="cat" class="mb-6">
             <h3 class="font-semibold text-slate-700 capitalize mb-3 border-b border-slate-200 pb-1">{{ catLabel(cat) }}</h3>
             <div class="space-y-3">
@@ -211,48 +219,47 @@
                 <div class="col-span-1">
                   <select v-model="q.answer_value" class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white">
                     <option value="">—</option>
-                    <option value="yes">Ja</option>
-                    <option value="no">Nein</option>
-                    <option value="partial">Teilweise</option>
-                    <option value="unknown">Unbekannt</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                    <option value="partial">Partial</option>
+                    <option value="unknown">Unknown</option>
                   </select>
                 </div>
                 <div class="col-span-1">
-                  <input v-model="q.comment" placeholder="Kommentar..." class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                  <input v-model="q.comment" placeholder="Comment..." class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
                 </div>
               </div>
             </div>
           </div>
           <button @click="saveManual" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
-            Antworten speichern
+            {{ t('btn_save', 'Save') }} Answers
           </button>
-          <span v-if="manualSaved" class="ml-3 text-green-600 text-sm">Gespeichert.</span>
+          <span v-if="manualSaved" class="ml-3 text-green-600 text-sm">Saved.</span>
         </div>
       </div>
 
       <!-- Tab: Findings -->
       <div v-if="activeTab === 'findings'" class="p-5">
-        <div v-if="findings.length === 0" class="text-slate-500">Keine Findings vorhanden. Scan durchführen oder manuelle Fragen beantworten.</div>
+        <div v-if="findings.length === 0" class="text-slate-500">No findings yet. Run a scan or answer manual questions.</div>
         <div v-for="f in findings" :key="f.id" class="border border-slate-200 rounded-lg p-4 mb-3">
           <div class="flex items-center gap-2 mb-2 flex-wrap">
             <span :class="severityClass(f.severity)" class="px-2 py-0.5 rounded text-xs font-bold">{{ f.severity?.toUpperCase() }}</span>
             <span class="font-semibold text-slate-800">{{ f.title }}</span>
-            <span v-if="f.kev_listed" class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold">⚠️ CISA KEV</span>
-            <!-- Source attribution badges -->
+            <span v-if="f.kev_listed" class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold">⚠️ {{ t('kev_active_exploit', 'CISA KEV') }}</span>
             <template v-if="f.remediation_sources">
               <template v-for="src in parseRemediationSources(f.remediation_sources)" :key="src.type">
-                <span v-if="src.type === 'yaml'" class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">📋 Regelwerk</span>
-                <span v-else-if="src.type === 'kev'" class="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-xs">🔴 KEV</span>
-                <span v-else-if="src.type === 'nvd'" class="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-xs">📊 NVD</span>
-                <span v-else-if="src.type === 'cwe'" class="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-xs">🔑 CWE</span>
+                <span v-if="src.type === 'yaml'" class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">📋 {{ t('source_badge_yaml', 'Ruleset') }}</span>
+                <span v-else-if="src.type === 'kev'" class="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-xs">🔴 {{ t('source_badge_kev', 'KEV') }}</span>
+                <span v-else-if="src.type === 'nvd'" class="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-xs">📊 {{ t('source_badge_nvd', 'NVD') }}</span>
+                <span v-else-if="src.type === 'cwe'" class="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-xs">🔑 {{ t('source_badge_cwe', 'CWE') }}</span>
                 <span v-else class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-xs">{{ src.label }}</span>
               </template>
             </template>
           </div>
-          <p class="text-sm text-slate-600 mb-1"><strong>Befund:</strong> {{ f.evidence || '—' }}</p>
-          <p class="text-sm text-slate-600 mb-1"><strong>Broadcast-Kontext:</strong> {{ f.broadcast_context || '—' }}</p>
+          <p class="text-sm text-slate-600 mb-1"><strong>Finding:</strong> {{ f.evidence || '—' }}</p>
+          <p class="text-sm text-slate-600 mb-1"><strong>Broadcast Context:</strong> {{ f.broadcast_context || '—' }}</p>
           <div class="bg-blue-50 border-l-4 border-blue-400 p-3 mb-2 text-sm">
-            <strong>Empfehlung:</strong> {{ f.recommendation || '—' }}
+            <strong>Recommendation:</strong> {{ f.recommendation || '—' }}
             <div v-if="f.kev_required_action" class="mt-1 text-red-700">⚠️ CISA KEV: {{ f.kev_required_action }}</div>
             <div v-if="f.nvd_solution" class="mt-1">NVD: {{ f.nvd_solution }}</div>
           </div>
@@ -260,15 +267,15 @@
             <div>
               <label class="text-xs text-slate-500 mr-1">Status:</label>
               <select v-model="f.status" @change="updateFinding(f)" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
-                <option value="open">Offen</option>
-                <option value="compensated">Kompensiert</option>
-                <option value="accepted">Akzeptiert</option>
-                <option value="false_positive">False Positive</option>
+                <option value="open">{{ t('finding_status_open', 'Open') }}</option>
+                <option value="compensated">{{ t('finding_status_compensated', 'Compensated') }}</option>
+                <option value="accepted">{{ t('finding_status_accepted', 'Accepted') }}</option>
+                <option value="false_positive">{{ t('finding_status_false_positive', 'False Positive') }}</option>
               </select>
             </div>
             <div v-if="f.compensating_control_required" class="flex-1">
               <input v-model="f.compensating_control_description" @blur="updateFinding(f)"
-                placeholder="Kompensationsmassnahme beschreiben..."
+                placeholder="Describe compensating control..."
                 class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
             </div>
           </div>
@@ -277,29 +284,29 @@
 
       <!-- Tab: Report -->
       <div v-if="activeTab === 'report'" class="p-5">
-        <div v-if="!assessment" class="text-slate-500">Zuerst Assessment erstellen.</div>
+        <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
-          <p class="text-slate-500 text-sm mb-4">Report-Downloads für Assessment #{{ assessment.id }}</p>
+          <p class="text-slate-500 text-sm mb-4">Report downloads for Assessment #{{ assessment.id }}</p>
           <div class="flex gap-3 flex-wrap">
             <a :href="`/api/v1/assessments/${assessment.id}/report/html`" target="_blank"
                class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
-              &#128196; HTML-Report öffnen
+              &#128196; Open HTML Report
             </a>
             <a :href="`/api/v1/assessments/${assessment.id}/report/md`"
                class="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2 rounded font-medium text-sm">
-              &#8681; Markdown herunterladen
+              &#8681; {{ t('btn_download', 'Download') }} Markdown
             </a>
             <a :href="`/api/v1/assessments/${assessment.id}/report/json`"
                class="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2 rounded font-medium text-sm">
-              &#8681; JSON herunterladen
+              &#8681; {{ t('btn_download', 'Download') }} JSON
             </a>
           </div>
           <div class="mt-5 p-4 bg-slate-50 rounded border border-slate-200 text-sm">
-            <strong>Gesamtbewertung:</strong>
+            <strong>Overall Rating:</strong>
             <span :class="ratingBgClass(assessment.overall_rating)" class="ml-2 px-2 py-0.5 rounded font-bold text-xs">
               {{ ratingLabel(assessment.overall_rating) }}
             </span>
-            <br><span class="text-slate-500">Entscheid: {{ decisionLabel(assessment.decision) }}</span>
+            <br><span class="text-slate-500">Decision: {{ decisionLabel(assessment.decision) }}</span>
           </div>
         </div>
       </div>
@@ -310,9 +317,9 @@
   </main>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
-    <span>PiBroadGuard – Broadcast Device Security Assessment Tool</span>
-    <span>IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1</span>
-    <span>v1.0 | März 2026</span>
+    <span>{{ t('footer_author', 'Broadcast Device Security Assessment Tool') }}</span>
+    <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
+    <span>{{ t('footer_version', 'v1.0 | March 2026') }}</span>
   </footer>
 </div>
 
@@ -339,6 +346,16 @@ createApp({
     const scanOutputEl = ref(null);
     const activeTab = ref('overview');
     const newProfile = ref('passive');
+    const tr = ref({});
+    const currentLang = ref(window.PiBGi18n.currentLang());
+
+    function t(key, fb) {
+      return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
+    }
+    async function switchLang(lang) {
+      tr.value = await window.PiBGi18n.load(lang);
+      currentLang.value = lang;
+    }
 
     const editReviewer = ref('');
     const editSummary = ref('');
@@ -351,22 +368,38 @@ createApp({
     let pollInterval = null;
     let sseSource = null;
 
-    const tabs = [
-      { id: 'overview', label: '📋 Übersicht' },
-      { id: 'scan', label: '🔍 Scan' },
-      { id: 'manual', label: '📝 Manuelle Fragen' },
-      { id: 'findings', label: '⚠️ Findings' },
-      { id: 'report', label: '📄 Report' },
-    ];
-    const scoreDims = { technical: { label: 'Technisch' }, operational: { label: 'Betrieb' }, compensation: { label: 'Kompensation' }, lifecycle: { label: 'Lifecycle' }, vendor: { label: 'Hersteller' } };
+    const tabs = computed(() => [
+      { id: 'overview', label: '📋 ' + t('assessment_tab_overview', 'Overview') },
+      { id: 'scan', label: '🔍 ' + t('assessment_tab_scan', 'Scan') },
+      { id: 'manual', label: '📝 ' + t('assessment_tab_manual', 'Manual Questions') },
+      { id: 'findings', label: '⚠️ ' + t('assessment_tab_findings', 'Findings') },
+      { id: 'report', label: '📄 ' + t('assessment_tab_report', 'Report') },
+    ]);
 
-    function ratingLabel(r) { return { green: '🟢 Grün', yellow: '🟡 Gelb', orange: '🟠 Orange', red: '🔴 Rot' }[r] || r || '—'; }
+    const scoreDims = computed(() => ({
+      technical:    { label: t('score_technical', 'Technical') },
+      operational:  { label: t('score_operational', 'Operational') },
+      compensation: { label: t('score_compensation', 'Compensation') },
+      lifecycle:    { label: t('score_lifecycle', 'Lifecycle') },
+      vendor:       { label: t('score_vendor', 'Vendor') },
+    }));
+
+    function ratingLabel(r) { return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r || '—'; }
     function ratingBgClass(r) { return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800' }[r] || 'bg-slate-100 text-slate-600'; }
-    function decisionLabel(d) { return { approved: 'Freigegeben', approved_with_conditions: 'Freigegeben mit Auflagen', deferred: 'Zurückgestellt', rejected: 'Abgelehnt' }[d] || d || '—'; }
+    function decisionLabel(d) { return { approved: 'Approved', approved_with_conditions: 'Approved with Conditions', deferred: 'Deferred', rejected: 'Rejected' }[d] || d || '—'; }
     function severityClass(s) { return { critical: 'bg-red-100 text-red-800', high: 'bg-orange-100 text-orange-800', medium: 'bg-yellow-100 text-yellow-800', low: 'bg-green-100 text-green-800', info: 'bg-blue-100 text-blue-800' }[s] || ''; }
     function scoreBarColor(v) { if (v >= 75) return 'bg-green-500'; if (v >= 55) return 'bg-yellow-400'; if (v >= 35) return 'bg-orange-400'; return 'bg-red-500'; }
     function scoreTextColor(v) { if (v >= 75) return 'text-green-700'; if (v >= 55) return 'text-yellow-700'; if (v >= 35) return 'text-orange-700'; return 'text-red-700'; }
-    function catLabel(c) { return { auth: '🔑 Authentisierung', patch: '🔄 Updates / Lifecycle', hardening: '🛡️ Härtung', monitoring: '📡 Monitoring', operational: '⚙️ Betrieb', vendor: '🏭 Hersteller' }[c] || c; }
+    function catLabel(c) {
+      return {
+        auth: '🔑 Authentication',
+        patch: '🔄 Updates / Lifecycle',
+        hardening: '🛡️ Hardening',
+        monitoring: '📡 Monitoring',
+        operational: '⚙️ Operational',
+        vendor: '🏭 Vendor'
+      }[c] || c;
+    }
 
     async function loadDevice() {
       if (!deviceId) return;
@@ -376,14 +409,8 @@ createApp({
 
     async function loadLatestAssessment() {
       if (!deviceId && !assessmentIdParam) return;
-      let url = assessmentIdParam ? `/api/v1/assessments/${assessmentIdParam}` : null;
-      if (!url) {
-        // Get assessments for device
-        const resp = await fetch(`/api/v1/devices/${deviceId}`);
-        if (!resp.ok) return;
-      }
       if (assessmentIdParam) {
-        const resp = await fetch(url);
+        const resp = await fetch(`/api/v1/assessments/${assessmentIdParam}`);
         if (resp.ok) {
           assessment.value = await resp.json();
           await Promise.all([loadResults(), loadFindings(), loadManual()]);
@@ -421,7 +448,6 @@ createApp({
 
     async function startScan() {
       scanError.value = '';
-      // Authorize first
       const authResp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/authorize`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -431,9 +457,8 @@ createApp({
           time_window_end: auth.value.timeEnd || null
         })
       });
-      if (!authResp.ok) { scanError.value = 'Autorisierung fehlgeschlagen'; return; }
+      if (!authResp.ok) { scanError.value = 'Authorization failed'; return; }
 
-      // Update profile
       assessment.value.scan_profile = auth.value.profile;
       await fetch(`/api/v1/assessments/${assessment.value.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -449,7 +474,7 @@ createApp({
         startPolling();
       } else {
         const err = await resp.json();
-        scanError.value = err.detail || 'Scan konnte nicht gestartet werden';
+        scanError.value = err.detail || 'Could not start scan';
       }
     }
 
@@ -459,16 +484,10 @@ createApp({
       sseSource = new EventSource(url);
       sseSource.onmessage = (e) => {
         const line = e.data;
-        if (line === '__DONE__') {
-          sseSource.close(); sseSource = null;
-          return;
-        }
+        if (line === '__DONE__') { sseSource.close(); sseSource = null; return; }
         if (line === 'keepalive') return;
         scanOutput.value.push(line);
-        // Auto-scroll
-        nextTick(() => {
-          if (scanOutputEl.value) scanOutputEl.value.scrollTop = scanOutputEl.value.scrollHeight;
-        });
+        nextTick(() => { if (scanOutputEl.value) scanOutputEl.value.scrollTop = scanOutputEl.value.scrollHeight; });
       };
       sseSource.onerror = () => { sseSource.close(); sseSource = null; };
     }
@@ -489,7 +508,7 @@ createApp({
           } else if (s.status === 'error') {
             clearInterval(pollInterval); pollInterval = null;
             scanRunning.value = false;
-            scanError.value = s.message || 'Scan fehlgeschlagen';
+            scanError.value = s.message || 'Scan failed';
           }
         }
       }, 2000);
@@ -505,7 +524,7 @@ createApp({
           reassessment_due: editReassessmentDue.value || null
         })
       });
-      if (resp.ok) { assessment.value = await resp.json(); saveMsg.value = 'Gespeichert.'; setTimeout(() => saveMsg.value = '', 3000); }
+      if (resp.ok) { assessment.value = await resp.json(); saveMsg.value = 'Saved.'; setTimeout(() => saveMsg.value = '', 3000); }
     }
 
     async function saveManual() {
@@ -534,6 +553,7 @@ createApp({
     }
 
     onMounted(async () => {
+      tr.value = await window.PiBGi18n.load();
       await loadDevice();
       if (assessmentIdParam) {
         await loadLatestAssessment();
@@ -558,7 +578,7 @@ createApp({
       try { return JSON.parse(raw); } catch { return []; }
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>
