@@ -293,6 +293,41 @@ def list_device_assessments(
     )
 
 
+@router.post("/assessments/{assessment_id}/clone", status_code=201)
+def clone_assessment(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Create a new draft assessment for the same device, copying scan profile,
+    reviewer, manual answers (as template) and compensating control descriptions."""
+    src = _get_assessment_or_404(assessment_id, db)
+    new_a = Assessment(
+        device_id=src.device_id,
+        status="draft",
+        scan_profile=src.scan_profile,
+        reviewer=src.reviewer,
+    )
+    db.add(new_a)
+    db.flush()  # get new_a.id
+
+    # Copy manual findings as template (answers + comments)
+    src_mf = db.query(ManualFinding).filter(ManualFinding.assessment_id == assessment_id).all()
+    for mf in src_mf:
+        db.add(ManualFinding(
+            assessment_id=new_a.id,
+            category=mf.category,
+            question_key=mf.question_key,
+            answer_value=mf.answer_value,
+            comment=mf.comment,
+            source=mf.source,
+        ))
+
+    db.commit()
+    db.refresh(new_a)
+    return {"new_assessment_id": new_a.id}
+
+
 @router.delete("/assessments/{assessment_id}", status_code=204)
 def delete_assessment(
     assessment_id: int,

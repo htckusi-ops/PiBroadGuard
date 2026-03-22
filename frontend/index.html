@@ -65,12 +65,9 @@
       </select>
       <select v-model="filterType" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
         <option value="">All Types</option>
-        <option value="encoder">Encoder</option>
-        <option value="decoder">Decoder</option>
-        <option value="matrix">Matrix</option>
-        <option value="intercom">Intercom</option>
-        <option value="monitor">Monitor/Multiviewer</option>
-        <option value="other">Other</option>
+        <option v-for="dt in deviceTypes" :key="dt.name" :value="dt.name">
+          {{ currentLang === 'de' ? dt.label_de : dt.label_en }}
+        </option>
       </select>
       <input v-model="search" placeholder="Search..." class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white w-48">
       <a href="/app/device_form.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
@@ -136,7 +133,7 @@
   </main>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
-    <span>{{ t('footer_author', 'Broadcast Device Security Assessment Tool') }}</span>
+    <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
     <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
     <span>{{ t('footer_version', 'v1.0 | March 2026') }}</span>
   </footer>
@@ -153,6 +150,7 @@ createApp({
     const filterRating = ref('');
     const filterType = ref('');
     const search = ref('');
+    const deviceTypes = ref([]);
     const connectivity = ref({ effective_mode: 'unknown', mode_setting: 'auto', override_active: false });
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
@@ -222,9 +220,11 @@ createApp({
 
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
+      const dtResp = await fetch('/api/v1/device-types');
+      if (dtResp.ok) deviceTypes.value = await dtResp.json();
       await load();
     });
-    return { devices, loading, error, filterRating, filterType, search, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, ratingLabel, ratingClass, criticalityClass, goSettings, t, currentLang, switchLang };
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, ratingLabel, ratingClass, criticalityClass, goSettings, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

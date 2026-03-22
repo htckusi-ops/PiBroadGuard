@@ -45,16 +45,9 @@
             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('device_form_device_type', 'Device Type') }} *</label>
             <select v-model="form.device_type" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
               <option value="">Select type...</option>
-              <option value="encoder">Encoder</option>
-              <option value="decoder">Decoder</option>
-              <option value="matrix">Matrix</option>
-              <option value="intercom">Intercom</option>
-              <option value="monitor">Monitor/Multiviewer</option>
-              <option value="kvm">KVM</option>
-              <option value="audio">Audio Interface</option>
-              <option value="control">Control System</option>
-              <option value="appliance">Appliance</option>
-              <option value="other">Other</option>
+              <option v-for="dt in deviceTypes" :key="dt.name" :value="dt.name">
+                {{ currentLang === 'de' ? dt.label_de : dt.label_en }}
+              </option>
             </select>
           </div>
           <div>
@@ -160,7 +153,7 @@
     </div>
 
     <!-- Assessment History (edit mode only) -->
-    <div v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm p-6">
+    <div id="history" v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm p-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-bold text-slate-800">📋 Assessment History</h2>
         <a :href="`/app/assessment.html?device_id=${deviceId}`"
@@ -208,8 +201,11 @@
                   <a v-if="a.status === 'completed' || a.status === 'scan_complete'"
                      :href="`/api/v1/assessments/${a.id}/report/json`"
                      class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">JSON</a>
+                  <button @click="cloneAssessment(a.id)"
+                          :title="'Use as base for new assessment'"
+                          class="bg-green-50 hover:bg-green-100 text-green-700 px-2 py-1 rounded text-xs">🔁</button>
                   <button @click="deleteAssessment(a.id)"
-                          class="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded text-xs">Delete</button>
+                          class="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded text-xs">🗑</button>
                 </div>
               </td>
             </tr>
@@ -220,7 +216,7 @@
   </main>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
-    <span>{{ t('footer_author', 'Broadcast Device Security Assessment Tool') }}</span>
+    <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
     <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
     <span>{{ t('footer_version', 'v1.0 | March 2026') }}</span>
   </footer>
@@ -240,6 +236,7 @@ createApp({
     const rdnsLoading = ref(false);
     const assessments = ref([]);
     const historyLoading = ref(false);
+    const deviceTypes = ref([]);
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
 
@@ -322,6 +319,15 @@ createApp({
       finally { historyLoading.value = false; }
     }
 
+    async function cloneAssessment(id) {
+      if (!confirm('Create a new draft assessment based on this one? Manual answers and scan profile will be copied as a template.')) return;
+      const resp = await fetch(`/api/v1/assessments/${id}/clone`, { method: 'POST' });
+      if (resp.ok) {
+        const data = await resp.json();
+        window.location.href = `/app/assessment.html?assessment_id=${data.new_assessment_id}`;
+      } else error.value = 'Error cloning assessment';
+    }
+
     async function deleteAssessment(id) {
       if (!confirm('Delete this assessment and all its data?')) return;
       const resp = await fetch(`/api/v1/assessments/${id}`, { method: 'DELETE' });
@@ -347,14 +353,22 @@ createApp({
       return 'bg-slate-100 text-slate-600';
     }
 
+    async function loadDeviceTypes() {
+      try {
+        const resp = await fetch('/api/v1/device-types');
+        if (resp.ok) deviceTypes.value = await resp.json();
+      } catch (e) { /* ignore – dropdown falls back to empty */ }
+    }
+
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
+      await loadDeviceTypes();   // always fresh from server
       await load();
       await loadAssessments();
     });
     return { form, isEdit, saving, error, success, ipError, rdnsLoading,
-             assessments, historyLoading,
-             save, lookupRdns, deleteDevice, deleteAssessment,
+             assessments, historyLoading, deviceTypes,
+             save, lookupRdns, deleteDevice, cloneAssessment, deleteAssessment,
              fmtDate, ratingClass, statusClass,
              t, currentLang, switchLang };
   }
