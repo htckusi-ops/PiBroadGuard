@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>phpIPAM Bulk-Import – PiBroadGuard</title>
+  <title>phpIPAM Bulk Import – PiBroadGuard</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/app/i18n.js"></script>
 </head>
 <body class="bg-slate-50 min-h-screen flex flex-col">
 <div id="app" class="flex flex-col min-h-screen">
@@ -15,39 +16,46 @@
     <div class="flex items-center gap-4">
       <a href="/app/index.html" class="text-slate-300 hover:text-white text-sm">← Dashboard</a>
       <span class="text-slate-500">|</span>
-      <span class="font-semibold">phpIPAM Bulk-Import</span>
+      <span class="font-semibold">{{ t('phpipam_import_page', 'phpIPAM Bulk Import') }}</span>
     </div>
-    <div class="text-xs text-slate-400">PiBroadGuard</div>
+    <div class="flex items-center gap-3">
+      <div class="text-xs text-slate-400">PiBroadGuard</div>
+      <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
+        <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+      </div>
+    </div>
   </header>
 
   <main class="flex-1 p-6 max-w-5xl mx-auto w-full">
 
     <!-- Status Banner -->
     <div v-if="!phpipamOk" class="bg-amber-50 border border-amber-200 rounded p-4 mb-6 text-sm text-amber-800">
-      <strong>⚠️ phpIPAM nicht konfiguriert.</strong>
-      Bitte <a href="/app/settings.html" class="underline">PIBG_PHPIPAM_URL und PIBG_PHPIPAM_TOKEN</a> in den Einstellungen hinterlegen.
+      <strong>⚠️ phpIPAM not configured.</strong>
+      Please set <a href="/app/settings.html" class="underline">PIBG_PHPIPAM_URL and PIBG_PHPIPAM_TOKEN</a> in settings.
     </div>
     <div v-if="phpipamOk" class="bg-green-50 border border-green-200 rounded p-3 mb-6 text-sm text-green-800">
-      ✅ phpIPAM verbunden
+      ✅ phpIPAM connected
     </div>
 
-    <h1 class="text-2xl font-bold text-slate-800 mb-6">phpIPAM Bulk-Import</h1>
+    <h1 class="text-2xl font-bold text-slate-800 mb-6">{{ t('phpipam_import_page', 'phpIPAM Bulk Import') }}</h1>
 
     <!-- Step 1: Select subnet -->
     <div class="bg-white rounded border border-slate-200 p-5 mb-4">
-      <h2 class="font-semibold text-slate-700 mb-3">1. Subnetz auswählen</h2>
+      <h2 class="font-semibold text-slate-700 mb-3">1. Select Subnet</h2>
       <div class="flex gap-3 items-start">
         <select v-model="selectedSubnet" class="border border-slate-300 rounded px-3 py-2 text-sm flex-1 max-w-sm">
-          <option value="">Subnetz wählen...</option>
+          <option value="">Select subnet...</option>
           <option v-for="s in subnets" :key="s.id" :value="s.id">
             {{ s.subnet }}/{{ s.mask }} – {{ s.description || s.sectionId }}
           </option>
         </select>
         <button @click="loadSubnets" :disabled="!phpipamOk" class="bg-slate-100 hover:bg-slate-200 border border-slate-300 px-4 py-2 rounded text-sm">
-          🔄 Subnets laden
+          🔄 Load subnets
         </button>
         <button @click="loadHosts" :disabled="!selectedSubnet" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded text-sm">
-          Hosts laden →
+          Load hosts →
         </button>
       </div>
     </div>
@@ -55,14 +63,14 @@
     <!-- Step 2: Select hosts -->
     <div v-if="hosts.length" class="bg-white rounded border border-slate-200 p-5 mb-4">
       <h2 class="font-semibold text-slate-700 mb-3">
-        2. Hosts auswählen
-        <span class="font-normal text-slate-500 text-sm">({{ selectedHosts.length }} von {{ hosts.length }} ausgewählt)</span>
+        2. Select Hosts
+        <span class="font-normal text-slate-500 text-sm">({{ selectedHosts.length }} of {{ hosts.length }} selected)</span>
       </h2>
 
       <div class="flex gap-3 mb-3">
-        <button @click="selectAll" class="text-xs text-blue-600 hover:text-blue-800 underline">Alle auswählen</button>
-        <button @click="selectNone" class="text-xs text-blue-600 hover:text-blue-800 underline">Keine</button>
-        <button @click="selectNew" class="text-xs text-blue-600 hover:text-blue-800 underline">Nur neue (nicht in PiBroadGuard)</button>
+        <button @click="selectAll" class="text-xs text-blue-600 hover:text-blue-800 underline">Select all</button>
+        <button @click="selectNone" class="text-xs text-blue-600 hover:text-blue-800 underline">None</button>
+        <button @click="selectNew" class="text-xs text-blue-600 hover:text-blue-800 underline">New only (not in PiBroadGuard)</button>
       </div>
 
       <div class="overflow-x-auto">
@@ -70,10 +78,10 @@
           <thead>
             <tr class="text-left text-slate-500 text-xs border-b">
               <th class="pb-2 w-8"><input type="checkbox" @change="e => e.target.checked ? selectAll() : selectNone()"></th>
-              <th class="pb-2 pr-4">IP-Adresse</th>
+              <th class="pb-2 pr-4">IP Address</th>
               <th class="pb-2 pr-4">Hostname</th>
               <th class="pb-2 pr-4">MAC</th>
-              <th class="pb-2 pr-4">Beschreibung</th>
+              <th class="pb-2 pr-4">Description</th>
               <th class="pb-2">Status</th>
             </tr>
           </thead>
@@ -89,8 +97,8 @@
               <td class="py-2 pr-4 font-mono text-xs text-slate-500">{{ h.mac_address || '–' }}</td>
               <td class="py-2 pr-4 text-xs text-slate-600">{{ h.description || '–' }}</td>
               <td class="py-2 text-xs">
-                <span v-if="h._exists" class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded">Bereits vorhanden</span>
-                <span v-else class="bg-green-100 text-green-700 px-2 py-0.5 rounded">Neu</span>
+                <span v-if="h._exists" class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded">Already exists</span>
+                <span v-else class="bg-green-100 text-green-700 px-2 py-0.5 rounded">New</span>
               </td>
             </tr>
           </tbody>
@@ -100,26 +108,26 @@
 
     <!-- Step 3: Device type & import -->
     <div v-if="selectedHosts.length" class="bg-white rounded border border-slate-200 p-5 mb-4">
-      <h2 class="font-semibold text-slate-700 mb-3">3. Gerätetyp & Import</h2>
+      <h2 class="font-semibold text-slate-700 mb-3">3. Device Type & Import</h2>
       <div class="flex gap-4 items-end flex-wrap">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Gerätetyp für importierte Geräte</label>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Device type for imported devices</label>
           <select v-model="importDeviceType" class="border border-slate-300 rounded px-3 py-2 text-sm">
-            <option v-for="dt in deviceTypes" :key="dt.name" :value="dt.name">{{ dt.label_de }}</option>
+            <option v-for="dt in deviceTypes" :key="dt.name" :value="dt.name">{{ dt.label_en }}</option>
           </select>
         </div>
         <button @click="doImport" :disabled="importing" class="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white px-6 py-2 rounded font-medium text-sm">
-          {{ importing ? 'Importiere...' : `${selectedHosts.length} Geräte importieren` }}
+          {{ importing ? 'Importing...' : `Import ${selectedHosts.length} devices` }}
         </button>
       </div>
     </div>
 
     <!-- Result -->
     <div v-if="importResult" class="bg-white rounded border border-slate-200 p-5 mb-4">
-      <h2 class="font-semibold text-slate-700 mb-3">✅ Import abgeschlossen</h2>
+      <h2 class="font-semibold text-slate-700 mb-3">✅ Import complete</h2>
       <p class="text-sm text-slate-600">
-        <strong>{{ importResult.created }}</strong> Geräte erstellt,
-        <strong>{{ importResult.skipped }}</strong> übersprungen.
+        <strong>{{ importResult.created }}</strong> devices created,
+        <strong>{{ importResult.skipped }}</strong> skipped.
       </p>
       <a href="/app/index.html" class="mt-3 inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
         → Dashboard
@@ -131,9 +139,9 @@
 
   <!-- Footer -->
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-auto">
-    <span>PiBroadGuard – Broadcast Device Security Assessment Tool</span>
-    <span>IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1</span>
-    <span>v1.0 | März 2026</span>
+    <span>{{ t('footer_author', 'Broadcast Device Security Assessment Tool') }}</span>
+    <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
+    <span>{{ t('footer_version', 'v1.0 | March 2026') }}</span>
   </footer>
 </div>
 
@@ -152,14 +160,21 @@ createApp({
     const importResult = ref(null);
     const error = ref('');
     const existingIPs = ref(new Set());
+    const tr = ref({});
+    const currentLang = ref(window.PiBGi18n.currentLang());
+
+    function t(key, fb) {
+      return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
+    }
+    async function switchLang(lang) {
+      tr.value = await window.PiBGi18n.load(lang);
+      currentLang.value = lang;
+    }
 
     async function checkStatus() {
       try {
         const resp = await fetch('/api/v1/phpipam/status');
-        if (resp.ok) {
-          const data = await resp.json();
-          phpipamOk.value = data.configured && data.ok;
-        }
+        if (resp.ok) { const data = await resp.json(); phpipamOk.value = data.configured && data.ok; }
       } catch (e) { phpipamOk.value = false; }
     }
 
@@ -167,7 +182,7 @@ createApp({
       try {
         const resp = await fetch('/api/v1/phpipam/subnets');
         if (resp.ok) subnets.value = await resp.json();
-        else error.value = 'Subnets konnten nicht geladen werden';
+        else error.value = 'Could not load subnets';
       } catch (e) { error.value = e.message; }
     }
 
@@ -176,9 +191,8 @@ createApp({
       error.value = '';
       try {
         const resp = await fetch(`/api/v1/phpipam/subnets/${selectedSubnet.value}/hosts`);
-        if (!resp.ok) { error.value = 'Hosts konnten nicht geladen werden'; return; }
+        if (!resp.ok) { error.value = 'Could not load hosts'; return; }
         const data = await resp.json();
-        // Mark existing IPs
         hosts.value = data.map(h => ({ ...h, _exists: existingIPs.value.has(h.ip_address) }));
         selectedHosts.value = hosts.value.filter(h => !h._exists);
       } catch (e) { error.value = e.message; }
@@ -187,10 +201,7 @@ createApp({
     async function loadExistingIPs() {
       try {
         const resp = await fetch('/api/v1/devices');
-        if (resp.ok) {
-          const devs = await resp.json();
-          existingIPs.value = new Set(devs.map(d => d.ip_address));
-        }
+        if (resp.ok) { const devs = await resp.json(); existingIPs.value = new Set(devs.map(d => d.ip_address)); }
       } catch (e) { /* ignore */ }
     }
 
@@ -214,17 +225,14 @@ createApp({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ hosts: selectedHosts.value, device_type: importDeviceType.value }),
         });
-        if (resp.ok) {
-          importResult.value = await resp.json();
-        } else {
-          const e = await resp.json();
-          error.value = e.detail || JSON.stringify(e);
-        }
+        if (resp.ok) { importResult.value = await resp.json(); }
+        else { const e = await resp.json(); error.value = e.detail || JSON.stringify(e); }
       } catch (e) { error.value = e.message; }
       finally { importing.value = false; }
     }
 
     onMounted(async () => {
+      tr.value = await window.PiBGi18n.load();
       await Promise.all([checkStatus(), loadExistingIPs(), loadDeviceTypes()]);
     });
 
@@ -232,6 +240,7 @@ createApp({
       phpipamOk, subnets, selectedSubnet, hosts, selectedHosts,
       deviceTypes, importDeviceType, importing, importResult, error,
       loadSubnets, loadHosts, selectAll, selectNone, selectNew, doImport,
+      t, currentLang, switchLang,
     };
   }
 }).mount('#app');

@@ -124,10 +124,104 @@ Interaktive API-Docs: http://localhost:8000/api/docs
 
 Alle Endpunkte unter `/api/v1/` – Basic Auth erforderlich.
 
+## Docker – wichtige Hinweise
+
+### Nmap und Raw Sockets
+
+Im Docker-Container werden Nmap-Raw-Sockets über Linux Capabilities bereitgestellt. Die `docker-compose.yml` enthält bereits:
+
+```yaml
+cap_add:
+  - NET_RAW
+  - NET_ADMIN
+```
+
+**Ohne diese Capabilities** fällt Nmap stillschweigend auf TCP-Connect-Scans zurück (kein SYN-Scan, weniger präzise, keine Fehlermeldung). Prüfen im UI unter **Settings → Nmap Diagnostics**.
+
+### Netzwerk-Modus (Raspberry Pi)
+
+Der Docker-Container verwendet standardmässig Bridge-Networking. Für Scans ins Broadcast-Netz muss der Container das Zielnetz erreichen können:
+
+```bash
+# Option A: Host-Networking (einfachste Lösung, empfohlen für den Pi)
+# In docker-compose.yml unter dem Service ergänzen:
+network_mode: host
+
+# Option B: Statische Route auf dem Pi-Host hinzufügen
+sudo ip route add 192.168.10.0/24 via <gateway>
+```
+
+**Prüfen ob das Zielnetz erreichbar ist:**
+```bash
+docker compose exec pibroadguard ping -c 2 <ziel-ip>
+```
+
+### Datenpersistenz
+
+Die SQLite-Datenbank liegt im Volume `./data/` ausserhalb des Containers:
+```
+./data/pibroadguard.db     # Datenbank
+./data/backups/            # Lokale Backups
+./data/logs/               # Logfiles
+```
+
+`docker compose down` löscht **nicht** die Daten. Nur `docker compose down -v` würde das Volume entfernen (nicht empfohlen).
+
+---
+
+## Direktinstallation – Nmap Capabilities (systemd)
+
+Bei der direkten Installation ohne Docker müssen Raw-Socket-Rechte explizit gesetzt werden:
+
+```bash
+# Einmalig nach der Installation
+sudo setcap cap_net_raw+ep $(which nmap)
+
+# Prüfen
+getcap $(which nmap)
+# Erwartete Ausgabe: /usr/bin/nmap cap_net_raw+ep
+```
+
+**Ohne `setcap`** laufen Nmap-Scans nur als TCP-Connect-Scan. Das Tool zeigt eine Warnung im Dashboard und unter Settings → Nmap Diagnostics.
+
+> **Hinweis:** Bei einem Nmap-Update via `apt upgrade` kann die Capability verloren gehen. Nach jedem Nmap-Update erneut ausführen.
+
+---
+
+## Netzwerk-Hinweise für Broadcast-Umgebungen
+
+### VLAN-Zugriff
+
+Wenn der Raspberry Pi in einem separaten Management-VLAN steht, muss Routing zum Broadcast-VLAN eingerichtet sein. Empfehlung: Pi ins Management-VLAN mit gerouteten Pfaden zu allen Broadcast-Segmenten.
+
+### Scan-Auswirkungen auf Broadcast-Geräte
+
+Manche Broadcast-Geräte reagieren empfindlich auf Netzwerkscans:
+
+| Scan-Profil | Risiko | Empfehlung |
+|-------------|--------|------------|
+| `passive` | Niedrig – nur bekannte Ports, T2 | **Empfohlen für Live-Produktion** |
+| `standard` | Mittel – alle Ports, T3 | Wartungsfenster nutzen |
+| `extended` | Erhöht – inkl. UDP-Scan | Nur im Testbetrieb / ausserhalb Produktion |
+
+**SNMP-UDP-Scans** (Extended-Profil) können bei manchen Geräten Syslog-Floods auslösen.
+
+### Firewall / ACL-Anforderungen
+
+Für Nmap-Scans muss der Pi direkte TCP/UDP-Verbindungen zu den Zielgeräten aufbauen können. Temporäre ACL-Regeln falls nötig:
+```
+Quelle:  <Pi-IP>
+Ziel:    <Broadcast-Subnetz>
+Ports:   TCP 1-65535, UDP (Extended-Profil)
+Protokoll: ICMP (optional, für Host-Discovery)
+```
+
+---
+
 ## Sicherheitshinweis
 
 Scans nur mit expliziter Betriebsfreigabe durchführen (NIST SP 800-115). Das Tool erzwingt Dokumentation der Scan-Autorisierung vor jedem Scan.
 
 ---
 
-*PiBroadGuard v1.0 | März 2026*
+*PiBroadGuard v1.0 | March 2026*
