@@ -88,7 +88,7 @@
             <th class="text-left px-4 py-3">IP Address</th>
             <th class="text-left px-4 py-3">Firmware</th>
             <th class="text-left px-4 py-3">Criticality</th>
-            <th class="text-left px-4 py-3">Assessment</th>
+            <th class="text-left px-4 py-3">Last Assessment</th>
             <th class="text-left px-4 py-3">Rating</th>
             <th class="text-left px-4 py-3">Actions</th>
           </tr>
@@ -111,7 +111,16 @@
                 {{ d.production_criticality || '—' }}
               </span>
             </td>
-            <td class="px-4 py-3 text-slate-600">{{ d.last_assessment_status || '—' }}</td>
+            <td class="px-4 py-3">
+              <template v-if="d.last_assessment_id">
+                <a :href="'/app/assessment.html?assessment_id=' + d.last_assessment_id"
+                   class="block text-xs text-blue-600 hover:underline font-medium whitespace-nowrap">
+                  #{{ d.last_assessment_id }} – {{ fmtDate(d.last_assessment_date) }}
+                </a>
+                <span class="text-xs text-slate-500">{{ d.last_assessment_status }}</span>
+              </template>
+              <span v-else class="text-slate-400 text-xs">—</span>
+            </td>
             <td class="px-4 py-3">
               <span v-if="d.last_assessment_rating" :class="ratingClass(d.last_assessment_rating)" class="px-2 py-0.5 rounded text-xs font-bold">
                 {{ ratingLabel(d.last_assessment_rating) }}
@@ -120,7 +129,8 @@
             </td>
             <td class="px-4 py-3">
               <div class="flex gap-2">
-                <a :href="'/app/assessment.html?device_id=' + d.id" class="text-blue-600 hover:underline text-xs">Assessment</a>
+                <a :href="'/app/assessment.html?device_id=' + d.id" class="text-blue-600 hover:underline text-xs">+ New</a>
+                <a :href="'/app/device_form.html?id=' + d.id + '#history'" class="text-slate-500 hover:underline text-xs">History</a>
                 <a :href="'/app/device_form.html?id=' + d.id" class="text-slate-500 hover:underline text-xs">{{ t('btn_edit', 'Edit') }}</a>
               </div>
             </td>
@@ -191,6 +201,10 @@ createApp({
     const openFindingsCount = computed(() => 0);
     const approvedCount = computed(() => devices.value.filter(d => d.last_assessment_status === 'completed').length);
 
+    function fmtDate(dt) {
+      if (!dt) return '—';
+      return new Date(dt).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
     function ratingLabel(r) {
       return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r;
     }
@@ -224,7 +238,7 @@ createApp({
       if (dtResp.ok) deviceTypes.value = await dtResp.json();
       await load();
     });
-    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, ratingLabel, ratingClass, criticalityClass, goSettings, t, currentLang, switchLang };
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, ratingLabel, ratingClass, criticalityClass, goSettings, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

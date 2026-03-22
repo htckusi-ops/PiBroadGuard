@@ -25,6 +25,8 @@ def _enrich(device: Device, db: Session) -> DeviceRead:
     if last:
         data.last_assessment_status = last.status
         data.last_assessment_rating = last.overall_rating
+        data.last_assessment_id = last.id
+        data.last_assessment_date = last.created_at
     return data
 
 

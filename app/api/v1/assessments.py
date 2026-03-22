@@ -10,6 +10,7 @@ from app.core.security import verify_credentials
 from app.models.assessment import Assessment
 from app.models.audit_log import AuditLog
 from app.models.device import Device
+from app.models.cve_cache import CveCache
 from app.models.finding import Finding
 from app.models.manual_finding import ManualFinding
 from app.models.scan_authorization import ScanAuthorization
@@ -179,7 +180,21 @@ def save_manual_findings(
 @router.get("/assessments/{assessment_id}/findings", response_model=List[FindingRead])
 def get_findings(assessment_id: int, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
     _get_assessment_or_404(assessment_id, db)
-    return db.query(Finding).filter(Finding.assessment_id == assessment_id).all()
+    findings = db.query(Finding).filter(Finding.assessment_id == assessment_id).all()
+    result = []
+    for f in findings:
+        fr = FindingRead.model_validate(f)
+        if f.cve_id:
+            cc = (
+                db.query(CveCache)
+                .filter(CveCache.cve_id == f.cve_id)
+                .order_by(CveCache.fetched_at.desc())
+                .first()
+            )
+            if cc:
+                fr.cve_fetched_at = cc.fetched_at
+        result.append(fr)
+    return result
 
 
 @router.put("/assessments/{assessment_id}/findings/{finding_id}", response_model=FindingRead)

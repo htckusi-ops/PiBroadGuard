@@ -51,5 +51,7 @@ class DeviceRead(DeviceBase):
     updated_at: Optional[datetime] = None
     last_assessment_status: Optional[str] = None
     last_assessment_rating: Optional[str] = None
+    last_assessment_id: Optional[int] = None
+    last_assessment_date: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
