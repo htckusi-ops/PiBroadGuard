@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     pibg_backup_max_count: int = 5
 
     # Nmap
-    pibg_nmap_host_timeout: str = "60s"
+    pibg_nmap_host_timeout: str = "300s"
     pibg_nmap_max_rate: int = 100
 
     # phpIPAM

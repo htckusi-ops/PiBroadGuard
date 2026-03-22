@@ -136,8 +136,8 @@ def start_scan(
     db.commit()
 
     background_tasks.add_task(
-        asyncio.run,
-        _run_scan_task(assessment_id, device.ip_address, assessment.scan_profile or "passive"),
+        _run_scan_task,
+        assessment_id, device.ip_address, assessment.scan_profile or "passive",
     )
     return {"message": "Scan gestartet", "assessment_id": assessment_id}
 
