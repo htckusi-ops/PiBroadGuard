@@ -24,6 +24,8 @@ class FindingRead(BaseModel):
     nvd_solution: Optional[str] = None
     vendor_advisory_url: Optional[str] = None
     cwe_recommendation: Optional[str] = None
+    remediation_sources: Optional[str] = None   # JSON array
+    cve_fetched_at: Optional[datetime] = None   # when NVD data was cached
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
