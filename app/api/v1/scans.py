@@ -1,8 +1,9 @@
 import asyncio
 import logging
 from typing import AsyncGenerator, List
+from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,7 @@ logger = logging.getLogger("pibroadguard.scan")
 router = APIRouter(tags=["scans"])
 
 _scan_status: dict = {}
+_job_id_for_assessment: dict = {}  # assessment_id -> job_id
 
 
 async def _run_scan_task(assessment_id: int, ip: str, profile: str):
@@ -113,12 +115,13 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str):
 
 
 @router.post("/assessments/{assessment_id}/scan")
-def start_scan(
+async def start_scan(
     assessment_id: int,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: str = Depends(verify_credentials),
 ):
+    from app.services.scan_queue_service import get_queue, ScanJob
+
     assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
     if not assessment:
         raise HTTPException(404, "Assessment nicht gefunden")
@@ -132,14 +135,65 @@ def start_scan(
         raise HTTPException(400, "Scan-Autorisierung erforderlich – zuerst autorisieren")
 
     device = db.query(Device).filter(Device.id == assessment.device_id).first()
+
+    queue = get_queue()
+    if not queue:
+        # Fallback: direct background execution (should not happen in normal ops)
+        assessment.status = "scan_running"
+        db.commit()
+        asyncio.create_task(_run_scan_task(
+            assessment_id, device.ip_address, assessment.scan_profile or "passive"
+        ))
+        return {"message": "Scan gestartet (direkt)", "assessment_id": assessment_id, "job_id": None}
+
+    job_id = f"manual_{assessment_id}_{uuid4().hex[:6]}"
+    job = ScanJob(
+        job_id=job_id,
+        assessment_id=assessment_id,
+        device_id=assessment.device_id,
+        ip_address=device.ip_address,
+        scan_profile=assessment.scan_profile or "passive",
+        triggered_by="manual",
+    )
+    result = await queue.enqueue(job)
+
+    if result.status.value == "skipped":
+        raise HTTPException(409, "Gerät wird bereits gescannt oder befindet sich in der Queue")
+
+    # Mark assessment as scan_running now so UI reflects it immediately
     assessment.status = "scan_running"
     db.commit()
+    _job_id_for_assessment[assessment_id] = job_id
 
-    background_tasks.add_task(
-        _run_scan_task,
-        assessment_id, device.ip_address, assessment.scan_profile or "passive",
-    )
-    return {"message": "Scan gestartet", "assessment_id": assessment_id}
+    return {
+        "message": "Scan in Queue eingereiht",
+        "assessment_id": assessment_id,
+        "job_id": job_id,
+        "position": result.position,
+    }
+
+
+# ── Scan Queue Endpoints ───────────────────────────────────────────────────
+
+@router.get("/scan-queue/status")
+def get_queue_status(user: str = Depends(verify_credentials)):
+    from app.services.scan_queue_service import get_queue
+    queue = get_queue()
+    if not queue:
+        return {"queued": [], "running": [], "history": [], "max_parallel": 1}
+    return queue.get_status()
+
+
+@router.delete("/scan-queue/{job_id}", status_code=200)
+async def cancel_queue_job(job_id: str, user: str = Depends(verify_credentials)):
+    from app.services.scan_queue_service import get_queue
+    queue = get_queue()
+    if not queue:
+        raise HTTPException(503, "Queue nicht verfügbar")
+    cancelled = await queue.cancel(job_id)
+    if not cancelled:
+        raise HTTPException(404, "Job nicht in Queue (läuft bereits oder existiert nicht)")
+    return {"cancelled": True, "job_id": job_id}
 
 
 @router.get("/assessments/{assessment_id}/scan/stream")

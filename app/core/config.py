@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     pibg_nmap_host_timeout: str = "300s"
     pibg_nmap_max_rate: int = 100
 
+    # Scan Queue
+    pibg_max_parallel_scans: int = 1
+
+    # Scheduler
+    pibg_scheduler_timezone: str = "Europe/Zurich"
+
     # phpIPAM
     pibg_phpipam_url: str = ""
     pibg_phpipam_app_id: str = "pibroadguard"

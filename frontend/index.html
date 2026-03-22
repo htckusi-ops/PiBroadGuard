@@ -21,6 +21,7 @@
       <span :class="connectivityBadgeClass" class="text-xs px-2 py-1 rounded font-semibold cursor-pointer" @click="goSettings">
         {{ connectivityLabel }}
       </span>
+      <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ {{ t('nav_schedules', 'Schedules') }}</a>
       <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">&#9881; {{ t('nav_settings', 'Settings') }}</a>
       <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
@@ -50,6 +51,48 @@
       <div class="bg-white rounded-lg p-4 shadow-sm">
         <div class="text-2xl font-bold text-green-600">{{ approvedCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_pending_assessments', 'Completed') }}</div>
+      </div>
+    </div>
+
+    <!-- Queue + Next Scans Widgets -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+      <!-- Scan Queue Widget -->
+      <div v-if="queueData && (queueData.queued.length > 0 || queueData.running.length > 0)"
+           class="bg-white rounded-lg shadow-sm p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-semibold text-slate-700 text-sm">🔄 Scan-Queue</span>
+          <span class="text-xs text-slate-500">Max parallel: {{ queueData.max_parallel }}</span>
+        </div>
+        <table class="w-full text-xs">
+          <thead><tr class="text-slate-500"><th class="text-left pb-1">Status</th><th class="text-left pb-1">IP</th><th class="text-left pb-1">Profile</th><th class="text-left pb-1">Since / Pos</th></tr></thead>
+          <tbody>
+            <tr v-for="j in queueData.running" :key="j.job_id" class="border-t border-slate-50">
+              <td class="py-1"><span class="text-green-700 font-medium">▶ Running</span></td>
+              <td class="py-1 font-mono">{{ j.ip_address }}</td>
+              <td class="py-1">{{ j.scan_profile }}</td>
+              <td class="py-1 text-slate-500">{{ j.started_at ? timeSince(j.started_at) : '' }}</td>
+            </tr>
+            <tr v-for="(j, i) in queueData.queued" :key="j.job_id" class="border-t border-slate-50">
+              <td class="py-1"><span class="text-amber-600">⏳ Waiting</span></td>
+              <td class="py-1 font-mono">{{ j.ip_address }}</td>
+              <td class="py-1">{{ j.scan_profile }}</td>
+              <td class="py-1 text-slate-500">Pos. {{ i + 1 }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Next Scheduled Scans Widget -->
+      <div v-if="nextSchedules.length > 0" class="bg-white rounded-lg shadow-sm p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-semibold text-slate-700 text-sm">⏰ Nächste geplante Scans</span>
+          <a href="/app/schedules.html" class="text-xs text-blue-600 hover:underline">Alle anzeigen</a>
+        </div>
+        <div v-for="s in nextSchedules" :key="s.id" class="text-xs text-slate-600 py-0.5 border-t border-slate-50 flex justify-between">
+          <span>{{ fmtDateTime(s.next_run_at) }}</span>
+          <span class="text-slate-500">{{ s.device_name }}</span>
+          <span class="bg-slate-100 px-1 rounded">{{ s.scan_profile }}</span>
+        </div>
       </div>
     </div>
 
@@ -162,8 +205,11 @@ createApp({
     const search = ref('');
     const deviceTypes = ref([]);
     const connectivity = ref({ effective_mode: 'unknown', mode_setting: 'auto', override_active: false });
+    const queueData = ref(null);
+    const nextSchedules = ref([]);
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    let queuePoll = null;
 
     function t(key, fb) {
       return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
@@ -205,6 +251,33 @@ createApp({
       if (!dt) return '—';
       return new Date(dt).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
+    function fmtDateTime(dt) {
+      if (!dt) return '—';
+      return new Date(dt).toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+    function timeSince(dt) {
+      if (!dt) return '';
+      const s = Math.floor((Date.now() - new Date(dt).getTime()) / 1000);
+      if (s < 60) return s + 's';
+      return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+    }
+
+    async function loadQueue() {
+      try {
+        const r = await fetch('/api/v1/scan-queue/status');
+        if (r.ok) queueData.value = await r.json();
+      } catch (e) { /* ignore */ }
+    }
+
+    async function loadNextSchedules() {
+      try {
+        const r = await fetch('/api/v1/schedules');
+        if (r.ok) {
+          const all = await r.json();
+          nextSchedules.value = all.filter(s => s.active && s.next_run_at).slice(0, 4);
+        }
+      } catch (e) { /* ignore */ }
+    }
     function ratingLabel(r) {
       return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r;
     }
@@ -237,8 +310,12 @@ createApp({
       const dtResp = await fetch('/api/v1/device-types');
       if (dtResp.ok) deviceTypes.value = await dtResp.json();
       await load();
+      await loadQueue();
+      await loadNextSchedules();
+      // Poll queue every 5s
+      queuePoll = setInterval(loadQueue, 5000);
     });
-    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, ratingLabel, ratingClass, criticalityClass, goSettings, t, currentLang, switchLang };
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

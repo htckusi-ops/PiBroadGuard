@@ -28,3 +28,6 @@ pyyaml>=6.0.0
 
 # Datei-Upload
 python-multipart>=0.0.9
+
+# Geplante Scans
+apscheduler>=3.10.4
