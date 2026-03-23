@@ -8,7 +8,22 @@ PiBroadGuard kombiniert Nmap-Scans mit einem broadcast-spezifischen Regelwerk un
 
 **Bewertungsdimensionen:** Technisch | Betrieb | Kompensation | Lifecycle | Hersteller
 
-**Standards:** IEC 62443-3-2/-4-2, NIST SP 800-82r3/-115/-30r1
+**Standards:** IEC 62443-3-2/-4-2/-4-1, NIST SP 800-82r3/-115/-30r1, NIST CSF 2.0
+
+## Funktionsübersicht
+
+| Bereich | Features |
+|---------|----------|
+| **Geräte-Management** | CRUD, Gerätetypen aus DB, rDNS-Lookup, MAC-Erkennung, phpIPAM-Import |
+| **Scan** | 3 Profile (passive/standard/extended), Autorisierungsformular, Live-Output (SSE), Scan-Queue, parallele Jobs konfigurierbar |
+| **Geplante Scans** | Einmalig / Intervall (Stunden/Tage/Wochen/Monate) / Cron-Expression, Uhrzeit-Auswahl, APScheduler-Persistenz |
+| **Regelwerk** | YAML, 15+ broadcast-spezifische Regeln, Severity-basiertes Scoring |
+| **Findings** | CVE-Lookup (NVD API v2), KEV-Check (CISA), CWE-Empfehlungen, Lösungsquellen-Badges, KEV-Badge mit Link |
+| **Scoring** | 5 Dimensionen gewichtet, Kompensations-Override, Norm-Referenz pro Dimension |
+| **Reports** | Markdown / HTML / JSON, Methodikabschnitt, Normenreferenzen |
+| **Zweiphasig** | .bdsa-Pakete (ZIP + SHA256), optionale AES-256-GCM-Verschlüsselung, USB-Wizard (3 Schritte) |
+| **Settings** | Konnektivitätsmodus (Auto/Online/Offline), KEV-Sync, SQLite-Backup, Logfile-Viewer, Nmap-Diagnose |
+| **UI** | Vue 3 via CDN, Tailwind CSS, Deutsch/Englisch (i18n), Tooltips |
 
 ## Schnellstart (Docker)
 
@@ -99,15 +114,35 @@ Phase 2: Workstation mit Internetzugang (online)
 
 Export via USB (3-Schritt-Wizard): `/app/usb_export.html`
 
+Verschlüsselung: AES-256-GCM mit Shared Secret (in `.env` oder Settings-Seite konfigurierbar).
+
+## Geplante Scans (Scheduler)
+
+Scans können zeitgesteuert ausgeführt werden:
+
+- **Einmalig** – bestimmtes Datum/Uhrzeit
+- **Intervall** – z.B. „alle 4 Wochen, dienstags um 02:00" mit Uhrzeit-Auswahl
+- **Cron** – beliebiger Cron-Ausdruck (z.B. `0 2 * * 1` für jeden Montag 02:00)
+
+Alle Schedules werden mit Betriebsfreigabe (Name/Rolle) dokumentiert.
+APScheduler persistiert die Jobs in der SQLite-DB – Schedules überleben Neustarts.
+
+Übersicht aller Schedules: `/app/schedules.html`
+
 ## Konfiguration (.env)
 
 | Variable | Standard | Beschreibung |
 |----------|---------|--------------|
 | `PIBG_USERNAME` | `admin` | Login-Benutzername |
 | `PIBG_PASSWORD` | `changeme` | **Unbedingt ändern!** |
+| `PIBG_DB_PATH` | `./data/pibroadguard.db` | Datenbankpfad |
 | `PIBG_NVD_API_KEY` | — | Kostenlos: https://nvd.nist.gov/developers/request-an-api-key |
 | `PIBG_SHARED_SECRET` | — | Für verschlüsselten USB-Export (AES-256-GCM) |
 | `PIBG_LOG_LEVEL` | `INFO` | DEBUG / INFO / WARNING / ERROR |
+| `PIBG_MAX_PARALLEL_SCANS` | `1` | Gleichzeitige Scans (1 = sequenziell, empfohlen für Pi) |
+| `PIBG_SCHEDULER_TIMEZONE` | `Europe/Zurich` | Zeitzone für geplante Scans |
+| `PIBG_PHPIPAM_URL` | — | phpIPAM-Basis-URL (optional) |
+| `PIBG_PHPIPAM_TOKEN` | — | phpIPAM API-Token (optional) |
 
 Vollständige Liste: `.env.example`
 
@@ -123,6 +158,42 @@ pytest tests/ -v
 Interaktive API-Docs: http://localhost:8000/api/docs
 
 Alle Endpunkte unter `/api/v1/` – Basic Auth erforderlich.
+
+```
+GET/POST        /api/v1/devices
+GET/PUT/DELETE  /api/v1/devices/{id}
+POST            /api/v1/devices/{id}/assessments
+GET/PUT         /api/v1/assessments/{id}
+POST            /api/v1/assessments/{id}/scan
+GET             /api/v1/assessments/{id}/scan/status
+GET             /api/v1/assessments/{id}/scan/stream     # SSE
+GET/POST        /api/v1/assessments/{id}/manual-findings
+GET             /api/v1/assessments/{id}/findings
+GET             /api/v1/assessments/{id}/report/{md|html|json}
+POST            /api/v1/assessments/{id}/export
+POST            /api/v1/import
+GET/POST        /api/v1/schedules
+GET/DELETE      /api/v1/schedules/{id}
+POST            /api/v1/schedules/{id}/pause|resume|run-now
+GET             /api/v1/scan-queue/status
+DELETE          /api/v1/scan-queue/{job_id}
+GET/POST        /api/v1/usb/devices|export|import
+GET/POST        /api/v1/system/settings|backup|logs|connectivity|kev-sync
+GET             /health  /version  (kein Auth)
+```
+
+## Frontend-Seiten
+
+| Seite | Beschreibung |
+|-------|-------------|
+| `/app/index.html` | Dashboard: Geräteliste, Scan-Queue-Status, nächste Schedules |
+| `/app/device_form.html` | Gerät erfassen/bearbeiten, Assessment-Historie |
+| `/app/assessment.html` | Assessment-Tabs: Übersicht / Scan / Fragen / Findings / Report / Schedules |
+| `/app/schedules.html` | Alle Schedules: Übersicht, Erstellen, Pause/Resume |
+| `/app/import.html` | Scan-Paket importieren (Datei oder USB) |
+| `/app/usb_export.html` | USB-Export-Wizard (3 Schritte, optional verschlüsselt) |
+| `/app/phpipam_import.html` | Geräte aus phpIPAM importieren |
+| `/app/settings.html` | System: Konnektivität, Verschlüsselung, Backup, Logfile-Viewer |
 
 ## Docker – wichtige Hinweise
 
@@ -161,8 +232,8 @@ docker compose exec pibroadguard ping -c 2 <ziel-ip>
 Die SQLite-Datenbank liegt im Volume `./data/` ausserhalb des Containers:
 ```
 ./data/pibroadguard.db     # Datenbank
-./data/backups/            # Lokale Backups
-./data/logs/               # Logfiles
+./data/backups/            # Lokale Backups (max. 5, konfigurierbar)
+./data/logs/               # Logfiles (RotatingFileHandler, 5 MB / 3 Backups)
 ```
 
 `docker compose down` löscht **nicht** die Daten. Nur `docker compose down -v` würde das Volume entfernen (nicht empfohlen).
@@ -198,11 +269,11 @@ Wenn der Raspberry Pi in einem separaten Management-VLAN steht, muss Routing zum
 
 Manche Broadcast-Geräte reagieren empfindlich auf Netzwerkscans:
 
-| Scan-Profil | Risiko | Empfehlung |
-|-------------|--------|------------|
-| `passive` | Niedrig – nur bekannte Ports, T2 | **Empfohlen für Live-Produktion** |
-| `standard` | Mittel – alle Ports, T3 | Wartungsfenster nutzen |
-| `extended` | Erhöht – inkl. UDP-Scan | Nur im Testbetrieb / ausserhalb Produktion |
+| Scan-Profil | Ports / Flags | Risiko | Empfehlung |
+|-------------|--------------|--------|------------|
+| `passive` | ~20 broadcast-relevante Ports, T2 | Niedrig | **Empfohlen für Live-Produktion** |
+| `standard` | Top 1000 Ports, T3 | Mittel | Wartungsfenster nutzen |
+| `extended` | Top 1000 TCP + UDP (SNMP/RTP), T3 | Erhöht | Nur im Testbetrieb / ausserhalb Produktion |
 
 **SNMP-UDP-Scans** (Extended-Profil) können bei manchen Geräten Syslog-Floods auslösen.
 
@@ -224,4 +295,4 @@ Scans nur mit expliziter Betriebsfreigabe durchführen (NIST SP 800-115). Das To
 
 ---
 
-*PiBroadGuard v1.0 | March 2026*
+*PiBroadGuard v1.8 | März 2026 | Markus Gerber · markus.gerber@npn.ch*

@@ -3,7 +3,7 @@
 
 **Projektname:** PiBroadGuard – Broadcast Device Security Assessment
 **GitHub-Repository:** `pibroadguard`
-**Version:** 1.4 (konsolidiert)
+**Version:** 1.8 (konsolidiert)
 **Stand:** März 2026
 
 ---
@@ -23,7 +23,7 @@
 
 ## Inhaltsübersicht
 
-Die Spec besteht aus der Basis (v1.0) und 5 kumulativen Updates:
+Die Spec besteht aus der Basis (v1.0) und 8 kumulativen Updates:
 
 | Abschnitt | Inhalt |
 |-----------|--------|
@@ -33,6 +33,10 @@ Die Spec besteht aus der Basis (v1.0) und 5 kumulativen Updates:
 | **Update v1.2 Patch** | Manueller Online/Offline-Schalter (3-Stufen-Modell), `system_settings`-Tabelle, Settings-Seite Konnektivität |
 | **Update v1.3** | USB-Export/-Import, AES-256-GCM-Verschlüsselung (Shared Secret), USB-Wizard (3 Schritte), `crypto_service`, `usb_service` |
 | **Update v1.4** | Projektname PiBroadGuard, SQLite-Backup, App-Logging, Nmap setcap, API-Versionierung `/api/v1/`, Rate Limiting Basic Auth, konsolidierte `.env`, finale Projektstruktur, finale requirements.txt |
+| **Update v1.5** | rDNS-Lookup, MAC-Adress-Erkennung aus Nmap, phpIPAM-Integration, konfigurierbare Gerätetypen (`device_types`-Tabelle), `remediation_sources` JSON-Feld in Findings, Scan-Metadaten (Dauer, Exit-Code, Nmap-Version) |
+| **Update v1.6** | Assessment-Historie in Geräteansicht, Scan-Profil-Persistenz, i18n (EN/DE via `i18n.js`), Tooltips, CVE-Cache-Alter-Anzeige, klickbare NVD/KEV-Badges, korrigierte Scan-Profil-Beschreibungen |
+| **Update v1.7** | Scan-Queue Service (`asyncio.Queue` + Semaphore), Queue-Status-Widget im UI, Duplikat-Schutz (gleiche Device-ID nicht doppelt), 50-Job-History, Cancel-Support |
+| **Update v1.8** | Geplante Scans (APScheduler 3.x), Trigger-Typen: Einmalig/Intervall/Cron, Uhrzeit-Auswahl (HH:MM UTC) für Tages-/Wochen-/Monats-Intervalle, Schedules-Seite (`schedules.html`), nächste Schedules-Widget auf Dashboard |
 
 **Bei Widersprüchen zwischen Abschnitten gilt immer das neuere Update.**
 
@@ -2909,3 +2913,607 @@ async def startup():
 ---
 
 *Finales Update-Dokument | Bereit zur Konsolidierung in CLAUDE.md | März 2026*
+
+---
+
+# BDSA_SPEC.md – Update v1.5
+## rDNS, MAC, phpIPAM, Gerätetypen, Scan-Metadaten, Remediation-Sources
+
+Ergänzung zu v1.0–v1.4 | Stand: März 2026
+
+---
+
+## ÄNDERUNG 1: rDNS-Lookup und MAC-Adress-Erkennung
+
+### rDNS beim Gerät erfassen
+
+Beim Erfassen oder Bearbeiten eines Geräts wird automatisch ein Reverse-DNS-Lookup
+auf die eingetragene IP-Adresse durchgeführt. Das Ergebnis wird in `rdns_hostname` gespeichert
+und im Formular als Hinweis angezeigt.
+
+**Neuer Service: `services/dns_service.py`**
+```python
+async def reverse_lookup(ip: str) -> Optional[str]:
+    """Async rDNS-Lookup. Timeout 3s. Gibt hostname oder None zurück."""
+```
+
+### MAC-Adress-Erkennung aus Nmap
+
+Nmap liefert bei Scans im selben L2-Segment MAC-Adresse und Hersteller-Vendor.
+Diese werden in `scan_results` erfasst und in `devices.mac_address` / `devices.mac_vendor`
+übernommen (sofern vorhanden).
+
+### Neue DB-Felder in `devices`
+```
+rdns_hostname       TEXT    -- Ergebnis des rDNS-Lookups
+mac_address         TEXT    -- MAC-Adresse aus Nmap (nur L2)
+mac_vendor          TEXT    -- Hersteller aus Nmap OUI-Datenbank
+phpipam_id          INTEGER -- Referenz auf phpIPAM-Eintrag
+phpipam_synced_at   DATETIME
+```
+
+---
+
+## ÄNDERUNG 2: phpIPAM-Integration
+
+**Ziel:** Geräte aus einer bestehenden phpIPAM-Infrastruktur-DB importieren, statt manuell zu erfassen.
+
+**Neuer Service: `services/phpipam_service.py`**
+
+```python
+class PhpIpamService:
+    def get_all_hosts(self) -> list[PhpIpamHost]:
+        """Alle Hosts aus phpIPAM abrufen (paginiert)."""
+
+    def import_to_db(self, hosts: list[PhpIpamHost], db: Session) -> ImportResult:
+        """Neue Geräte anlegen, bestehende aktualisieren (phpipam_id als Schlüssel)."""
+```
+
+**Konfiguration in `.env`:**
+```env
+PIBG_PHPIPAM_URL=https://ipam.example.com
+PIBG_PHPIPAM_APP_ID=pibroadguard
+PIBG_PHPIPAM_TOKEN=abc123
+```
+
+**Neue Frontend-Seite: `phpipam_import.html`**
+- Zeigt alle phpIPAM-Hosts (gefiltert nach Subnetz/VLAN)
+- Checkbox-Auswahl welche importiert werden sollen
+- Differenz-Anzeige: neu / aktualisiert / unverändert
+- Import-Button mit Bestätigung
+
+**Neue API-Endpunkte:**
+```
+GET  /api/v1/phpipam/hosts        # Hosts aus phpIPAM abrufen
+POST /api/v1/phpipam/import       # Auswahl in PiBroadGuard importieren
+```
+
+---
+
+## ÄNDERUNG 3: Konfigurierbare Gerätetypen
+
+Statt eines hartcodierten Enums werden Gerätetypen in der Tabelle `device_types` gespeichert.
+Das erlaubt spätere Erweiterungen ohne Code-Änderung.
+
+### Neue DB-Tabelle: `device_types`
+```
+id          INTEGER PK
+name        TEXT UNIQUE       -- interner Bezeichner (z.B. "encoder")
+label_de    TEXT              -- "Encoder"
+label_en    TEXT              -- "Encoder"
+sort_order  INTEGER
+active      BOOLEAN
+created_at  DATETIME
+```
+
+**Seeded beim ersten Start:**
+encoder, decoder, matrix, intercom, router, switch, camera, monitor,
+multiviewer, playout, transcoder, signal_processor, frame_sync, other
+
+**API-Endpunkt:**
+```
+GET /api/v1/device-types          # Alle aktiven Typen (für Formular-Dropdown)
+```
+
+Das Frontend lädt die Typen bei jedem Seitenaufruf frisch aus der API.
+
+---
+
+## ÄNDERUNG 4: Remediation Sources in Findings
+
+Jedes Finding erhält ein JSON-Array `remediation_sources`, das die Quellen der
+Lösungsvorschläge dokumentiert:
+
+```json
+[
+  {"source": "rule", "label": "BDSA-Regelwerk"},
+  {"source": "nvd", "label": "NVD CVE-2023-12345", "url": "https://nvd.nist.gov/..."},
+  {"source": "kev", "label": "CISA KEV – aktiv ausgenutzt", "url": "https://..."},
+  {"source": "cwe", "label": "CWE-287", "text": "Authentifizierung prüfen..."}
+]
+```
+
+Im UI werden diese als farbige Badges mit Links angezeigt.
+
+---
+
+## ÄNDERUNG 5: Scan-Metadaten in `scan_results`
+
+Neue Felder pro Scan-Durchführung:
+```
+scan_duration_seconds   REAL    -- Gesamtdauer in Sekunden
+nmap_exit_code          INTEGER -- Exit-Code des Nmap-Prozesses (0 = OK)
+nmap_version            TEXT    -- z.B. "7.94"
+total_ports_scanned     INTEGER -- Anzahl gescannter Ports lt. scanstats
+```
+
+Diese werden beim Scan-Abschluss befüllt und im Assessment-Überblick angezeigt.
+
+---
+
+## ZUSAMMENFASSUNG v1.5
+
+| Bereich | Änderung |
+|---------|----------|
+| DB | `devices`: 5 neue Felder (rdns, mac, phpipam) |
+| DB | Neue Tabelle `device_types` (14 Seed-Einträge) |
+| DB | `findings`: `remediation_sources` TEXT (JSON) |
+| DB | `scan_results`: 4 neue Metadaten-Felder |
+| Service | `dns_service.py` – rDNS async |
+| Service | `phpipam_service.py` – phpIPAM REST API |
+| API | `GET /api/v1/device-types` |
+| API | `GET/POST /api/v1/phpipam/hosts|import` |
+| Frontend | `phpipam_import.html` |
+
+---
+
+*Update v1.5 | März 2026*
+
+---
+
+# BDSA_SPEC.md – Update v1.6
+## Assessment-Historie, i18n, Scan-Profil-Persistenz, UX-Verbesserungen
+
+Ergänzung zu v1.0–v1.5 | Stand: März 2026
+
+---
+
+## ÄNDERUNG 1: Assessment-Historie in der Geräteansicht
+
+In `device_form.html` wird unterhalb der Stammdaten eine Tabelle aller bisherigen
+Assessments für dieses Gerät angezeigt:
+
+| Datum | Status | Rating | Reviewer | Report |
+|-------|--------|--------|----------|--------|
+| 15.11.2025 | Abgeschlossen | 🟡 Gelb | M. Gerber | [↓ MD] [↓ HTML] |
+
+Verlinkung direkt auf die jeweilige Assessment-Ansicht.
+
+---
+
+## ÄNDERUNG 2: Scan-Profil-Persistenz
+
+Das zuletzt verwendete Scan-Profil (passive / standard / extended) wird pro
+Assessment gespeichert und beim nächsten Aufruf der Scan-Seite vorausgewählt.
+
+Beim Wechsel des Profils erscheint ein Bestätigungsdialog. Das neue Profil wird
+via `PUT /api/v1/assessments/{id}` im Feld `scan_profile` persistiert.
+
+---
+
+## ÄNDERUNG 3: Internationalisierung (i18n)
+
+**Datei: `frontend/i18n.js`**
+
+Alle UI-Labels sind zweisprachig (Deutsch/Englisch). Sprachauswahl über EN/DE-Buttons
+im Header, persistiert im `localStorage`.
+
+```js
+// Verwendung in Vue-Komponenten
+const { t } = usePiBGi18n();
+t('tab_scan', 'Scan')          // gibt übersetzten Text zurück
+```
+
+Sprachdateien: `de.json` / `en.json` (eingebettet in `i18n.js`).
+
+---
+
+## ÄNDERUNG 4: Tooltips
+
+Alle wichtigen UI-Elemente haben Tooltip-Texte (hover-Erklärungen), ebenfalls
+zweisprachig. Besonders in der Findings-Tabelle, Score-Balken und Regelwerk-Abschnitten.
+
+---
+
+## ÄNDERUNG 5: CVE-Cache-Alter und klickbare Badges
+
+In der Findings-Tabelle werden CVE-Referenzen und KEV-Status als klickbare Badges
+angezeigt:
+
+- **NVD-Badge**: Link auf `https://nvd.nist.gov/vuln/detail/{cve_id}`
+  mit Anzeige des Cache-Alters (z.B. „3d ago")
+- **KEV-Badge**: Link auf CISA KEV Catalog
+
+### Neues Feld `cve_fetched_at` in `FindingRead`
+
+Das `GET /api/v1/assessments/{id}/findings`-Endpoint joiniert die `cve_cache`-Tabelle
+und befüllt `cve_fetched_at` mit dem Zeitstempel des letzten Lookups.
+
+---
+
+## ÄNDERUNG 6: Korrigierte Scan-Profil-Beschreibungen
+
+| Profil | Korrekte Beschreibung |
+|--------|----------------------|
+| `passive` | ~20 broadcast-relevante Ports (ST 2110, Modbus, SNMP, …), T2 |
+| `standard` | **Top 1000 Ports** (nicht „alle Ports"), T3, Version-Intensity 5 |
+| `extended` | Top 1000 TCP + UDP (SNMP/RTP/Discovery), T3, Version-Intensity 7 |
+
+---
+
+## ZUSAMMENFASSUNG v1.6
+
+| Bereich | Änderung |
+|---------|----------|
+| Frontend | Assessment-Historie in `device_form.html` |
+| Frontend | Scan-Profil-Persistenz mit Bestätigungsdialog |
+| Frontend | i18n EN/DE via `i18n.js` |
+| Frontend | Tooltips flächendeckend |
+| Frontend | NVD/KEV-Badges mit Links und Cache-Alter |
+| Schema | `FindingRead`: `cve_fetched_at: Optional[datetime]` |
+| Schema | `FindingRead`: `remediation_sources: Optional[str]` |
+| API | `GET /findings` joiniert `cve_cache` für `cve_fetched_at` |
+
+---
+
+*Update v1.6 | März 2026*
+
+---
+
+# BDSA_SPEC.md – Update v1.7
+## Scan-Queue Service
+
+Ergänzung zu v1.0–v1.6 | Stand: März 2026
+
+---
+
+## Hintergrund
+
+Mehrere parallele Scans (z.B. durch Scheduler-Trigger + manuellen Start) können auf
+dem Raspberry Pi zu Ressourcen-Engpässen führen. Ein Queue-System serialisiert die
+Scans und gibt Feedback über die Warteposition im UI.
+
+---
+
+## Scan-Queue Service (`services/scan_queue_service.py`)
+
+### Datenstrukturen
+
+```python
+@dataclass
+class ScanJob:
+    job_id: str           # UUID
+    assessment_id: int
+    device_id: int
+    ip_address: str       # frisch aus DB beim Enqueuen
+    scan_profile: str
+    triggered_by: str     # "manual" | "schedule"
+    schedule_id: Optional[int] = None
+    queued_at: datetime   = field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = None
+    status: ScanJobStatus = ScanJobStatus.QUEUED
+    position: int = 0
+
+class ScanJobStatus(str, Enum):
+    QUEUED   = "queued"
+    RUNNING  = "running"
+    DONE     = "done"
+    FAILED   = "failed"
+    SKIPPED  = "skipped"    # Gerät bereits in Queue oder running
+```
+
+### Module-Level Singleton
+
+```python
+_instance: Optional[ScanQueueService] = None
+
+def init_queue(max_parallel: int = 1) -> ScanQueueService:
+    global _instance
+    _instance = ScanQueueService(max_parallel)
+    return _instance
+
+def get_queue() -> Optional[ScanQueueService]:
+    return _instance
+```
+
+### ScanQueueService
+
+```python
+class ScanQueueService:
+    def __init__(self, max_parallel: int = 1):
+        self._queue = asyncio.Queue()
+        self._running: dict[str, ScanJob] = {}
+        self._semaphore = asyncio.Semaphore(max_parallel)
+        self._history: list[ScanJob] = []  # max. 50 Jobs
+        self._job_processor: Optional[Callable] = None
+
+    def set_job_processor(self, fn: Callable) -> None:
+        """Vermeidet zirkuläre Imports: scans.py injiziert seinen _run_scan_task."""
+
+    async def enqueue(self, job: ScanJob) -> ScanJob:
+        """Duplikat-Schutz: gleiche device_id nicht doppelt in Queue oder running."""
+
+    async def worker(self) -> None:
+        """Asyncio-Task (gestartet in main.py startup). Läuft endlos."""
+
+    def get_status(self) -> dict:
+        """Gibt queued/running/history für API-Polling zurück."""
+
+    async def cancel(self, job_id: str) -> bool:
+        """Entfernt Job aus Queue (nur wenn noch nicht gestartet)."""
+```
+
+### Konfiguration
+
+```env
+PIBG_MAX_PARALLEL_SCANS=1    # 1 = sequenziell (empfohlen für Pi)
+```
+
+### Neue API-Endpunkte
+
+```
+GET    /api/v1/scan-queue/status           # Queue-Zustand (queued/running/history)
+DELETE /api/v1/scan-queue/{job_id}         # Job aus Queue entfernen
+```
+
+`POST /api/v1/assessments/{id}/scan` gibt jetzt zusätzlich zurück:
+```json
+{
+  "assessment_id": 17,
+  "status": "queued",
+  "job_id": "uuid...",
+  "position": 2
+}
+```
+
+### UI-Integration
+
+**Scan-Tab im Assessment:** Zeigt Queue-Position an wenn `position > 1`:
+```
+⏳ Scan ist in der Warteschlange (Position 2 von 3)
+[✕ Abbrechen]
+```
+
+**Dashboard (`index.html`):** Queue-Widget zeigt laufende/wartende Jobs,
+aktualisiert alle 5 Sekunden per Polling.
+
+### Starten in `main.py` (lifespan)
+
+```python
+scan_queue = init_queue(settings.pibg_max_parallel_scans)
+scan_queue.set_job_processor(_run_scan_task)
+asyncio.create_task(scan_queue.worker())
+```
+
+---
+
+*Update v1.7 | März 2026*
+
+---
+
+# BDSA_SPEC.md – Update v1.8
+## Geplante Scans (Scheduler)
+
+Ergänzung zu v1.0–v1.7 | Stand: März 2026
+
+---
+
+## Hintergrund
+
+Scans sollen automatisch zu festgelegten Zeiten oder in regelmässigen Abständen
+ausgeführt werden, ohne dass ein Benutzer aktiv sein muss. Die Schedules werden
+in der SQLite-DB persistiert und überleben einen Neustart.
+
+---
+
+## Scheduler-Service (`services/scheduler_service.py`)
+
+**Basis:** APScheduler 3.x (`AsyncIOScheduler` + `SQLAlchemyJobStore`)
+
+```python
+def init_scheduler(db_url: str, timezone_str: str) -> AsyncIOScheduler:
+    """Erstellt und startet den Scheduler mit SQLAlchemyJobStore."""
+
+def get_scheduler() -> Optional[AsyncIOScheduler]:
+    """Gibt den laufenden Scheduler zurück."""
+```
+
+### Trigger-Typen
+
+| Trigger | Implementierung | Uhrzeit |
+|---------|----------------|---------|
+| `once` | `DateTrigger(run_date=run_at_utc_aware)` | exaktes Datum/Uhrzeit |
+| `interval` hours | `IntervalTrigger(hours=N)` | keine Uhrzeit |
+| `interval` days=1 | `CronTrigger(hour=H, minute=M)` | Uhrzeit wählbar |
+| `interval` days>1 / weeks | `IntervalTrigger(days/weeks=N, start_date=next_HH_MM)` | Uhrzeit wählbar |
+| `interval` months | `CronTrigger(day=1, hour=H, minute=M, month=*/N)` | Uhrzeit wählbar |
+| `cron` | `CronTrigger.from_crontab(expr)` | im Cron-Ausdruck |
+
+**Wichtig:** APScheduler 3.x `IntervalTrigger` unterstützt kein `months`-Parameter.
+Monats-Intervalle werden intern auf `CronTrigger` umgestellt.
+
+### Timezone-Handling
+
+- `run_at` wird bei Typ `once` immer UTC-aware gemacht (naive Datetimes werden mit `.replace(tzinfo=timezone.utc)` konvertiert)
+- `get_next_fire_time()` ist in `try/except` gekapselt gegen tz-naive/aware-Mismatches
+
+### Ausführung eines geplanten Scans
+
+```python
+async def execute_scheduled_scan(
+    device_id: int,
+    scan_profile: str,
+    scheduled_scan_id: int,
+    authorized_by_name: str,
+    authorized_by_role: str,
+) -> None:
+    """
+    1. Device frisch aus DB lesen (aktuelle IP-Adresse)
+    2. Assessment erstellen (Status: scan_running)
+    3. ScanAuthorization mit "scheduler" als confirmed_by_user erstellen
+    4. ScanJob in die Queue einreihen
+    5. ScheduledScan.run_count und last_run_at aktualisieren
+    """
+```
+
+Die IP-Adresse wird immer frisch aus der DB gelesen – nie gecacht.
+
+---
+
+## Neue DB-Tabelle: `scheduled_scans`
+
+```
+id                  INTEGER PK
+device_id           INTEGER FK -> devices.id
+apscheduler_job_id  TEXT UNIQUE    -- APScheduler Job-ID
+trigger_type        TEXT           -- "once" | "interval" | "cron"
+run_at              DATETIME       -- für trigger_type=once
+interval_unit       TEXT           -- "hours" | "days" | "weeks" | "months"
+interval_value      INTEGER
+start_hour          INTEGER        -- Uhrzeit HH für Intervall-Scans (UTC)
+start_minute        INTEGER        -- Uhrzeit MM für Intervall-Scans
+cron_expression     TEXT           -- für trigger_type=cron
+scan_profile        TEXT
+authorized_by_name  TEXT NOT NULL
+authorized_by_role  TEXT NOT NULL
+active              BOOLEAN
+last_run_at         DATETIME
+last_run_status     TEXT           -- "success" | "failed" | "skipped"
+next_run_at         DATETIME
+run_count           INTEGER
+created_at          DATETIME
+created_by          TEXT
+```
+
+APScheduler verwaltet seine Job-Persistenz in der eigenen Tabelle `apscheduler_jobs`
+(automatisch erstellt, nicht via Alembic verwaltet).
+
+---
+
+## API-Endpunkte
+
+```
+GET    /api/v1/schedules                    # Alle Schedules (mit next_run_at)
+POST   /api/v1/schedules                    # Schedule erstellen
+GET    /api/v1/schedules/{id}               # Einzelner Schedule
+DELETE /api/v1/schedules/{id}               # Löschen (auch APScheduler-Job)
+POST   /api/v1/schedules/{id}/pause         # Pausieren
+POST   /api/v1/schedules/{id}/resume        # Fortsetzen
+POST   /api/v1/schedules/{id}/run-now       # Sofort auslösen (Test)
+GET    /api/v1/devices/{id}/schedules       # Schedules eines Geräts
+```
+
+**POST `/api/v1/schedules` Body:**
+```json
+{
+  "device_id": 42,
+  "trigger_type": "interval",
+  "scan_profile": "passive",
+  "authorized_by_name": "Max Muster",
+  "authorized_by_role": "Broadcast Engineer",
+  "interval_unit": "weeks",
+  "interval_value": 4,
+  "start_hour": 2,
+  "start_minute": 0
+}
+```
+
+---
+
+## Frontend-Seiten
+
+### `schedules.html` – Standalone Schedules-Übersicht
+
+- Tabelle aller Schedules (alle Geräte)
+- Filter: Gerät / Status (aktiv/pausiert)
+- Aktionen: Pause / Resume / Jetzt ausführen / Löschen
+- Erstellen-Modal (identisch zum Assessment-Tab)
+
+### Assessment-Tab „Schedules"
+
+Neuer Tab in `assessment.html` mit:
+- Tabelle der Schedules für dieses Gerät
+- Erstellen-Modal mit Trigger-Typ/Intervall/Uhrzeit/Profil/Autorisierung
+
+### Create-Modal – Felder
+
+| Feld | Sichtbar wenn |
+|------|---------------|
+| Date/Time | `trigger_type = once` |
+| Interval Value + Unit | `trigger_type = interval` |
+| **Time of Day (HH:MM)** | `trigger_type = interval` UND `interval_unit ≠ hours` |
+| Cron Expression | `trigger_type = cron` |
+| Scan Profile | immer |
+| Authorized by Name/Role | immer (Pflichtfelder) |
+| Bestätigungs-Checkbox | immer |
+
+Die Uhrzeit-Eingabe (`<input type="time">`) zeigt den Hinweis „HH:MM – UTC".
+Standard: `02:00`.
+
+### Dashboard-Widget – Nächste Scans
+
+```
+⏰ Nächste Scans
+──────────────────────────────────────────
+Riedel MediorNet  passive  Do 26.03 02:00
+Grass Valley AMPP passive  Mo 30.03 02:00
+```
+
+Zeigt die nächsten 4 aktiven Schedules, Polling alle 5 Sekunden.
+
+---
+
+## Konfiguration
+
+```env
+PIBG_MAX_PARALLEL_SCANS=1       # Queue-Parallelität
+PIBG_SCHEDULER_TIMEZONE=Europe/Zurich
+```
+
+## Neue Abhängigkeit
+
+```
+apscheduler>=3.10.4
+```
+
+---
+
+## Starten in `main.py` (lifespan)
+
+```python
+# Scan-Queue initialisieren
+scan_queue = init_queue(settings.pibg_max_parallel_scans)
+scan_queue.set_job_processor(_run_scan_task)
+asyncio.create_task(scan_queue.worker())
+
+# Scheduler initialisieren
+init_scheduler(settings.database_url, settings.pibg_scheduler_timezone)
+
+# Shutdown
+shutdown_scheduler()
+```
+
+---
+
+## Migrationen (Übersicht)
+
+| Migration | Was |
+|-----------|-----|
+| `001_initial.py` | Alle Basistabellen (v1.0–v1.4) |
+| `002_v15_extensions.py` | rDNS/MAC/phpIPAM-Felder, `device_types`, `remediation_sources`, Scan-Metadaten |
+| `003_scheduled_scans.py` | `scheduled_scans`-Tabelle |
+| `004_schedule_time_of_day.py` | `start_hour`/`start_minute` in `scheduled_scans` |
+
+---
+
+*Update v1.8 | März 2026*
