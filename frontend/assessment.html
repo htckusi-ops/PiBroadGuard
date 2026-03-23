@@ -332,6 +332,16 @@
               </div>
             </div>
 
+            <!-- Time-of-day for interval triggers (not applicable for hours) -->
+            <div v-if="newSchedule.trigger_type === 'interval' && newSchedule.interval_unit !== 'hours'" class="mb-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Time of Day *
+                <span class="text-slate-400 text-xs font-normal ml-1">(HH:MM – UTC)</span>
+              </label>
+              <input type="time" v-model="newSchedule.start_time" class="border border-slate-300 rounded px-3 py-2 text-sm">
+              <p class="text-xs text-slate-400 mt-1">Scan will start at this time each cycle.</p>
+            </div>
+
             <!-- Cron -->
             <div v-if="newSchedule.trigger_type === 'cron'" class="mb-4">
               <label class="block text-sm font-medium text-slate-700 mb-1">
@@ -568,6 +578,7 @@ createApp({
       scan_profile: 'passive',
       interval_unit: 'weeks',
       interval_value: 1,
+      start_time: '02:00',
       authorized_by_name: '',
       authorized_by_role: '',
       run_at: '',
@@ -875,6 +886,11 @@ createApp({
       } else if (newSchedule.value.trigger_type === 'interval') {
         body.interval_unit = newSchedule.value.interval_unit;
         body.interval_value = newSchedule.value.interval_value;
+        if (newSchedule.value.interval_unit !== 'hours' && newSchedule.value.start_time) {
+          const [hh, mm] = newSchedule.value.start_time.split(':');
+          body.start_hour = parseInt(hh, 10);
+          body.start_minute = parseInt(mm, 10);
+        }
       } else if (newSchedule.value.trigger_type === 'cron') {
         if (!newSchedule.value.cron_expression) { scheduleError.value = 'Cron expression required'; return; }
         body.cron_expression = newSchedule.value.cron_expression;
@@ -895,7 +911,7 @@ createApp({
           return;
         }
         showScheduleModal.value = false;
-        newSchedule.value = { trigger_type: 'interval', scan_profile: 'passive', interval_unit: 'weeks', interval_value: 1, authorized_by_name: '', authorized_by_role: '', run_at: '', cron_expression: '', confirmed: false };
+        newSchedule.value = { trigger_type: 'interval', scan_profile: 'passive', interval_unit: 'weeks', interval_value: 1, start_time: '02:00', authorized_by_name: '', authorized_by_role: '', run_at: '', cron_expression: '', confirmed: false };
         await loadSchedules();
       } catch (e) {
         scheduleError.value = 'Network error: ' + e.message;
