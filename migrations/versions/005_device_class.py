@@ -62,7 +62,7 @@ def upgrade() -> None:
     if "device_class_id" not in existing_columns:
         with op.batch_alter_table("devices") as batch_op:
             batch_op.add_column(
-                sa.Column("device_class_id", sa.Integer, sa.ForeignKey("device_classes.id"), nullable=True)
+                sa.Column("device_class_id", sa.Integer, sa.ForeignKey("device_classes.id", name="fk_devices_device_class_id"), nullable=True)
             )
 
 
