@@ -167,8 +167,12 @@ def create_schedule(
     if trigger_type == "once":
         trigger = DateTrigger(run_date=run_at)
     elif trigger_type == "interval":
-        kwargs = {interval_unit: interval_value}
-        trigger = IntervalTrigger(**kwargs)
+        # APScheduler IntervalTrigger does not support 'months'.
+        # Convert months to a CronTrigger (1st of every N months at 02:00).
+        if interval_unit == "months":
+            trigger = CronTrigger(day=1, hour=2, minute=0, month=f"*/{interval_value}")
+        else:
+            trigger = IntervalTrigger(**{interval_unit: interval_value})
     elif trigger_type == "cron":
         trigger = CronTrigger.from_crontab(cron_expression)
     else:

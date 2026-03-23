@@ -305,8 +305,12 @@ createApp({
           body: JSON.stringify(body),
         });
         if (!r.ok) {
-          const err = await r.json();
-          formError.value = err.detail || 'Error creating schedule';
+          try {
+            const err = await r.json();
+            formError.value = err.detail || `Error ${r.status}`;
+          } catch {
+            formError.value = `Server error ${r.status}`;
+          }
           return;
         }
         showModal.value = false;
