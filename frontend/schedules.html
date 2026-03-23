@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – Scheduled Scans</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/app/i18n.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="app">
+
+  <!-- Header -->
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
+    <div class="flex items-center gap-3">
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <span class="text-slate-400">/</span>
+      <span class="text-slate-200 text-sm">⏰ Scheduled Scans</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">&#9881; Settings</a>
+      <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
+        <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+
+    <!-- Toolbar -->
+    <div class="flex items-center gap-3 mb-5 flex-wrap">
+      <h1 class="text-xl font-bold text-slate-800 flex-1">⏰ Scheduled Scans</h1>
+      <select v-model="filterDevice" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+        <option value="">All Devices</option>
+        <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.manufacturer }} {{ d.model }}</option>
+      </select>
+      <select v-model="filterStatus" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="paused">Paused</option>
+      </select>
+      <button @click="showModal = true" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+        + Schedule Scan
+      </button>
+    </div>
+
+    <!-- Schedules Table -->
+    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div v-if="loading" class="text-center py-12 text-slate-400">Loading...</div>
+      <div v-else-if="filteredSchedules.length === 0" class="text-center py-12 text-slate-400">
+        No scheduled scans configured.
+        <a href="#" @click.prevent="showModal = true" class="text-blue-600 hover:underline ml-1">Create one →</a>
+      </div>
+      <table v-else class="w-full text-sm">
+        <thead>
+          <tr class="bg-slate-700 text-white">
+            <th class="text-left px-4 py-3">Device</th>
+            <th class="text-left px-4 py-3">Type</th>
+            <th class="text-left px-4 py-3">Next Run</th>
+            <th class="text-left px-4 py-3">Profile</th>
+            <th class="text-left px-4 py-3">Authorized</th>
+            <th class="text-left px-4 py-3">Runs</th>
+            <th class="text-left px-4 py-3">Last Run</th>
+            <th class="text-left px-4 py-3">Status</th>
+            <th class="text-left px-4 py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="s in filteredSchedules" :key="s.id" class="border-t border-slate-100 hover:bg-slate-50">
+            <td class="px-4 py-3">
+              <div class="font-medium text-slate-800">{{ s.device_name || '—' }}</div>
+            </td>
+            <td class="px-4 py-3 text-slate-600">
+              <span v-if="s.trigger_type === 'interval'">🔁 Every {{ s.interval_value }} {{ s.interval_unit }}</span>
+              <span v-else-if="s.trigger_type === 'cron'">⏱ {{ s.cron_expression }}</span>
+              <span v-else>📅 Once</span>
+            </td>
+            <td class="px-4 py-3 text-slate-600">{{ s.next_run_at ? fmtDateTime(s.next_run_at) : '—' }}</td>
+            <td class="px-4 py-3">
+              <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-xs font-medium">{{ s.scan_profile }}</span>
+            </td>
+            <td class="px-4 py-3 text-slate-600 text-xs">{{ s.authorized_by_name }}<br><span class="text-slate-400">{{ s.authorized_by_role }}</span></td>
+            <td class="px-4 py-3 text-slate-500 text-center">{{ s.run_count }}</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">
+              <span v-if="s.last_run_at">{{ fmtDateTime(s.last_run_at) }}</span>
+              <span v-else class="text-slate-400">—</span>
+              <div v-if="s.last_run_status"
+                   :class="s.last_run_status === 'success' ? 'text-green-600' : s.last_run_status === 'failed' ? 'text-red-600' : 'text-slate-400'">
+                {{ s.last_run_status }}
+              </div>
+            </td>
+            <td class="px-4 py-3">
+              <span v-if="s.active" class="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded font-medium">▶ Active</span>
+              <span v-else class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded font-medium">⏸ Paused</span>
+            </td>
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <button v-if="s.active" @click="pauseSchedule(s.id)" class="text-xs text-amber-600 hover:underline" title="Pause">⏸ Pause</button>
+                <button v-else @click="resumeSchedule(s.id)" class="text-xs text-green-600 hover:underline" title="Resume">▶ Resume</button>
+                <button @click="runNow(s.id)" class="text-xs text-blue-600 hover:underline" title="Run now">▶▶ Now</button>
+                <button @click="deleteSchedule(s.id)" class="text-xs text-red-500 hover:underline" title="Delete">🗑</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-if="error" class="mt-4 p-3 bg-red-50 text-red-700 rounded text-sm">{{ error }}</div>
+  </main>
+
+  <!-- Create Schedule Modal -->
+  <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 max-h-screen overflow-y-auto">
+      <h3 class="font-bold text-slate-800 mb-4">⏰ Schedule Scan</h3>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Device *</label>
+        <select v-model="form.device_id" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+          <option value="">Select device...</option>
+          <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.manufacturer }} {{ d.model }} ({{ d.ip_address }})</option>
+        </select>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Trigger Type</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-1 text-sm cursor-pointer"><input type="radio" v-model="form.trigger_type" value="once"> Once</label>
+          <label class="flex items-center gap-1 text-sm cursor-pointer"><input type="radio" v-model="form.trigger_type" value="interval"> Recurring</label>
+          <label class="flex items-center gap-1 text-sm cursor-pointer"><input type="radio" v-model="form.trigger_type" value="cron"> Cron</label>
+        </div>
+      </div>
+
+      <div v-if="form.trigger_type === 'once'" class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Date/Time *</label>
+        <input type="datetime-local" v-model="form.run_at" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+      </div>
+
+      <div v-if="form.trigger_type === 'interval'" class="mb-4 grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Every *</label>
+          <input type="number" v-model.number="form.interval_value" min="1" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Unit *</label>
+          <select v-model="form.interval_unit" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+            <option value="hours">Hours</option>
+            <option value="days">Days</option>
+            <option value="weeks">Weeks</option>
+            <option value="months">Months</option>
+          </select>
+        </div>
+      </div>
+
+      <div v-if="form.trigger_type === 'cron'" class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+          Cron Expression *
+          <span class="relative group ml-1 cursor-help">
+            <span class="text-slate-400 text-xs border border-slate-300 rounded-full px-1">ⓘ</span>
+            <span class="absolute z-10 left-6 top-0 w-64 bg-slate-800 text-white text-xs rounded p-2 shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-pre">min hour day month weekday&#10;0 2 * * *   daily 02:00&#10;0 2 * * 1   Mon 02:00&#10;0 3 1 * *   1st monthly</span>
+          </span>
+        </label>
+        <input v-model="form.cron_expression" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono" placeholder="0 2 * * *">
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
+        <div class="flex gap-4">
+          <label v-for="p in ['passive','standard','extended']" :key="p" class="flex items-center gap-1 text-sm cursor-pointer capitalize">
+            <input type="radio" v-model="form.scan_profile" :value="p"> {{ p }}
+          </label>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Authorized by – Name *</label>
+          <input v-model="form.authorized_by_name" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Jane Smith">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Role *</label>
+          <input v-model="form.authorized_by_role" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="IT Security">
+        </div>
+      </div>
+
+      <label class="flex items-center gap-2 text-sm mb-5 cursor-pointer">
+        <input type="checkbox" v-model="form.confirmed" class="w-4 h-4">
+        General operational approval for automatic scans granted (per NIST SP 800-115 / IEC 62443-2-1).
+      </label>
+
+      <div class="flex justify-end gap-3">
+        <button @click="showModal = false; formError = ''" class="px-4 py-2 text-sm border border-slate-300 rounded hover:bg-slate-50">Cancel</button>
+        <button @click="createSchedule"
+          :disabled="!form.device_id || !form.authorized_by_name || !form.authorized_by_role || !form.confirmed"
+          class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed">
+          ⏰ Create Schedule
+        </button>
+      </div>
+      <div v-if="formError" class="mt-2 text-red-600 text-sm">{{ formError }}</div>
+    </div>
+  </div>
+
+  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
+    <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
+    <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
+    <span>{{ t('footer_version', 'v1.0 | March 2026') }}</span>
+  </footer>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const schedules = ref([]);
+    const devices = ref([]);
+    const loading = ref(true);
+    const error = ref('');
+    const filterDevice = ref('');
+    const filterStatus = ref('');
+    const showModal = ref(false);
+    const formError = ref('');
+    const tr = ref({});
+    const currentLang = ref(window.PiBGi18n.currentLang());
+
+    const form = ref({
+      device_id: '',
+      trigger_type: 'interval',
+      scan_profile: 'passive',
+      interval_unit: 'weeks',
+      interval_value: 1,
+      authorized_by_name: '',
+      authorized_by_role: '',
+      run_at: '',
+      cron_expression: '',
+      confirmed: false,
+    });
+
+    function t(key, fb) {
+      return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
+    }
+    async function switchLang(lang) {
+      tr.value = await window.PiBGi18n.load(lang);
+      currentLang.value = lang;
+    }
+
+    const filteredSchedules = computed(() => {
+      return schedules.value.filter(s => {
+        if (filterDevice.value && s.device_id !== filterDevice.value) return false;
+        if (filterStatus.value === 'active' && !s.active) return false;
+        if (filterStatus.value === 'paused' && s.active) return false;
+        return true;
+      });
+    });
+
+    function fmtDateTime(dt) {
+      if (!dt) return '—';
+      return new Date(dt).toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function loadSchedules() {
+      try {
+        const r = await fetch('/api/v1/schedules');
+        if (r.ok) schedules.value = await r.json();
+        else error.value = 'Error loading schedules';
+      } catch (e) {
+        error.value = 'Connection error: ' + e.message;
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function loadDevices() {
+      const r = await fetch('/api/v1/devices');
+      if (r.ok) devices.value = await r.json();
+    }
+
+    async function createSchedule() {
+      formError.value = '';
+      const body = {
+        device_id: form.value.device_id,
+        trigger_type: form.value.trigger_type,
+        scan_profile: form.value.scan_profile,
+        authorized_by_name: form.value.authorized_by_name,
+        authorized_by_role: form.value.authorized_by_role,
+      };
+      if (form.value.trigger_type === 'once') {
+        if (!form.value.run_at) { formError.value = 'Date/Time required'; return; }
+        body.run_at = form.value.run_at;
+      } else if (form.value.trigger_type === 'interval') {
+        body.interval_unit = form.value.interval_unit;
+        body.interval_value = form.value.interval_value;
+      } else if (form.value.trigger_type === 'cron') {
+        if (!form.value.cron_expression) { formError.value = 'Cron expression required'; return; }
+        body.cron_expression = form.value.cron_expression;
+      }
+      try {
+        const r = await fetch('/api/v1/schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          formError.value = err.detail || 'Error creating schedule';
+          return;
+        }
+        showModal.value = false;
+        form.value = { device_id: '', trigger_type: 'interval', scan_profile: 'passive', interval_unit: 'weeks', interval_value: 1, authorized_by_name: '', authorized_by_role: '', run_at: '', cron_expression: '', confirmed: false };
+        await loadSchedules();
+      } catch (e) {
+        formError.value = 'Network error: ' + e.message;
+      }
+    }
+
+    async function pauseSchedule(id) {
+      await fetch(`/api/v1/schedules/${id}/pause`, { method: 'POST' });
+      await loadSchedules();
+    }
+    async function resumeSchedule(id) {
+      await fetch(`/api/v1/schedules/${id}/resume`, { method: 'POST' });
+      await loadSchedules();
+    }
+    async function runNow(id) {
+      if (!confirm('Trigger scan immediately?')) return;
+      await fetch(`/api/v1/schedules/${id}/run-now`, { method: 'POST' });
+      await loadSchedules();
+    }
+    async function deleteSchedule(id) {
+      if (!confirm('Delete this schedule?')) return;
+      await fetch(`/api/v1/schedules/${id}`, { method: 'DELETE' });
+      await loadSchedules();
+    }
+
+    onMounted(async () => {
+      tr.value = await window.PiBGi18n.load();
+      await Promise.all([loadSchedules(), loadDevices()]);
+    });
+
+    return { schedules, devices, loading, error, filterDevice, filterStatus, filteredSchedules, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

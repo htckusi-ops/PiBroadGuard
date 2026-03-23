@@ -12,10 +12,11 @@ from app.models.import_log import ImportLog
 from app.models.action_items import ActionItem
 from app.models.system_settings import SystemSettings
 from app.models.device_type import DeviceType
+from app.models.scheduled_scan import ScheduledScan
 
 __all__ = [
     "Device", "Assessment", "ScanResult", "Finding", "ManualFinding",
     "VendorInformation", "AuditLog", "CveCache", "KevCache",
     "ScanAuthorization", "ImportLog", "ActionItem", "SystemSettings",
-    "DeviceType",
+    "DeviceType", "ScheduledScan",
 ]

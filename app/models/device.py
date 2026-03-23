@@ -32,3 +32,4 @@ class Device(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     assessments = relationship("Assessment", back_populates="device")
+    scheduled_scans = relationship("ScheduledScan", back_populates="device")

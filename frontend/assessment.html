@@ -23,10 +23,13 @@
         ← All Assessments
       </a>
     </div>
-    <div class="flex items-center gap-1">
-      <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
-      <span class="text-slate-600 text-xs">|</span>
-      <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+    <div class="flex items-center gap-3">
+      <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-xs">⏰ Schedules</a>
+      <div class="flex items-center gap-1 border-l border-slate-600 pl-2">
+        <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+      </div>
     </div>
   </header>
 
@@ -210,7 +213,173 @@
             </div>
           </div>
 
+          <!-- Queue status (when job is waiting) -->
+          <div v-if="queueStatus && queueStatus.position > 0" class="mt-4 bg-amber-50 border border-amber-200 rounded p-4 text-sm">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <span class="font-semibold">⏳ Scan wartet in der Queue...</span>
+                <span class="ml-2 text-slate-600">Position {{ queueStatus.position }}</span>
+                <span v-if="queueStatus.running_device" class="ml-2 text-slate-500">(Läuft: {{ queueStatus.running_device }})</span>
+              </div>
+              <button v-if="queueStatus.job_id" @click="cancelQueueJob(queueStatus.job_id)"
+                class="text-xs text-red-600 hover:underline border border-red-200 rounded px-2 py-1">
+                Aus Queue entfernen
+              </button>
+            </div>
+          </div>
+
           <div v-if="scanError" class="mt-3 text-red-600 text-sm">{{ scanError }}</div>
+        </div>
+      </div>
+
+      <!-- Tab: Schedules -->
+      <div v-if="activeTab === 'schedules'" class="p-5">
+        <div v-if="!device" class="text-slate-500">No device loaded.</div>
+        <div v-else>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="font-semibold text-slate-800">⏰ {{ t('tab_schedules', 'Scheduled Scans') }}</h2>
+            <button @click="showScheduleModal = true"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+              + {{ t('btn_plan_scan', 'Schedule Scan') }}
+            </button>
+          </div>
+
+          <div v-if="schedulesLoading" class="text-slate-400 text-sm">Loading...</div>
+          <div v-else-if="schedules.length === 0" class="text-slate-500 text-sm bg-slate-50 rounded p-4">
+            {{ t('no_schedules', 'No scheduled scans for this device.') }}
+            <a href="#" @click.prevent="showScheduleModal = true" class="text-blue-600 hover:underline ml-1">Schedule one →</a>
+          </div>
+          <table v-else class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-100 text-slate-600 text-xs">
+                <th class="text-left px-3 py-2">Type</th>
+                <th class="text-left px-3 py-2">Next Run</th>
+                <th class="text-left px-3 py-2">Profile</th>
+                <th class="text-left px-3 py-2">Runs</th>
+                <th class="text-left px-3 py-2">Status</th>
+                <th class="text-left px-3 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in schedules" :key="s.id" class="border-t border-slate-100">
+                <td class="px-3 py-2">
+                  <span v-if="s.trigger_type === 'interval'">🔁 {{ s.interval_value }} {{ s.interval_unit }}</span>
+                  <span v-else-if="s.trigger_type === 'cron'">⏱ {{ s.cron_expression }}</span>
+                  <span v-else>📅 {{ t('schedule_once', 'Once') }}</span>
+                </td>
+                <td class="px-3 py-2 text-slate-600">{{ s.next_run_at ? fmtDateTime(s.next_run_at) : '—' }}</td>
+                <td class="px-3 py-2">
+                  <span class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-xs">{{ s.scan_profile }}</span>
+                </td>
+                <td class="px-3 py-2 text-slate-500">{{ s.run_count }}</td>
+                <td class="px-3 py-2">
+                  <span v-if="s.active" class="text-green-700 text-xs font-medium">▶ {{ t('schedule_active', 'Active') }}</span>
+                  <span v-else class="text-slate-400 text-xs">⏸ {{ t('schedule_paused', 'Paused') }}</span>
+                </td>
+                <td class="px-3 py-2">
+                  <div class="flex gap-2">
+                    <button v-if="s.active" @click="pauseSchedule(s.id)" class="text-xs text-amber-600 hover:underline" title="Pause">⏸</button>
+                    <button v-else @click="resumeSchedule(s.id)" class="text-xs text-green-600 hover:underline" title="Resume">▶</button>
+                    <button @click="runScheduleNow(s.id)" class="text-xs text-blue-600 hover:underline" title="Run now">▶▶</button>
+                    <button @click="deleteSchedule(s.id)" class="text-xs text-red-500 hover:underline" title="Delete">🗑</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Schedule Modal -->
+        <div v-if="showScheduleModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+            <h3 class="font-bold text-slate-800 mb-4">⏰ {{ t('btn_plan_scan', 'Schedule Scan') }} – {{ device?.manufacturer }} {{ device?.model }}</h3>
+
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">Trigger Type</label>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-1 text-sm cursor-pointer">
+                  <input type="radio" v-model="newSchedule.trigger_type" value="once"> {{ t('schedule_once', 'Once') }}
+                </label>
+                <label class="flex items-center gap-1 text-sm cursor-pointer">
+                  <input type="radio" v-model="newSchedule.trigger_type" value="interval"> {{ t('schedule_recurring', 'Recurring') }}
+                </label>
+                <label class="flex items-center gap-1 text-sm cursor-pointer">
+                  <input type="radio" v-model="newSchedule.trigger_type" value="cron"> Cron
+                </label>
+              </div>
+            </div>
+
+            <!-- Once -->
+            <div v-if="newSchedule.trigger_type === 'once'" class="mb-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">Date/Time *</label>
+              <input type="datetime-local" v-model="newSchedule.run_at" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+            </div>
+
+            <!-- Interval -->
+            <div v-if="newSchedule.trigger_type === 'interval'" class="mb-4 grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Interval *</label>
+                <input type="number" v-model.number="newSchedule.interval_value" min="1" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="1">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Unit *</label>
+                <select v-model="newSchedule.interval_unit" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+                  <option value="hours">Hours</option>
+                  <option value="days">Days</option>
+                  <option value="weeks">Weeks</option>
+                  <option value="months">Months</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Cron -->
+            <div v-if="newSchedule.trigger_type === 'cron'" class="mb-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Cron Expression *
+                <span class="relative group ml-1 cursor-help">
+                  <span class="text-slate-400 text-xs border border-slate-300 rounded-full px-1">ⓘ</span>
+                  <span class="absolute z-10 left-6 top-0 w-64 bg-slate-800 text-white text-xs rounded p-2 shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-pre">min hour day month weekday&#10;0 2 * * *   = daily 02:00&#10;0 2 * * 1   = Mon 02:00&#10;0 3 1 * *   = 1st of month</span>
+                </span>
+              </label>
+              <input v-model="newSchedule.cron_expression" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono" placeholder="0 2 * * *">
+            </div>
+
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
+              <div class="flex gap-4">
+                <label v-for="p in ['passive','standard','extended']" :key="p" class="flex items-center gap-1 text-sm cursor-pointer capitalize">
+                  <input type="radio" v-model="newSchedule.scan_profile" :value="p"> {{ p }}
+                </label>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Authorized by – Name *</label>
+                <input v-model="newSchedule.authorized_by_name" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Jane Smith">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Role *</label>
+                <input v-model="newSchedule.authorized_by_role" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="IT Security">
+              </div>
+            </div>
+
+            <label class="flex items-center gap-2 text-sm mb-5 cursor-pointer">
+              <input type="checkbox" v-model="newSchedule.confirmed" class="w-4 h-4">
+              General operational approval for automatic scans granted.
+            </label>
+
+            <div class="flex justify-end gap-3">
+              <button @click="showScheduleModal = false; scheduleError = ''"
+                class="px-4 py-2 text-sm border border-slate-300 rounded hover:bg-slate-50">Cancel</button>
+              <button @click="saveSchedule"
+                :disabled="!newSchedule.authorized_by_name || !newSchedule.authorized_by_role || !newSchedule.confirmed"
+                class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed">
+                ⏰ Schedule Scan
+              </button>
+            </div>
+            <div v-if="scheduleError" class="mt-2 text-red-600 text-sm">{{ scheduleError }}</div>
+          </div>
         </div>
       </div>
 
@@ -384,6 +553,28 @@ createApp({
 
     const auth = ref({ name: '', role: '', contact: '', profile: 'passive', notes: '', timeStart: '', timeEnd: '', confirmed: false });
 
+    // Queue
+    const queueStatus = ref(null);   // { position, job_id, running_device }
+    let currentJobId = ref(null);
+    let queuePollInterval = null;
+
+    // Schedules
+    const schedules = ref([]);
+    const schedulesLoading = ref(false);
+    const showScheduleModal = ref(false);
+    const scheduleError = ref('');
+    const newSchedule = ref({
+      trigger_type: 'interval',
+      scan_profile: 'passive',
+      interval_unit: 'weeks',
+      interval_value: 1,
+      authorized_by_name: '',
+      authorized_by_role: '',
+      run_at: '',
+      cron_expression: '',
+      confirmed: false,
+    });
+
     let pollInterval = null;
     let sseSource = null;
 
@@ -393,6 +584,7 @@ createApp({
       { id: 'manual', label: '📝 ' + t('assessment_tab_manual', 'Manual Questions') },
       { id: 'findings', label: '⚠️ ' + t('assessment_tab_findings', 'Findings') },
       { id: 'report', label: '📄 ' + t('assessment_tab_report', 'Report') },
+      { id: 'schedules', label: '⏰ ' + t('tab_schedules', 'Schedules') },
     ]);
 
     const scoreDims = computed(() => ({
@@ -496,9 +688,19 @@ createApp({
 
       const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan`, { method: 'POST' });
       if (resp.ok) {
+        const data = await resp.json();
         scanRunning.value = true;
         scanOutput.value = [];
         assessment.value.status = 'scan_running';
+        // Track job for queue polling
+        if (data.job_id) {
+          currentJobId.value = data.job_id;
+          if (data.position > 1) {
+            // Job is queued (not immediately running)
+            queueStatus.value = { position: data.position, job_id: data.job_id, running_device: null };
+            queuePollInterval = setInterval(pollQueueStatus, 3000);
+          }
+        }
         startSSE();
         startPolling();
       } else {
@@ -597,12 +799,128 @@ createApp({
           if (assessment.value.status === 'scan_running') { scanRunning.value = true; startPolling(); }
         }
       }
+      // Load schedules for this device
+      await loadSchedules();
     });
 
     onUnmounted(() => {
       if (pollInterval) clearInterval(pollInterval);
+      if (queuePollInterval) clearInterval(queuePollInterval);
       if (sseSource) { sseSource.close(); sseSource = null; }
     });
+
+    async function pollQueueStatus() {
+      if (!currentJobId.value) return;
+      try {
+        const r = await fetch('/api/v1/scan-queue/status');
+        if (!r.ok) return;
+        const data = await r.json();
+        const queued = data.queued || [];
+        const running = data.running || [];
+        const qIdx = queued.findIndex(j => j.job_id === currentJobId.value);
+        if (qIdx >= 0) {
+          const runningEntry = running[0];
+          queueStatus.value = {
+            position: qIdx + 1,
+            job_id: currentJobId.value,
+            running_device: runningEntry ? runningEntry.ip_address : null,
+          };
+        } else {
+          // Job left queue → scan started or done
+          queueStatus.value = null;
+          if (running.find(j => j.job_id === currentJobId.value)) {
+            // still running, no position
+            queueStatus.value = null;
+          } else {
+            currentJobId.value = null;
+            clearInterval(queuePollInterval);
+            queuePollInterval = null;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    async function cancelQueueJob(jobId) {
+      try {
+        await fetch(`/api/v1/scan-queue/${jobId}`, { method: 'DELETE' });
+        queueStatus.value = null;
+        currentJobId.value = null;
+        if (assessment.value) assessment.value.status = 'draft';
+      } catch (e) { /* ignore */ }
+    }
+
+    async function loadSchedules() {
+      if (!device.value) return;
+      schedulesLoading.value = true;
+      try {
+        const r = await fetch(`/api/v1/devices/${device.value.id}/schedules`);
+        if (r.ok) schedules.value = await r.json();
+      } finally {
+        schedulesLoading.value = false;
+      }
+    }
+
+    async function saveSchedule() {
+      scheduleError.value = '';
+      const body = {
+        device_id: device.value.id,
+        trigger_type: newSchedule.value.trigger_type,
+        scan_profile: newSchedule.value.scan_profile,
+        authorized_by_name: newSchedule.value.authorized_by_name,
+        authorized_by_role: newSchedule.value.authorized_by_role,
+      };
+      if (newSchedule.value.trigger_type === 'once') {
+        if (!newSchedule.value.run_at) { scheduleError.value = 'Date/Time required'; return; }
+        body.run_at = newSchedule.value.run_at;
+      } else if (newSchedule.value.trigger_type === 'interval') {
+        body.interval_unit = newSchedule.value.interval_unit;
+        body.interval_value = newSchedule.value.interval_value;
+      } else if (newSchedule.value.trigger_type === 'cron') {
+        if (!newSchedule.value.cron_expression) { scheduleError.value = 'Cron expression required'; return; }
+        body.cron_expression = newSchedule.value.cron_expression;
+      }
+      try {
+        const r = await fetch('/api/v1/schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          scheduleError.value = err.detail || 'Error creating schedule';
+          return;
+        }
+        showScheduleModal.value = false;
+        newSchedule.value = { trigger_type: 'interval', scan_profile: 'passive', interval_unit: 'weeks', interval_value: 1, authorized_by_name: '', authorized_by_role: '', run_at: '', cron_expression: '', confirmed: false };
+        await loadSchedules();
+      } catch (e) {
+        scheduleError.value = 'Network error: ' + e.message;
+      }
+    }
+
+    async function pauseSchedule(id) {
+      await fetch(`/api/v1/schedules/${id}/pause`, { method: 'POST' });
+      await loadSchedules();
+    }
+    async function resumeSchedule(id) {
+      await fetch(`/api/v1/schedules/${id}/resume`, { method: 'POST' });
+      await loadSchedules();
+    }
+    async function runScheduleNow(id) {
+      if (!confirm('Trigger scan immediately?')) return;
+      await fetch(`/api/v1/schedules/${id}/run-now`, { method: 'POST' });
+      await loadSchedules();
+    }
+    async function deleteSchedule(id) {
+      if (!confirm('Delete this schedule?')) return;
+      await fetch(`/api/v1/schedules/${id}`, { method: 'DELETE' });
+      await loadSchedules();
+    }
+
+    function fmtDateTime(dt) {
+      if (!dt) return '—';
+      return new Date(dt).toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
 
     function parseRemediationSources(raw) {
       if (!raw) return [];
@@ -622,7 +940,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources, fmtDate, cacheAge, t, currentLang, switchLang };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

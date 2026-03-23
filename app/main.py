@@ -17,7 +17,7 @@ from app.core.logging_config import setup_logging
 from app.core.security import limiter
 from app.core.database import SessionLocal
 
-from app.api.v1 import devices, assessments, scans, reports, system, import_export, usb, cve
+from app.api.v1 import devices, assessments, scans, reports, system, import_export, usb, cve, schedules
 
 VERSION = "1.0.0"
 API_VERSION = "v1"
@@ -81,9 +81,26 @@ async def lifespan(app: FastAPI):
             db2.close()
     asyncio.create_task(kev_task())
 
+    # Scan Queue – must be before scheduler
+    from app.services.scan_queue_service import init_queue
+    from app.api.v1.scans import _run_scan_task
+    scan_queue = init_queue(max_parallel=settings.pibg_max_parallel_scans)
+    scan_queue.set_job_processor(_run_scan_task)
+    asyncio.create_task(scan_queue.worker())
+    logger.info(f"Scan queue started (max_parallel={settings.pibg_max_parallel_scans})")
+
+    # Scheduler (APScheduler) – after queue
+    from app.services.scheduler_service import init_scheduler
+    init_scheduler(
+        db_url=settings.database_url,
+        timezone_str=settings.pibg_scheduler_timezone,
+    )
+
     logger.info(f"PiBroadGuard v{VERSION} started")
     yield
     # Shutdown
+    from app.services.scheduler_service import shutdown_scheduler
+    shutdown_scheduler()
     logger.info("PiBroadGuard shutting down")
 
 
@@ -117,6 +134,7 @@ app.include_router(system.router, prefix=PREFIX)
 app.include_router(import_export.router, prefix=PREFIX)
 app.include_router(usb.router, prefix=PREFIX)
 app.include_router(cve.router, prefix=PREFIX)
+app.include_router(schedules.router, prefix=PREFIX)
 
 
 @app.middleware("http")
