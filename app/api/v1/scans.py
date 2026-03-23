@@ -25,7 +25,7 @@ _scan_status: dict = {}
 _job_id_for_assessment: dict = {}  # assessment_id -> job_id
 
 
-async def _run_scan_task(assessment_id: int, ip: str, profile: str):
+async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: str = None):
     _scan_status[assessment_id] = {"status": "running", "message": "Scan läuft..."}
     db = SessionLocal()
     try:
@@ -51,6 +51,7 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str):
             assessment_id=assessment_id,
             flags_override=flags_override,
             timeout_override=timeout_override,
+            interface=interface,
         )
         assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
         if not assessment:
@@ -218,6 +219,7 @@ async def start_scan(
         raise HTTPException(400, "Scan-Autorisierung erforderlich – zuerst autorisieren")
 
     device = db.query(Device).filter(Device.id == assessment.device_id).first()
+    iface = auth.nmap_interface if auth.nmap_interface and auth.nmap_interface != "auto" else None
 
     queue = get_queue()
     if not queue:
@@ -225,7 +227,7 @@ async def start_scan(
         assessment.status = "scan_running"
         db.commit()
         asyncio.create_task(_run_scan_task(
-            assessment_id, device.ip_address, assessment.scan_profile or "passive"
+            assessment_id, device.ip_address, assessment.scan_profile or "passive", iface
         ))
         return {"message": "Scan gestartet (direkt)", "assessment_id": assessment_id, "job_id": None}
 
@@ -237,6 +239,7 @@ async def start_scan(
         ip_address=device.ip_address,
         scan_profile=assessment.scan_profile or "passive",
         triggered_by="manual",
+        interface=iface,
     )
     result = await queue.enqueue(job)
 

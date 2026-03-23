@@ -326,7 +326,8 @@ def get_scan_profiles(
 ):
     """Return all active scan profiles."""
     from app.models.scan_profile import ScanProfile
-    return db.query(ScanProfile).filter(ScanProfile.active == True).order_by(ScanProfile.id).all()
+    profiles = db.query(ScanProfile).filter(ScanProfile.active == True).order_by(ScanProfile.id).all()
+    return [_serialize_scan_profile(sp) for sp in profiles]
 
 
 @router.post("/scan-profiles", status_code=201)
@@ -407,6 +408,37 @@ def _serialize_scan_profile(sp) -> dict:
         "built_in": sp.built_in,
         "active": sp.active,
     }
+
+
+# ── Network interfaces ────────────────────────────────────────────────────────
+
+@router.get("/network-interfaces")
+def get_network_interfaces(user: str = Depends(verify_credentials)):
+    """Return available network interfaces for Nmap binding."""
+    import subprocess, re
+    interfaces = [{"name": "auto", "label": "Auto (Standard)", "addresses": []}]
+    try:
+        out = subprocess.check_output(["ip", "-o", "addr", "show"], text=True, timeout=5)
+        seen = {}
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            iface = parts[1]
+            family = parts[2]
+            addr_cidr = parts[3]
+            addr = addr_cidr.split("/")[0]
+            if iface in ("lo",):
+                continue
+            if iface not in seen:
+                seen[iface] = []
+            if family in ("inet", "inet6"):
+                seen[iface].append(addr)
+        for iface, addrs in seen.items():
+            interfaces.append({"name": iface, "label": iface, "addresses": addrs})
+    except Exception as e:
+        logger.warning(f"Could not enumerate network interfaces: {e}")
+    return interfaces
 
 
 # ── phpIPAM endpoints ────────────────────────────────────────────────────────

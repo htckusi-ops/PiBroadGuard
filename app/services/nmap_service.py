@@ -115,6 +115,7 @@ async def run_scan(
     assessment_id: Optional[int] = None,
     flags_override: Optional[List] = None,
     timeout_override: Optional[int] = None,
+    interface: Optional[str] = None,
 ) -> dict:
     safe_ip = _validate_ip(ip)
     flags = flags_override if flags_override is not None else SCAN_PROFILES.get(profile, SCAN_PROFILES["passive"])
@@ -127,7 +128,8 @@ async def run_scan(
     with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
         output_file = tmp.name
 
-    cmd = ["nmap"] + flags + [
+    iface_flags = ["-e", interface] if interface and interface != "auto" else []
+    cmd = ["nmap"] + flags + iface_flags + [
         "--host-timeout", effective_timeout,
         "--max-rate", str(max_rate),
         "-oX", output_file,

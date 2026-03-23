@@ -101,6 +101,7 @@ def create_scan_authorization(
         authorized_by_contact=body.authorized_by_contact,
         authorization_date=datetime.now(timezone.utc),
         scan_profile=body.scan_profile,
+        nmap_interface=body.nmap_interface or None,
         target_ip=device.ip_address,
         time_window_start=body.time_window_start,
         time_window_end=body.time_window_end,

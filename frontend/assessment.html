@@ -133,9 +133,7 @@
           <div class="mb-3">
             <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
             <select v-model="newProfile" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white">
-              <option value="passive">{{ t('scan_profile_passive', 'Passive') }} – {{ t('scan_profile_passive_desc', 'Broadcast-specific ports, T2, gentle') }}</option>
-              <option value="standard">{{ t('scan_profile_standard', 'Standard') }} – {{ t('scan_profile_standard_desc', 'Top 1000 ports, T3') }}</option>
-              <option value="extended">{{ t('scan_profile_extended', 'Extended') }} – {{ t('scan_profile_extended_desc', 'All TCP + key UDP ports') }}</option>
+              <option v-for="p in scanProfiles" :key="p.name" :value="p.name">{{ p.label }}<template v-if="p.description"> – {{ p.description }}</template></option>
             </select>
           </div>
           <button @click="createAssessment" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
@@ -212,9 +210,15 @@
                 <select :value="auth.profile" @change="changeProfile($event.target.value)"
                         :disabled="assessment.status === 'scan_complete' || assessment.status === 'completed'"
                         class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white disabled:bg-slate-100">
-                  <option value="passive">{{ t('scan_profile_passive', 'Passive') }} – gentle (recommended)</option>
-                  <option value="standard">{{ t('scan_profile_standard', 'Standard') }} – top 1000 ports</option>
-                  <option value="extended">{{ t('scan_profile_extended', 'Extended') }} – incl. UDP</option>
+                  <option v-for="p in scanProfiles" :key="p.name" :value="p.name">{{ p.label }}<template v-if="p.description"> – {{ p.description }}</template></option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Netzwerk-Interface</label>
+                <select v-model="auth.iface" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+                  <option v-for="ni in networkInterfaces" :key="ni.name" :value="ni.name">
+                    {{ ni.label }}<template v-if="ni.addresses && ni.addresses.length"> ({{ ni.addresses.join(', ') }})</template>
+                  </option>
                 </select>
               </div>
               <div>
@@ -608,7 +612,32 @@ createApp({
     const editDecisionNotes = ref('');
     const editReassessmentDue = ref('');
 
-    const auth = ref({ name: '', role: '', contact: '', profile: 'passive', notes: '', timeStart: '', timeEnd: '', confirmed: false });
+    const auth = ref({ name: '', role: '', contact: '', profile: 'passive', iface: 'auto', notes: '', timeStart: '', timeEnd: '', confirmed: false });
+
+    // Scan profiles loaded from API (falls back to built-ins)
+    const scanProfiles = ref([
+      { name: 'passive', label: 'Passive', description: 'Broadcast-specific ports, T2, gentle' },
+      { name: 'standard', label: 'Standard', description: 'Top 1000 ports, T3' },
+      { name: 'extended', label: 'Extended', description: 'All TCP + key UDP ports' },
+    ]);
+    const networkInterfaces = ref([{ name: 'auto', label: 'Auto (Standard)' }]);
+
+    async function loadScanProfiles() {
+      try {
+        const r = await fetch('/api/v1/scan-profiles');
+        if (r.ok) {
+          const data = await r.json();
+          if (data.length) scanProfiles.value = data;
+        }
+      } catch (e) { /* keep fallback */ }
+    }
+
+    async function loadNetworkInterfaces() {
+      try {
+        const r = await fetch('/api/v1/network-interfaces');
+        if (r.ok) networkInterfaces.value = await r.json();
+      } catch (e) { /* keep default */ }
+    }
 
     // Queue
     const queueStatus = ref(null);   // { position, job_id, running_device }
@@ -732,6 +761,7 @@ createApp({
         body: JSON.stringify({
           authorized_by_name: auth.value.name, authorized_by_role: auth.value.role,
           authorized_by_contact: auth.value.contact, scan_profile: auth.value.profile,
+          nmap_interface: auth.value.iface === 'auto' ? null : auth.value.iface,
           notes: auth.value.notes, time_window_start: auth.value.timeStart || null,
           time_window_end: auth.value.timeEnd || null
         })
@@ -859,7 +889,7 @@ createApp({
 
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await loadDevice();
+      await Promise.allSettled([loadDevice(), loadScanProfiles(), loadNetworkInterfaces()]);
       if (assessmentIdParam) {
         await loadLatestAssessment();
         if (assessment.value) {
@@ -1023,7 +1053,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces };
   }
 }).mount('#app');
 </script>

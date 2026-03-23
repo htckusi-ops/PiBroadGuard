@@ -404,8 +404,10 @@ createApp({
     const dcMsg = ref('');
 
     async function loadDeviceClasses() {
-      const resp = await fetch('/api/v1/device-classes/all');
-      if (resp.ok) deviceClasses.value = await resp.json();
+      try {
+        const resp = await fetch('/api/v1/device-classes/all');
+        if (resp.ok) deviceClasses.value = await resp.json();
+      } catch (e) { console.error('loadDeviceClasses', e); }
     }
     async function addDc() {
       dcMsg.value = '';
@@ -428,8 +430,10 @@ createApp({
     const spError = ref(false);
 
     async function loadScanProfiles() {
-      const resp = await fetch('/api/v1/scan-profiles');
-      if (resp.ok) scanProfiles.value = await resp.json();
+      try {
+        const resp = await fetch('/api/v1/scan-profiles');
+        if (resp.ok) scanProfiles.value = await resp.json();
+      } catch (e) { console.error('loadScanProfiles', e); }
     }
     async function addSp() {
       spMsg.value = ''; spError.value = false;
@@ -478,7 +482,8 @@ createApp({
 
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await Promise.all([loadConn(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam()]);
+      // Use allSettled so one failing loader doesn't crash the whole page
+      await Promise.allSettled([loadConn(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam()]);
     });
     return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, deviceClasses, newDc, dcMsg, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, t, currentLang, switchLang };
   }
