@@ -8,7 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="/app/i18n.js"></script>
 </head>
-<body class="bg-slate-100 min-h-screen">
+<body class="bg-slate-100 min-h-screen flex flex-col">
 <div id="app">
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
@@ -23,7 +23,7 @@
     </div>
   </header>
 
-  <main class="max-w-3xl mx-auto px-4 py-6">
+  <main class="max-w-3xl mx-auto px-4 py-6 flex-1">
     <div class="bg-white rounded-lg shadow-sm p-6">
       <h1 class="text-xl font-bold text-slate-800 mb-5">&#8679; {{ t('import_title', 'Import Scan Package') }}</h1>
 
@@ -153,7 +153,7 @@
     </div>
   </main>
 
-  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
+  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
     <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
     <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
     <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>

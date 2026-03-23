@@ -8,7 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="/app/i18n.js"></script>
 </head>
-<body class="bg-slate-100 min-h-screen">
+<body class="bg-slate-100 min-h-screen flex flex-col">
 <div id="app">
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
@@ -23,7 +23,7 @@
     </div>
   </header>
 
-  <main class="max-w-3xl mx-auto px-4 py-6 space-y-4">
+  <main class="max-w-3xl mx-auto px-4 py-6 flex-1 space-y-4">
 
     <!-- Connectivity -->
     <div class="bg-white rounded-lg shadow-sm p-5">
@@ -172,21 +172,35 @@
             <th class="pb-2">Label DE</th>
             <th class="pb-2">Label EN</th>
             <th class="pb-2 w-16">Active</th>
-            <th class="pb-2 w-16"></th>
+            <th class="pb-2 w-28"></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="dt in deviceTypes" :key="dt.id" class="border-b border-slate-100">
-            <td class="py-2 pr-2 font-mono text-xs text-slate-600">{{ dt.name }}</td>
-            <td class="py-2 pr-2">{{ dt.label_de }}</td>
-            <td class="py-2 pr-2 text-slate-500">{{ dt.label_en }}</td>
-            <td class="py-2">
-              <span :class="dt.active ? 'text-green-600' : 'text-slate-400'" class="text-xs">{{ dt.active ? '✅' : '○' }}</span>
-            </td>
-            <td class="py-2">
-              <button v-if="dt.active" @click="deactivateDt(dt.id)" class="text-xs text-red-500 hover:text-red-700">Deactivate</button>
-            </td>
-          </tr>
+          <template v-for="dt in deviceTypes" :key="dt.id">
+            <tr class="border-b border-slate-100">
+              <td class="py-2 pr-2 font-mono text-xs text-slate-600">{{ dt.name }}</td>
+              <td class="py-2 pr-2">
+                <template v-if="editDtId === dt.id"><input v-model="editDtData.label_de" class="border border-blue-300 rounded px-2 py-0.5 text-xs w-full"></template>
+                <template v-else>{{ dt.label_de }}</template>
+              </td>
+              <td class="py-2 pr-2 text-slate-500">
+                <template v-if="editDtId === dt.id"><input v-model="editDtData.label_en" class="border border-blue-300 rounded px-2 py-0.5 text-xs w-full"></template>
+                <template v-else>{{ dt.label_en }}</template>
+              </td>
+              <td class="py-2"><span :class="dt.active ? 'text-green-600' : 'text-slate-400'" class="text-xs">{{ dt.active ? '✅' : '○' }}</span></td>
+              <td class="py-2 flex gap-1">
+                <template v-if="editDtId === dt.id">
+                  <button @click="saveDt(dt.id)" class="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded">Save</button>
+                  <button @click="editDtId = null" class="text-xs text-slate-400 hover:text-slate-600 px-1">✕</button>
+                </template>
+                <template v-else>
+                  <button @click="startEditDt(dt)" class="text-xs text-blue-500 hover:text-blue-700">Edit</button>
+                  <button v-if="dt.active" @click="deactivateDt(dt.id)" class="text-xs text-red-400 hover:text-red-600">Off</button>
+                  <button v-else @click="activateDt(dt.id)" class="text-xs text-green-500 hover:text-green-700">On</button>
+                </template>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
 
@@ -216,15 +230,31 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="dc in deviceClasses" :key="dc.id" class="border-b border-slate-100">
-            <td class="py-2 pr-2 font-mono text-xs text-slate-600">{{ dc.name }}</td>
-            <td class="py-2 pr-2">{{ dc.label_de }}</td>
-            <td class="py-2 pr-2 text-slate-500">{{ dc.label_en }}</td>
-            <td class="py-2"><span :class="dc.active ? 'text-green-600' : 'text-slate-400'" class="text-xs">{{ dc.active ? '✅' : '○' }}</span></td>
-            <td class="py-2">
-              <button v-if="dc.active" @click="deactivateDc(dc.id)" class="text-xs text-red-500 hover:text-red-700">Deactivate</button>
-            </td>
-          </tr>
+          <template v-for="dc in deviceClasses" :key="dc.id">
+            <tr class="border-b border-slate-100">
+              <td class="py-2 pr-2 font-mono text-xs text-slate-600">{{ dc.name }}</td>
+              <td class="py-2 pr-2">
+                <template v-if="editDcId === dc.id"><input v-model="editDcData.label_de" class="border border-blue-300 rounded px-2 py-0.5 text-xs w-full"></template>
+                <template v-else>{{ dc.label_de }}</template>
+              </td>
+              <td class="py-2 pr-2 text-slate-500">
+                <template v-if="editDcId === dc.id"><input v-model="editDcData.label_en" class="border border-blue-300 rounded px-2 py-0.5 text-xs w-full"></template>
+                <template v-else>{{ dc.label_en }}</template>
+              </td>
+              <td class="py-2"><span :class="dc.active ? 'text-green-600' : 'text-slate-400'" class="text-xs">{{ dc.active ? '✅' : '○' }}</span></td>
+              <td class="py-2 flex gap-1">
+                <template v-if="editDcId === dc.id">
+                  <button @click="saveDc(dc.id)" class="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded">Save</button>
+                  <button @click="editDcId = null" class="text-xs text-slate-400 hover:text-slate-600 px-1">✕</button>
+                </template>
+                <template v-else>
+                  <button @click="startEditDc(dc)" class="text-xs text-blue-500 hover:text-blue-700">Edit</button>
+                  <button v-if="dc.active" @click="deactivateDc(dc.id)" class="text-xs text-red-400 hover:text-red-600">Off</button>
+                  <button v-else @click="activateDc(dc.id)" class="text-xs text-green-500 hover:text-green-700">On</button>
+                </template>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
       <div class="border-t border-slate-100 pt-4">
@@ -314,7 +344,7 @@ PIBG_PHPIPAM_TOKEN=your-api-token</pre>
 
   </main>
 
-  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
+  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
     <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
     <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
     <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>
@@ -402,12 +432,23 @@ createApp({
     const deviceClasses = ref([]);
     const newDc = ref({ name: '', label_de: '', label_en: '' });
     const dcMsg = ref('');
+    const editDcId = ref(null);
+    const editDcData = ref({ label_de: '', label_en: '' });
 
     async function loadDeviceClasses() {
       try {
         const resp = await fetch('/api/v1/device-classes/all');
         if (resp.ok) deviceClasses.value = await resp.json();
       } catch (e) { console.error('loadDeviceClasses', e); }
+    }
+    function startEditDc(dc) { editDcId.value = dc.id; editDcData.value = { label_de: dc.label_de, label_en: dc.label_en }; }
+    async function saveDc(id) {
+      await fetch(`/api/v1/device-classes/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editDcData.value),
+      });
+      editDcId.value = null;
+      await loadDeviceClasses();
     }
     async function addDc() {
       dcMsg.value = '';
@@ -418,8 +459,14 @@ createApp({
       if (resp.ok) { dcMsg.value = 'Device class added.'; newDc.value = { name: '', label_de: '', label_en: '' }; await loadDeviceClasses(); }
     }
     async function deactivateDc(id) {
-      if (!confirm('Deactivate device class?')) return;
       await fetch(`/api/v1/device-classes/${id}`, { method: 'DELETE' });
+      await loadDeviceClasses();
+    }
+    async function activateDc(id) {
+      await fetch(`/api/v1/device-classes/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: true }),
+      });
       await loadDeviceClasses();
     }
 
@@ -455,10 +502,23 @@ createApp({
     const deviceTypes = ref([]);
     const newDt = ref({ name: '', label_de: '', label_en: '' });
     const dtMsg = ref('');
+    const editDtId = ref(null);
+    const editDtData = ref({ label_de: '', label_en: '' });
 
     async function loadDeviceTypes() {
-      const resp = await fetch('/api/v1/device-types');
-      if (resp.ok) deviceTypes.value = await resp.json();
+      try {
+        const resp = await fetch('/api/v1/device-types');
+        if (resp.ok) deviceTypes.value = await resp.json();
+      } catch (e) { console.error('loadDeviceTypes', e); }
+    }
+    function startEditDt(dt) { editDtId.value = dt.id; editDtData.value = { label_de: dt.label_de, label_en: dt.label_en }; }
+    async function saveDt(id) {
+      await fetch(`/api/v1/device-types/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editDtData.value),
+      });
+      editDtId.value = null;
+      await loadDeviceTypes();
     }
     async function addDt() {
       dtMsg.value = '';
@@ -469,8 +529,14 @@ createApp({
       if (resp.ok) { dtMsg.value = 'Device type added.'; newDt.value = { name: '', label_de: '', label_en: '' }; await loadDeviceTypes(); }
     }
     async function deactivateDt(id) {
-      if (!confirm('Deactivate device type?')) return;
       await fetch(`/api/v1/device-types/${id}`, { method: 'DELETE' });
+      await loadDeviceTypes();
+    }
+    async function activateDt(id) {
+      await fetch(`/api/v1/device-types/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: true }),
+      });
       await loadDeviceTypes();
     }
 
@@ -485,7 +551,7 @@ createApp({
       // Use allSettled so one failing loader doesn't crash the whole page
       await Promise.allSettled([loadConn(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam()]);
     });
-    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, deviceClasses, newDc, dcMsg, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, t, currentLang, switchLang };
+    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

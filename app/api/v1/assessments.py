@@ -53,6 +53,29 @@ def create_assessment(
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
+
+    # Pre-populate manual findings from the most recent previous assessment for this device
+    prev = (
+        db.query(Assessment)
+        .filter(Assessment.device_id == device_id, Assessment.id != assessment.id)
+        .order_by(Assessment.id.desc())
+        .first()
+    )
+    if prev:
+        prev_manuals = db.query(ManualFinding).filter(ManualFinding.assessment_id == prev.id).all()
+        for mf in prev_manuals:
+            db.add(ManualFinding(
+                assessment_id=assessment.id,
+                category=mf.category,
+                question_key=mf.question_key,
+                answer_value=mf.answer_value,
+                comment=mf.comment,
+                source=mf.source,
+            ))
+        if prev_manuals:
+            db.commit()
+            logger.info(f"Copied {len(prev_manuals)} manual findings from assessment {prev.id} to {assessment.id}")
+
     logger.info(f"Created assessment {assessment.id} for device {device_id}")
     return assessment
 
