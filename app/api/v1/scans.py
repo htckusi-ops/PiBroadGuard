@@ -25,15 +25,33 @@ _scan_status: dict = {}
 _job_id_for_assessment: dict = {}  # assessment_id -> job_id
 
 
-async def _run_scan_task(assessment_id: int, ip: str, profile: str):
+async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: str = None):
     _scan_status[assessment_id] = {"status": "running", "message": "Scan läuft..."}
     db = SessionLocal()
     try:
+        # Load profile flags from DB (supports custom profiles), fall back to built-in
+        flags_override = None
+        timeout_override = None
+        try:
+            from app.models.scan_profile import ScanProfile
+            import json as _json
+            sp = db.query(ScanProfile).filter(
+                ScanProfile.name == profile, ScanProfile.active == True
+            ).first()
+            if sp:
+                flags_override = _json.loads(sp.nmap_flags)
+                timeout_override = sp.timeout_seconds
+        except Exception:
+            pass
+
         result = await nmap_service.run_scan(
             ip, profile,
             host_timeout=settings.pibg_nmap_host_timeout,
             max_rate=settings.pibg_nmap_max_rate,
             assessment_id=assessment_id,
+            flags_override=flags_override,
+            timeout_override=timeout_override,
+            interface=interface,
         )
         assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
         if not assessment:
@@ -78,6 +96,71 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str):
             db.add(finding)
         db.commit()
 
+        # Auto CVE lookup: for any service with a detected product+version
+        # create CVSS-based findings when online.
+        cve_findings_added = 0
+        try:
+            from app.services import connectivity_service, cve_service
+            from app.models.system_settings import SystemSettings
+            mode_row = db.query(SystemSettings).filter(SystemSettings.key == "connectivity_mode").first()
+            conn_mode = mode_row.value if mode_row else "auto"
+            if connectivity_service.is_online(conn_mode):
+                seen_cves: set = set()
+                for sr_data in result.get("results", []):
+                    product = sr_data.get("service_product", "").strip()
+                    version = sr_data.get("service_version", "").strip()
+                    if not product:
+                        continue
+                    cves = await cve_service.lookup_cves(
+                        db, vendor=product, product=product, version=version
+                    )
+                    for cve in cves:
+                        cve_id = cve.get("cve_id", "")
+                        if not cve_id or cve_id in seen_cves:
+                            continue
+                        cvss = float(cve.get("cvss_score") or 0.0)
+                        if cvss <= 0:
+                            continue
+                        seen_cves.add(cve_id)
+                        if cvss >= 9.0:
+                            sev = "critical"
+                        elif cvss >= 7.0:
+                            sev = "high"
+                        elif cvss >= 4.0:
+                            sev = "medium"
+                        else:
+                            sev = "low"
+                        ver_str = f" {version}" if version else ""
+                        f = Finding(
+                            assessment_id=assessment_id,
+                            rule_key=f"cve_{cve_id.lower().replace('-', '_')}",
+                            title=f"{cve_id} – {product}{ver_str} (CVSS {cvss:.1f})",
+                            severity=sev,
+                            description=cve.get("description", ""),
+                            evidence=f"Port {sr_data['port']}/{sr_data['protocol']}: {product}{ver_str}",
+                            recommendation=cve.get("nvd_solution") or f"Update {product} auf eine gepatchte Version.",
+                            broadcast_context="CVE in erkannter Softwareversion auf Broadcast-Gerät – Patch-Status prüfen.",
+                            compensating_control_required=(cvss >= 7.0),
+                            status="open",
+                        )
+                        db.add(f)
+                        cve_findings_added += 1
+                if cve_findings_added:
+                    db.commit()
+                    # Re-read all findings (incl. CVE ones) for accurate scoring
+                    triggered_all = [
+                        {
+                            "severity": fi.severity,
+                            "affects_score": "technical",
+                            "status": fi.status,
+                            "compensating_control_description": fi.compensating_control_description,
+                        }
+                        for fi in db.query(Finding).filter(Finding.assessment_id == assessment_id).all()
+                    ]
+                    triggered = triggered_all
+        except Exception as cve_err:
+            logger.warning(f"CVE auto-lookup failed (non-fatal): {cve_err}")
+
         # Recalculate scores
         scores = scoring_service.recalculate(triggered)
         assessment.technical_score = scores["technical"]
@@ -90,9 +173,10 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str):
         db.commit()
 
         port_count = len(result.get("results", []))
+        cve_note = f", {cve_findings_added} CVE-Findings" if cve_findings_added else ""
         _scan_status[assessment_id] = {
             "status": "complete",
-            "message": f"Scan abgeschlossen. {port_count} offene Ports, {len(triggered)} Findings.",
+            "message": f"Scan abgeschlossen. {port_count} offene Ports, {len(triggered)} Findings{cve_note}.",
             "port_count": port_count,
             "elapsed_seconds": result.get("elapsed_seconds"),
             "nmap_version": result.get("nmap_version"),
@@ -135,6 +219,7 @@ async def start_scan(
         raise HTTPException(400, "Scan-Autorisierung erforderlich – zuerst autorisieren")
 
     device = db.query(Device).filter(Device.id == assessment.device_id).first()
+    iface = auth.nmap_interface if auth.nmap_interface and auth.nmap_interface != "auto" else None
 
     queue = get_queue()
     if not queue:
@@ -142,7 +227,7 @@ async def start_scan(
         assessment.status = "scan_running"
         db.commit()
         asyncio.create_task(_run_scan_task(
-            assessment_id, device.ip_address, assessment.scan_profile or "passive"
+            assessment_id, device.ip_address, assessment.scan_profile or "passive", iface
         ))
         return {"message": "Scan gestartet (direkt)", "assessment_id": assessment_id, "job_id": None}
 
@@ -154,6 +239,7 @@ async def start_scan(
         ip_address=device.ip_address,
         scan_profile=assessment.scan_profile or "passive",
         triggered_by="manual",
+        interface=iface,
     )
     result = await queue.enqueue(job)
 

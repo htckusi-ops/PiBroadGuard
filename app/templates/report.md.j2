@@ -33,7 +33,13 @@
 | NIST SP 800-115 | Technical Guide to Security Testing (Scan-Methodik) |
 | NIST SP 800-30r1 | Risk Assessment Methodology (Impact × Likelihood) |
 
-**Scan-Tool:** Nmap {{ nmap_version }}, Profil: {{ assessment.scan_profile or "—" }}
+**Scan-Tool:** Nmap {{ nmap_version }}, Profil: {{ scan_profile_label }}
+{% if scan_profile_description %}
+**Profil-Beschreibung:** {{ scan_profile_description }}
+{% endif %}
+{% if nmap_command %}
+**Nmap-Befehl:** `{{ nmap_command }}`
+{% endif %}
 {% if auth %}
 **Scan-Autorisierung:** {{ auth.authorized_by_name }} ({{ auth.authorized_by_role }}), erteilt am {{ auth.authorization_date | date }}
 {% endif %}
@@ -72,6 +78,15 @@
 
 {% for f in findings %}
 ### [{{ f.severity | upper }}] {{ f.title }}
+{% if f.cve_id %}
+**CVE:** [{{ f.cve_id }}](https://nvd.nist.gov/vuln/detail/{{ f.cve_id }}){% if f.cvss_score %} · **CVSS Score:** {{ f.cvss_score }}{% endif %}
+{% endif %}
+{% if f.kev_listed %}
+> ⚠️ **AKTIV AUSGENUTZT – CISA KEV**
+{% endif %}
+{% if f.cwe_id %}
+**CWE:** [{{ f.cwe_id }}](https://cwe.mitre.org/data/definitions/{{ f.cwe_id | replace("CWE-", "") }}.html)
+{% endif %}
 
 **Befund:** {{ f.evidence or "—" }}
 **Risiko:** {{ f.description or "—" }}
@@ -83,19 +98,21 @@
 {{ f.recommendation or "—" }}
 
 {% if f.kev_listed %}
-> ⚠️ **Aktiv ausgenutzt (CISA KEV):** Diese Schwachstelle ist im CISA Known Exploited Vulnerabilities Catalog gelistet. Empfohlene Massnahme: {{ f.kev_required_action or "Patch anwenden" }}
+> ⚠️ **Aktiv ausgenutzt (CISA KEV):** {{ f.kev_required_action or "Patch gemäss Herstelleranweisung anwenden." }}
+> Quelle: <https://www.cisa.gov/known-exploited-vulnerabilities-catalog>
 {% endif %}
 
 {% if f.nvd_solution %}
 **Empfehlung (NIST NVD):** {{ f.nvd_solution }}
+Quelle: <https://nvd.nist.gov/vuln/detail/{{ f.cve_id }}>
 {% endif %}
 
 {% if f.vendor_advisory_url %}
-**Hersteller-Advisory:** {{ f.vendor_advisory_url }}
+**Hersteller-Advisory:** [Link]({{ f.vendor_advisory_url }})
 {% endif %}
 
 {% if f.cwe_recommendation %}
-**Generelle Massnahme ({{ f.cwe_id }}):** {{ f.cwe_recommendation }}
+**Generelle Massnahme ([{{ f.cwe_id }}](https://cwe.mitre.org/data/definitions/{{ f.cwe_id | replace("CWE-", "") }}.html)):** {{ f.cwe_recommendation }}
 {% endif %}
 
 **Status:** {{ f.status | status_label }}

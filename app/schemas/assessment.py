@@ -43,6 +43,7 @@ class ScanAuthorizationCreate(BaseModel):
     authorized_by_role: str
     authorized_by_contact: Optional[str] = None
     scan_profile: str
+    nmap_interface: Optional[str] = None  # None / "auto" = let nmap decide
     time_window_start: Optional[datetime] = None
     time_window_end: Optional[datetime] = None
     notes: Optional[str] = None

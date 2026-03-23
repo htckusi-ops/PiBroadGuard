@@ -1,5 +1,6 @@
 import json
 import logging
+import xml.etree.ElementTree as _ET
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -58,6 +59,22 @@ def _format_date(val) -> str:
     return val.strftime("%d.%m.%Y") if hasattr(val, "strftime") else str(val)
 
 
+def _extract_nmap_version_from_results(scan_results) -> str:
+    """Extract nmap version string from the raw XML stored in any scan result."""
+    for sr in scan_results:
+        raw = getattr(sr, "raw_nmap_output", None)
+        if not raw:
+            continue
+        try:
+            root = _ET.fromstring(raw)
+            v = root.get("version")
+            if v:
+                return v
+        except _ET.ParseError:
+            continue
+    return "unknown"
+
+
 def _build_env() -> Environment:
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
     env.filters["rating_label"] = _rating_label
@@ -81,6 +98,22 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
         key=lambda f: {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(f.severity or "info", 4)
     )
 
+    # Load scan profile details (nmap flags + description) for the report
+    nmap_command = None
+    scan_profile_label = assessment.scan_profile or "—"
+    scan_profile_description = None
+    try:
+        from app.models.scan_profile import ScanProfile
+        import json as _json
+        sp = db.query(ScanProfile).filter(ScanProfile.name == assessment.scan_profile).first()
+        if sp:
+            scan_profile_label = sp.label
+            scan_profile_description = sp.description
+            flags = _json.loads(sp.nmap_flags)
+            nmap_command = "nmap " + " ".join(flags) + " <target>"
+    except Exception:
+        pass
+
     return {
         "device": device,
         "assessment": assessment,
@@ -90,7 +123,10 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
         "vendor_info": vendor_info,
         "auth": auth,
         "action_items": [],
-        "nmap_version": "unknown",
+        "nmap_version": _extract_nmap_version_from_results(scan_results),
+        "nmap_command": nmap_command,
+        "scan_profile_label": scan_profile_label,
+        "scan_profile_description": scan_profile_description,
         "generated_at": datetime.utcnow(),
     }
 

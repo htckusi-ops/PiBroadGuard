@@ -14,10 +14,11 @@ from app.models.system_settings import SystemSettings
 from app.models.device_type import DeviceType
 from app.models.scheduled_scan import ScheduledScan
 from app.models.device_class import DeviceClass
+from app.models.scan_profile import ScanProfile
 
 __all__ = [
     "Device", "Assessment", "ScanResult", "Finding", "ManualFinding",
     "VendorInformation", "AuditLog", "CveCache", "KevCache",
     "ScanAuthorization", "ImportLog", "ActionItem", "SystemSettings",
-    "DeviceType", "ScheduledScan", "DeviceClass",
+    "DeviceType", "ScheduledScan", "DeviceClass", "ScanProfile",
 ]

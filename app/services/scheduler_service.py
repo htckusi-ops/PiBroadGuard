@@ -19,16 +19,19 @@ def init_scheduler(db_url: str, timezone_str: str = "Europe/Zurich"):
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
-        jobstores = {"default": SQLAlchemyJobStore(url=db_url)}
+        # Use a dedicated DB file for APScheduler to avoid SQLite locking
+        # conflicts when reading/writing the main app DB concurrently.
+        aps_url = db_url.replace(".db", "_aps.db")
+        jobstores = {"default": SQLAlchemyJobStore(url=aps_url)}
         _scheduler = AsyncIOScheduler(
             jobstores=jobstores,
             timezone=timezone_str,
         )
         _scheduler.start()
-        logger.info(f"APScheduler started with timezone={timezone_str}")
+        logger.info(f"APScheduler started with timezone={timezone_str}, aps_db={aps_url}")
         return _scheduler
     except Exception as e:
-        logger.error(f"Failed to start APScheduler: {e}")
+        logger.error(f"Failed to start APScheduler: {e}", exc_info=True)
         return None
 
 

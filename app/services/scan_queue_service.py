@@ -26,6 +26,7 @@ class ScanJob:
     scan_profile: str
     triggered_by: str  # "manual" | "schedule"
     schedule_id: Optional[int] = None
+    interface: Optional[str] = None  # network interface for nmap -e; None/"auto" = let nmap decide
     queued_at: datetime = field(default_factory=datetime.utcnow)
     started_at: Optional[datetime] = None
     status: ScanJobStatus = ScanJobStatus.QUEUED
@@ -90,7 +91,7 @@ class ScanQueueService:
                 logger.info(f"Scan job {job.job_id} starting (assessment={job.assessment_id})")
                 try:
                     if self._job_processor:
-                        await self._job_processor(job.assessment_id, job.ip_address, job.scan_profile)
+                        await self._job_processor(job.assessment_id, job.ip_address, job.scan_profile, job.interface)
                     job.status = ScanJobStatus.DONE
                     logger.info(f"Scan job {job.job_id} completed successfully")
                 except Exception as e:

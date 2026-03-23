@@ -106,22 +106,28 @@ def create_schedule(
     if body.trigger_type == "cron" and not body.cron_expression:
         raise HTTPException(400, "cron_expression required for trigger_type=cron")
 
-    sched = scheduler_service.create_schedule(
-        db=db,
-        device_id=body.device_id,
-        trigger_type=body.trigger_type,
-        scan_profile=body.scan_profile,
-        authorized_by_name=body.authorized_by_name,
-        authorized_by_role=body.authorized_by_role,
-        db_url=settings.database_url,
-        run_at=body.run_at,
-        interval_unit=body.interval_unit,
-        interval_value=body.interval_value,
-        cron_expression=body.cron_expression,
-        created_by=user,
-        start_hour=body.start_hour,
-        start_minute=body.start_minute,
-    )
+    try:
+        sched = scheduler_service.create_schedule(
+            db=db,
+            device_id=body.device_id,
+            trigger_type=body.trigger_type,
+            scan_profile=body.scan_profile,
+            authorized_by_name=body.authorized_by_name,
+            authorized_by_role=body.authorized_by_role,
+            db_url=settings.database_url,
+            run_at=body.run_at,
+            interval_unit=body.interval_unit,
+            interval_value=body.interval_value,
+            cron_expression=body.cron_expression,
+            created_by=user,
+            start_hour=body.start_hour,
+            start_minute=body.start_minute,
+        )
+    except RuntimeError as e:
+        raise HTTPException(503, f"Scheduler nicht verfügbar: {e}. Bitte App neu starten.")
+    except Exception as e:
+        logger.error(f"create_schedule failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Schedule konnte nicht erstellt werden: {e}")
     return _enrich_schedule(sched, db)
 
 

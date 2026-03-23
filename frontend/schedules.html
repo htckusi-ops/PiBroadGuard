@@ -8,8 +8,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="/app/i18n.js"></script>
 </head>
-<body class="bg-slate-100 min-h-screen">
-<div id="app">
+<body class="bg-slate-100">
+<div id="app" class="flex flex-col min-h-screen bg-slate-100">
 
   <!-- Header -->
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
@@ -29,7 +29,7 @@
     </div>
   </header>
 
-  <main class="max-w-6xl mx-auto px-4 py-6">
+  <main class="max-w-6xl mx-auto px-4 py-6 flex-1">
 
     <!-- Toolbar -->
     <div class="flex items-center gap-3 mb-5 flex-wrap">
@@ -127,7 +127,10 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-sm font-medium text-slate-700 mb-1">Trigger Type</label>
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+          Trigger Type
+          <span class="ml-1 text-slate-400 cursor-help" title="Once: run exactly once at a given time. Recurring: repeat on a fixed interval. Cron: full cron-expression control.">ℹ</span>
+        </label>
         <div class="flex gap-4">
           <label class="flex items-center gap-1 text-sm cursor-pointer"><input type="radio" v-model="form.trigger_type" value="once"> Once</label>
           <label class="flex items-center gap-1 text-sm cursor-pointer"><input type="radio" v-model="form.trigger_type" value="interval"> Recurring</label>
@@ -136,17 +139,26 @@
       </div>
 
       <div v-if="form.trigger_type === 'once'" class="mb-4">
-        <label class="block text-sm font-medium text-slate-700 mb-1">Date/Time *</label>
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+          Date/Time *
+          <span class="ml-1 text-slate-400 cursor-help" title="Date and time (local browser time) at which the scan will be triggered exactly once">ℹ</span>
+        </label>
         <input type="datetime-local" v-model="form.run_at" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
       </div>
 
       <div v-if="form.trigger_type === 'interval'" class="mb-4 grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Every *</label>
+          <label class="block text-sm font-medium text-slate-700 mb-1">
+            Every *
+            <span class="ml-1 text-slate-400 cursor-help" title="Number of hours/days/weeks/months between scans">ℹ</span>
+          </label>
           <input type="number" v-model.number="form.interval_value" min="1" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Unit *</label>
+          <label class="block text-sm font-medium text-slate-700 mb-1">
+            Unit *
+            <span class="ml-1 text-slate-400 cursor-help" title="Interval unit: hours (no fixed time), days/weeks/months (time-of-day can be set below)">ℹ</span>
+          </label>
           <select v-model="form.interval_unit" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
             <option value="hours">Hours</option>
             <option value="days">Days</option>
@@ -161,6 +173,7 @@
         <label class="block text-sm font-medium text-slate-700 mb-1">
           Time of Day *
           <span class="text-slate-400 text-xs font-normal ml-1">(HH:MM – UTC)</span>
+          <span class="ml-1 text-slate-400 cursor-help" title="At what time (UTC) the recurring scan should start. Scans are queued if another scan is already running.">ℹ</span>
         </label>
         <input type="time" v-model="form.start_time" class="border border-slate-300 rounded px-3 py-2 text-sm">
         <p class="text-xs text-slate-400 mt-1">Scan will start at this time each cycle.</p>
@@ -178,26 +191,37 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
-        <div class="flex gap-4">
-          <label v-for="p in ['passive','standard','extended']" :key="p" class="flex items-center gap-1 text-sm cursor-pointer capitalize">
-            <input type="radio" v-model="form.scan_profile" :value="p"> {{ p }}
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+          Scan Profile
+          <span class="ml-1 text-slate-400 cursor-help" title="Passive: ~20 broadcast-relevant ports, T2 (gentle). Standard: Top 1000 ports, T3. Extended: Top 1000 TCP + UDP, T3 (slowest, most thorough). For scheduled/unattended scans the passive profile is recommended.">ℹ</span>
+        </label>
+        <div class="space-y-1">
+          <label v-for="p in scanProfiles" :key="p.name" class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="radio" v-model="form.scan_profile" :value="p.name">
+            <span class="font-medium">{{ p.label }}</span>
+            <span class="text-slate-400 text-xs">{{ p.description ? p.description.substring(0, 70) + '…' : '' }}</span>
           </label>
         </div>
       </div>
 
       <div class="grid grid-cols-2 gap-3 mb-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Authorized by – Name *</label>
+          <label class="block text-sm font-medium text-slate-700 mb-1">
+            Authorized by – Name *
+            <span class="ml-1 text-slate-400 cursor-help" title="Full name of the person granting standing authorization for automated scans on this device (per NIST SP 800-115 / IEC 62443-2-1)">ℹ</span>
+          </label>
           <input v-model="form.authorized_by_name" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Jane Smith">
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Role *</label>
+          <label class="block text-sm font-medium text-slate-700 mb-1">
+            Role *
+            <span class="ml-1 text-slate-400 cursor-help" title="Role or title of the authorizing person (e.g. IT Security Manager, Broadcast Engineering Lead)">ℹ</span>
+          </label>
           <input v-model="form.authorized_by_role" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="IT Security">
         </div>
       </div>
 
-      <label class="flex items-center gap-2 text-sm mb-5 cursor-pointer">
+      <label class="flex items-center gap-2 text-sm mb-5 cursor-pointer" title="By checking this box, you confirm that a standing operational authorization for automated recurring scans on this device has been granted by the named person">
         <input type="checkbox" v-model="form.confirmed" class="w-4 h-4">
         General operational approval for automatic scans granted (per NIST SP 800-115 / IEC 62443-2-1).
       </label>
@@ -214,7 +238,7 @@
     </div>
   </div>
 
-  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
+  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
     <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
     <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
     <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>
@@ -228,6 +252,7 @@ createApp({
   setup() {
     const schedules = ref([]);
     const devices = ref([]);
+    const scanProfiles = ref([]);
     const loading = ref(true);
     const error = ref('');
     const filterDevice = ref('');
@@ -288,6 +313,16 @@ createApp({
     async function loadDevices() {
       const r = await fetch('/api/v1/devices');
       if (r.ok) devices.value = await r.json();
+    }
+
+    async function loadScanProfiles() {
+      const r = await fetch('/api/v1/scan-profiles');
+      if (r.ok) scanProfiles.value = await r.json();
+      else scanProfiles.value = [
+        { name: 'passive', label: 'Passive', description: '' },
+        { name: 'standard', label: 'Standard', description: '' },
+        { name: 'extended', label: 'Extended', description: '' },
+      ];
     }
 
     async function createSchedule() {
@@ -358,10 +393,10 @@ createApp({
 
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await Promise.all([loadSchedules(), loadDevices()]);
+      await Promise.all([loadSchedules(), loadDevices(), loadScanProfiles()]);
     });
 
-    return { schedules, devices, loading, error, filterDevice, filterStatus, filteredSchedules, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
+    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
 
   }
 }).mount('#app');
