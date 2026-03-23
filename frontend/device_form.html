@@ -188,7 +188,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="a in assessments" :key="a.id" class="border-b border-slate-100 hover:bg-slate-50">
+            <tr v-for="a in pagedAssessments" :key="a.id" class="border-b border-slate-100 hover:bg-slate-50">
               <td class="py-2 pr-4 text-slate-700 whitespace-nowrap">{{ fmtDate(a.created_at) }}</td>
               <td class="py-2 pr-4">
                 <span :class="statusClass(a.status)" class="px-2 py-0.5 rounded text-xs font-medium">{{ a.status }}</span>
@@ -222,6 +222,21 @@
             </tr>
           </tbody>
         </table>
+        <!-- Pagination -->
+        <div v-if="assessmentsTotalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
+          <span>{{ asmPageStart }}–{{ asmPageEnd }} / {{ assessments.length }}</span>
+          <div class="flex gap-1">
+            <button @click="asmPage = Math.max(1, asmPage - 1)" :disabled="asmPage === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+            <template v-for="p in assessmentsTotalPages" :key="p">
+              <button v-if="p === 1 || p === assessmentsTotalPages || Math.abs(p - asmPage) <= 1"
+                @click="asmPage = p"
+                :class="p === asmPage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50'"
+                class="px-2 py-1 rounded border">{{ p }}</button>
+              <span v-else-if="Math.abs(p - asmPage) === 2" class="px-1 py-1 text-slate-400">…</span>
+            </template>
+            <button @click="asmPage = Math.min(assessmentsTotalPages, asmPage + 1)" :disabled="asmPage === assessmentsTotalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -247,6 +262,12 @@ createApp({
     const rdnsLoading = ref(false);
     const assessments = ref([]);
     const historyLoading = ref(false);
+    const asmPage = ref(1);
+    const ASM_PAGE_SIZE = 10;
+    const assessmentsTotalPages = computed(() => Math.max(1, Math.ceil(assessments.value.length / ASM_PAGE_SIZE)));
+    const asmPageStart  = computed(() => (asmPage.value - 1) * ASM_PAGE_SIZE + 1);
+    const asmPageEnd    = computed(() => Math.min(asmPage.value * ASM_PAGE_SIZE, assessments.value.length));
+    const pagedAssessments = computed(() => assessments.value.slice((asmPage.value - 1) * ASM_PAGE_SIZE, asmPage.value * ASM_PAGE_SIZE));
     const deviceTypes = ref([]);
     const deviceClasses = ref([]);
     const tr = ref({});
@@ -387,6 +408,7 @@ createApp({
     });
     return { form, isEdit, saving, error, success, ipError, rdnsLoading,
              assessments, historyLoading, deviceTypes, deviceClasses,
+             pagedAssessments, asmPage, assessmentsTotalPages, asmPageStart, asmPageEnd,
              save, lookupRdns, deleteDevice, cloneAssessment, deleteAssessment,
              fmtDate, ratingClass, statusClass,
              t, currentLang, switchLang };

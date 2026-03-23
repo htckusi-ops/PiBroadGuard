@@ -99,20 +99,20 @@
     <!-- Toolbar -->
     <div class="flex items-center gap-3 mb-4 flex-wrap">
       <h1 class="text-xl font-bold text-slate-800 flex-1">{{ t('nav_devices', 'Devices') }}</h1>
-      <select v-model="filterRating" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+      <select v-model="filterRating" @change="resetDevPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
         <option value="">All Ratings</option>
         <option value="green">🟢 {{ t('rating_green', 'Green') }}</option>
         <option value="yellow">🟡 {{ t('rating_yellow', 'Yellow') }}</option>
         <option value="orange">🟠 {{ t('rating_orange', 'Orange') }}</option>
         <option value="red">🔴 {{ t('rating_red', 'Red') }}</option>
       </select>
-      <select v-model="filterType" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+      <select v-model="filterType" @change="resetDevPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
         <option value="">All Types</option>
         <option v-for="dt in deviceTypes" :key="dt.name" :value="dt.name">
           {{ currentLang === 'de' ? dt.label_de : dt.label_en }}
         </option>
       </select>
-      <input v-model="search" placeholder="Search..." class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white w-48">
+      <input v-model="search" @input="resetDevPage" placeholder="Search..." class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white w-48">
       <a href="/app/device_form.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
         + {{ t('btn_new_device', 'Add New Device') }}
       </a>
@@ -141,7 +141,7 @@
           <tr v-else-if="filteredDevices.length === 0">
             <td colspan="8" class="text-center py-8 text-slate-400">No devices found. <a href="/app/device_form.html" class="text-blue-600 hover:underline">Add first device</a></td>
           </tr>
-          <tr v-for="d in filteredDevices" :key="d.id" class="border-t border-slate-100 hover:bg-slate-50">
+          <tr v-for="d in pagedDevices" :key="d.id" class="border-t border-slate-100 hover:bg-slate-50">
             <td class="px-4 py-3">
               <div class="font-medium text-slate-800">{{ d.manufacturer }} {{ d.model }}</div>
               <div class="text-slate-400 text-xs">{{ d.asset_tag || d.serial_number || '' }}</div>
@@ -180,6 +180,22 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="devicesTotalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
+      <span>{{ devPageStart }}–{{ devPageEnd }} / {{ filteredDevices.length }} {{ t('pagination_devices', 'devices') }}</span>
+      <div class="flex gap-1">
+        <button @click="devPage = Math.max(1, devPage - 1)" :disabled="devPage === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-white bg-slate-50">‹</button>
+        <template v-for="p in devicesTotalPages" :key="p">
+          <button v-if="p === 1 || p === devicesTotalPages || Math.abs(p - devPage) <= 1"
+            @click="devPage = p"
+            :class="p === devPage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-white bg-slate-50'"
+            class="px-2 py-1 rounded border">{{ p }}</button>
+          <span v-else-if="Math.abs(p - devPage) === 2" class="px-1 py-1 text-slate-400">…</span>
+        </template>
+        <button @click="devPage = Math.min(devicesTotalPages, devPage + 1)" :disabled="devPage === devicesTotalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-white bg-slate-50">›</button>
+      </div>
     </div>
 
     <div v-if="error" class="mt-4 p-3 bg-red-50 text-red-700 rounded">{{ error }}</div>
@@ -231,6 +247,8 @@ createApp({
         : 'bg-red-800 text-red-100'
     );
 
+    const PAGE_SIZE = 25;
+    const devPage = ref(1);
     const filteredDevices = computed(() => {
       return devices.value.filter(d => {
         if (filterRating.value && d.last_assessment_rating !== filterRating.value) return false;
@@ -242,6 +260,12 @@ createApp({
         return true;
       });
     });
+    const devicesTotalPages = computed(() => Math.max(1, Math.ceil(filteredDevices.value.length / PAGE_SIZE)));
+    const devPageStart      = computed(() => (devPage.value - 1) * PAGE_SIZE + 1);
+    const devPageEnd        = computed(() => Math.min(devPage.value * PAGE_SIZE, filteredDevices.value.length));
+    const pagedDevices      = computed(() => filteredDevices.value.slice((devPage.value - 1) * PAGE_SIZE, devPage.value * PAGE_SIZE));
+    // Reset to page 1 when filters change
+    function resetDevPage() { devPage.value = 1; }
 
     const criticalCount = computed(() => devices.value.filter(d => d.last_assessment_rating === 'red').length);
     const openFindingsCount = computed(() => 0);
@@ -315,7 +339,7 @@ createApp({
       // Poll queue every 5s
       queuePoll = setInterval(loadQueue, 5000);
     });
-    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, t, currentLang, switchLang };
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>
