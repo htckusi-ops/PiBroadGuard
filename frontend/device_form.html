@@ -40,13 +40,24 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-3 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('device_form_device_type', 'Device Type') }} *</label>
             <select v-model="form.device_type" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
               <option value="">Select type...</option>
               <option v-for="dt in deviceTypes" :key="dt.name" :value="dt.name">
                 {{ currentLang === 'de' ? dt.label_de : dt.label_en }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('device_form_device_class', 'Device Class') }}
+              <span class="ml-1 text-slate-400 cursor-help" :title="t('tooltip_device_class', 'Architectural classification for risk scoring context')">ℹ</span>
+            </label>
+            <select v-model="form.device_class_id" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+              <option :value="null">{{ t('device_form_device_class_none', '— not set —') }}</option>
+              <option v-for="dc in deviceClasses" :key="dc.id" :value="dc.id">
+                {{ currentLang === 'de' ? dc.label_de : dc.label_en }}
               </option>
             </select>
           </div>
@@ -218,7 +229,7 @@
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-8">
     <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
     <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
-    <span>{{ t('footer_version', 'v1.0 | March 2026') }}</span>
+    <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>
   </footer>
 </div>
 
@@ -237,6 +248,7 @@ createApp({
     const assessments = ref([]);
     const historyLoading = ref(false);
     const deviceTypes = ref([]);
+    const deviceClasses = ref([]);
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
 
@@ -249,7 +261,7 @@ createApp({
     }
 
     const form = ref({
-      manufacturer: '', model: '', device_type: '', ip_address: '',
+      manufacturer: '', model: '', device_type: '', device_class_id: null, ip_address: '',
       firmware_version: '', hostname: '', serial_number: '', asset_tag: '',
       location: '', network_segment: '', production_criticality: '',
       owner_team: '', notes: '',
@@ -360,14 +372,21 @@ createApp({
       } catch (e) { /* ignore – dropdown falls back to empty */ }
     }
 
+    async function loadDeviceClasses() {
+      try {
+        const resp = await fetch('/api/v1/device-classes');
+        if (resp.ok) deviceClasses.value = await resp.json();
+      } catch (e) { /* ignore – dropdown falls back to empty */ }
+    }
+
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await loadDeviceTypes();   // always fresh from server
+      await Promise.all([loadDeviceTypes(), loadDeviceClasses()]);
       await load();
       await loadAssessments();
     });
     return { form, isEdit, saving, error, success, ipError, rdnsLoading,
-             assessments, historyLoading, deviceTypes,
+             assessments, historyLoading, deviceTypes, deviceClasses,
              save, lookupRdns, deleteDevice, cloneAssessment, deleteAssessment,
              fmtDate, ratingClass, statusClass,
              t, currentLang, switchLang };

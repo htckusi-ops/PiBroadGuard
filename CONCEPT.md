@@ -1,5 +1,6 @@
 # CONCEPT.md – PiBroadGuard
 ## Fachliches Konzept und Hintergrund
+**Version:** 1.8 | März 2026
 
 Dieses Dokument erklärt den fachlichen Kontext, die Zielgruppe und die
 Leitprinzipien von PiBroadGuard. Es ergänzt die technische Spezifikation
@@ -74,21 +75,37 @@ Summary.
 
 ## 4. Typischer Anwendungsfall
 
+**Erstbewertung (neues Gerät):**
 ```
 1. Neues Broadcast-Gerät soll beschafft oder in Betrieb genommen werden.
-2. Broadcast Engineer erfasst das Gerät in PiBroadGuard.
+2. Broadcast Engineer erfasst das Gerät in PiBroadGuard (optional via phpIPAM-Import).
 3. Scan-Freigabe wird vom Betriebsverantwortlichen eingeholt und dokumentiert.
 4. Nmap-Scan wird gegen die Test-IP durchgeführt (Passive-Profil empfohlen).
-5. Regelwerk erzeugt automatische Findings.
+5. Regelwerk erzeugt automatische Findings (inkl. CVE-Lookup, KEV-Check).
 6. Broadcast Engineer ergänzt manuelle Informationen:
    - Gibt es Default-Credentials?
    - Ist Telnet deaktivierbar?
    - Gibt es Security-Updates?
    - Ist das Gerät produktionskritisch?
 7. IT Security Reviewer prüft, ergänzt Kompensationsmassnahmen, setzt Scores.
-8. Report wird generiert.
+8. Report wird generiert (MD / HTML / JSON).
 9. Entscheid: Freigegeben / Freigegeben mit Auflagen / Zurückgestellt / Abgelehnt.
-10. Re-Assessment-Termin wird festgelegt.
+10. Re-Assessment-Termin wird festgelegt + Scheduled Scan konfiguriert.
+```
+
+**Periodische Neubewertung (bestehende Geräte):**
+```
+1. Geplanter Scan wird automatisch ausgelöst (APScheduler).
+2. Neues Assessment mit Scan-Resultaten wird erstellt.
+3. Reviewer prüft Veränderungen gegenüber dem letzten Assessment.
+4. Report und Entscheid werden aktualisiert.
+```
+
+**Air-Gap-Betrieb (Pi ohne Internetzugang):**
+```
+1. Scans auf Pi (Phase 1) → .bdsa-Paket auf USB exportieren (optional verschlüsselt).
+2. Paket auf Online-Workstation importieren (Phase 2).
+3. CVE/KEV-Anreicherung, manuelle Fragen, Report-Generierung.
 ```
 
 ---
@@ -114,9 +131,10 @@ sein. Deshalb: Audit-Log, Scan-Autorisierung, Regelwerk-Snapshot im Paket,
 SHA256-Checksummen.
 
 ### 5.4 Automatisierung wo sinnvoll, manuelle Bewertung wo nötig
-Scans und erste Klassifikationen werden automatisiert. Kontextbewertung,
-Hersteller-Informationen und Freigabeentscheide bleiben beim Menschen.
-Das Tool unterstützt – es ersetzt kein Fachwissen.
+Scans, erste Klassifikationen und periodische Wiederholungs-Scans werden automatisiert.
+Kontextbewertung, Hersteller-Informationen und Freigabeentscheide bleiben beim Menschen.
+Das Tool unterstützt – es ersetzt kein Fachwissen. Geplante Scans erfordern trotzdem eine
+vorab dokumentierte Betriebsfreigabe (Name, Rolle des Autorisierenden).
 
 ### 5.5 Hersteller- und Lifecycle-Aspekte gehören zur Sicherheitsbewertung
 Ein technisch unauffälliges Gerät kann langfristig ungeeignet sein, wenn
@@ -225,4 +243,21 @@ Später optional:
 
 ---
 
-*CONCEPT.md – PiBroadGuard | März 2026*
+---
+
+## 11. Integrationen (optional)
+
+| Integration | Zweck |
+|-------------|-------|
+| **phpIPAM** | Geräte-Import aus bestehender IP-Adressverwaltung |
+| **NVD API v2** | CVE-Details und Lösungshinweise |
+| **CISA KEV** | Aktiv ausgenutzte Schwachstellen (lokaler Cache) |
+| **NVD CPE API** | Präzisere Produkt-zu-CVE-Zuordnung |
+
+Alle Integrationen sind optional und graceful degradiert: Wenn eine externe Quelle
+nicht erreichbar ist, arbeitet PiBroadGuard mit lokalem Cache oder ohne die
+betreffende Information.
+
+---
+
+*CONCEPT.md – PiBroadGuard v1.8 | März 2026 | Markus Gerber · markus.gerber@npn.ch*

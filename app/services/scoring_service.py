@@ -1,7 +1,35 @@
 import logging
-from typing import List, Dict, Any
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger("pibroadguard.scoring")
+
+
+@dataclass
+class ScoreReason:
+    type: str          # "finding_penalty", "compensation_ratio", "override"
+    text: str
+    impact: int        # negative = penalty, positive = bonus
+    finding_id: Optional[int] = None
+    rule_key: Optional[str] = None
+
+
+@dataclass
+class DimensionScore:
+    dimension: str
+    score: int
+    max_score: int
+    reasons: List[ScoreReason] = field(default_factory=list)
+    standard_ref: str = ""
+
+
+@dataclass
+class ScoringResult:
+    overall_rating: str
+    overall_score: float
+    dimensions: Dict[str, DimensionScore] = field(default_factory=dict)
+    override_reasons: List[str] = field(default_factory=list)
+    decision_path: str = "weighted_average"
 
 SEVERITY_PENALTY = {
     "critical": 30,
@@ -99,7 +127,7 @@ def calculate_overall_rating(scores: Dict[str, int]) -> str:
     return "red"
 
 
-def apply_override_rules(rating: str, findings: List[Any]) -> str:
+def apply_override_rules(rating: str, findings: List[Any], scores: Dict[str, int] = None) -> str:
     critical_uncompensated = 0
     critical_total = 0
 
@@ -116,6 +144,10 @@ def apply_override_rules(rating: str, findings: List[Any]) -> str:
     if critical_uncompensated >= 1 and rating == "green":
         return "orange"
 
+    # Lifecycle cap: lifecycle score < 20 → maximum yellow (cannot be green)
+    if scores and scores.get("lifecycle", 100) < 20 and rating == "green":
+        return "yellow"
+
     return rating
 
 
@@ -128,5 +160,126 @@ def recalculate(findings: List[Any], findings_dicts: List[Dict] = None) -> Dict:
     use = findings_dicts if findings_dicts is not None else findings
     scores = calculate_scores(use)
     base_rating = calculate_overall_rating(scores)
-    final_rating = apply_override_rules(base_rating, use)
+    final_rating = apply_override_rules(base_rating, use, scores)
     return {**scores, "overall_rating": final_rating}
+
+
+def recalculate_detailed(findings: List[Any], findings_dicts: List[Dict] = None) -> ScoringResult:
+    """
+    Returns a ScoringResult with per-dimension reasons for the UI score explanation panel.
+    """
+    use = findings_dicts if findings_dicts is not None else findings
+
+    # Build dimension scores with reasons
+    dim_scores: Dict[str, DimensionScore] = {}
+    raw_scores = {dim: 100 for dim in SCORE_DIMENSIONS}
+
+    for dim, meta in SCORE_DIMENSIONS.items():
+        dim_scores[dim] = DimensionScore(
+            dimension=dim,
+            score=100,
+            max_score=100,
+            reasons=[],
+            standard_ref=meta["standard_ref"],
+        )
+
+    for f in use:
+        if isinstance(f, dict):
+            severity = f.get("severity", "info")
+            status = f.get("status", "open")
+            affects = f.get("affects_score", "technical")
+            title = f.get("title", f.get("rule_key", "Unknown"))
+            finding_id = f.get("id")
+            rule_key = f.get("rule_key")
+        else:
+            severity = getattr(f, "severity", "info") or "info"
+            status = getattr(f, "status", "open") or "open"
+            affects = getattr(f, "affects_score", "technical") or "technical"
+            title = getattr(f, "title", "") or ""
+            finding_id = getattr(f, "id", None)
+            rule_key = getattr(f, "rule_key", None)
+
+        if affects not in dim_scores:
+            affects = "technical"
+
+        if status in ("false_positive", "accepted"):
+            continue
+
+        penalty = SEVERITY_PENALTY.get(severity, 0)
+        if status == "compensated":
+            original = penalty
+            penalty = penalty // 2
+            reason_text = f"{title} [{severity.upper()}] – {original} Pkt. Strafe, halbiert durch Kompensation auf {penalty} Pkt."
+        else:
+            reason_text = f"{title} [{severity.upper()}] – {penalty} Pkt. Strafe"
+
+        if penalty > 0:
+            dim_scores[affects].reasons.append(ScoreReason(
+                type="finding_penalty",
+                text=reason_text,
+                impact=-penalty,
+                finding_id=finding_id,
+                rule_key=rule_key,
+            ))
+            raw_scores[affects] = max(0, raw_scores[affects] - penalty)
+            dim_scores[affects].score = raw_scores[affects]
+
+    # Compensation ratio reason
+    comp_required = [f for f in use if (
+        (f.get("compensating_control_required") if isinstance(f, dict) else getattr(f, "compensating_control_required", False))
+    )]
+    comp_filled = [f for f in comp_required if (
+        (f.get("compensating_control_description") if isinstance(f, dict) else getattr(f, "compensating_control_description", None))
+    )]
+    if comp_required:
+        ratio = len(comp_filled) / len(comp_required)
+        comp_score = int(ratio * 100)
+        raw_scores["compensation"] = comp_score
+        dim_scores["compensation"].score = comp_score
+        dim_scores["compensation"].reasons.append(ScoreReason(
+            type="compensation_ratio",
+            text=f"{len(comp_filled)} von {len(comp_required)} Findings mit Kompensationsmassnahmen dokumentiert",
+            impact=comp_score - 100,
+        ))
+
+    # Overall weighted score
+    weighted = sum(
+        raw_scores[dim] * meta["weight"]
+        for dim, meta in SCORE_DIMENSIONS.items()
+    )
+
+    base_rating = calculate_overall_rating(raw_scores)
+    override_reasons: List[str] = []
+    final_rating = base_rating
+
+    # Check overrides
+    critical_uncompensated = 0
+    critical_total = 0
+    for f in use:
+        sev = (f.get("severity") if isinstance(f, dict) else getattr(f, "severity", "")) or ""
+        status = (f.get("status") if isinstance(f, dict) else getattr(f, "status", "open")) or "open"
+        if sev == "critical":
+            critical_total += 1
+            if status not in ("compensated", "false_positive", "accepted"):
+                critical_uncompensated += 1
+
+    if critical_total >= 2:
+        final_rating = "red"
+        override_reasons.append("2 oder mehr kritische Findings → automatisch Rot")
+    elif critical_uncompensated >= 1 and base_rating == "green":
+        final_rating = "orange"
+        override_reasons.append("1 unkompensiertes kritisches Finding → mindestens Orange")
+
+    if raw_scores.get("lifecycle", 100) < 20 and final_rating == "green":
+        final_rating = "yellow"
+        override_reasons.append("Lifecycle-Score < 20 → maximal Gelb")
+
+    decision_path = f"override: {override_reasons[0]}" if override_reasons else "weighted_average"
+
+    return ScoringResult(
+        overall_rating=final_rating,
+        overall_score=round(weighted, 1),
+        dimensions=dim_scores,
+        override_reasons=override_reasons,
+        decision_path=decision_path,
+    )

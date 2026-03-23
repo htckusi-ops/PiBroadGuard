@@ -241,6 +241,18 @@ def delete_device_type(
     return {"deleted": True}
 
 
+# ── Device Classes ────────────────────────────────────────────────────────────
+
+@router.get("/device-classes")
+def get_device_classes(
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Return all active device classes (architectural classification for risk scoring)."""
+    from app.models.device_class import DeviceClass
+    return db.query(DeviceClass).filter(DeviceClass.active == True).order_by(DeviceClass.sort_order).all()
+
+
 # ── phpIPAM endpoints ────────────────────────────────────────────────────────
 
 _PHPIPAM_NOT_CONFIGURED = "phpIPAM nicht konfiguriert (PIBG_PHPIPAM_URL / PIBG_PHPIPAM_TOKEN fehlt)"
