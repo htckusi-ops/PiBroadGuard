@@ -8,8 +8,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="/app/i18n.js"></script>
 </head>
-<body class="bg-slate-100 min-h-screen flex flex-col">
-<div id="app">
+<body class="bg-slate-100">
+<div id="app" class="flex flex-col min-h-screen bg-slate-100">
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3 flex-wrap">
       <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
@@ -194,19 +194,31 @@
             </div>
             <div class="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_name', 'Authorized by – Name') }} *</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  {{ t('scan_authorization_name', 'Authorized by – Name') }} *
+                  <span class="ml-1 text-slate-400 cursor-help" title="Full name of the person who granted operational approval for this scan (required for audit trail)">ℹ</span>
+                </label>
                 <input v-model="auth.name" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Jane Smith">
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_role', 'Role') }} *</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  {{ t('scan_authorization_role', 'Role') }} *
+                  <span class="ml-1 text-slate-400 cursor-help" title="Role or title of the authorizing person (e.g. Broadcast Engineering Lead, IT Security Manager)">ℹ</span>
+                </label>
                 <input v-model="auth.role" required class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Broadcast Engineering Lead">
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_contact', 'Contact') }}</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  {{ t('scan_authorization_contact', 'Contact') }}
+                  <span class="ml-1 text-slate-400 cursor-help" title="Email address or phone number of the authorizing person (optional, for follow-up)">ℹ</span>
+                </label>
                 <input v-model="auth.contact" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Email or phone">
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Scan Profile
+                  <span class="ml-1 text-slate-400 cursor-help" title="Passive: ~20 broadcast-relevant ports, T2 (gentle). Standard: Top 1000 ports, T3. Extended: Top 1000 TCP + UDP, T3 (slowest, most thorough)">ℹ</span>
+                </label>
                 <select :value="auth.profile" @change="changeProfile($event.target.value)"
                         :disabled="assessment.status === 'scan_complete' || assessment.status === 'completed'"
                         class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white disabled:bg-slate-100">
@@ -214,7 +226,10 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Netzwerk-Interface</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Netzwerk-Interface
+                  <span class="ml-1 text-slate-400 cursor-help" title="Network interface to use for the Nmap scan. 'Auto' lets Nmap choose automatically. Select a specific interface only if the device is only reachable via a particular network adapter.">ℹ</span>
+                </label>
                 <select v-model="auth.iface" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
                   <option v-for="ni in networkInterfaces" :key="ni.name" :value="ni.name">
                     {{ ni.label }}<template v-if="ni.addresses && ni.addresses.length"> ({{ ni.addresses.join(', ') }})</template>
@@ -222,19 +237,28 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_window', 'Time Window From') }}</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  {{ t('scan_authorization_window', 'Time Window From') }}
+                  <span class="ml-1 text-slate-400 cursor-help" title="Optional: start of the authorized time window for this scan (e.g. start of maintenance window)">ℹ</span>
+                </label>
                 <input type="datetime-local" v-model="auth.timeStart" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Time Window Until</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Time Window Until
+                  <span class="ml-1 text-slate-400 cursor-help" title="Optional: end of the authorized time window for this scan (e.g. end of maintenance window)">ℹ</span>
+                </label>
                 <input type="datetime-local" v-model="auth.timeEnd" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
               </div>
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('scan_authorization_notes', 'Notes') }}</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                {{ t('scan_authorization_notes', 'Notes') }}
+                <span class="ml-1 text-slate-400 cursor-help" title="Optional remarks, e.g. 'Scan only during maintenance window' or special conditions for approval">ℹ</span>
+              </label>
               <input v-model="auth.notes" class="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-3" placeholder="e.g. Scan only during maintenance window">
             </div>
-            <label class="flex items-center gap-2 text-sm mb-4 cursor-pointer">
+            <label class="flex items-center gap-2 text-sm mb-4 cursor-pointer" title="Confirm that you have received verbal or written operational authorization and are aware that network scans can affect sensitive broadcast equipment">
               <input type="checkbox" v-model="auth.confirmed" class="w-4 h-4">
               {{ t('scan_authorization_confirm', 'I confirm that operational authorization for this scan has been obtained and the scan risks are understood.') }}
             </label>
@@ -493,13 +517,27 @@
           <div class="flex items-center gap-2 mb-2 flex-wrap">
             <span :class="severityClass(f.severity)" class="px-2 py-0.5 rounded text-xs font-bold">{{ f.severity?.toUpperCase() }}</span>
             <span class="font-semibold text-slate-800">{{ f.title }}</span>
-            <a v-if="f.kev_listed" href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener" class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold hover:bg-red-200">⚠️ {{ t('kev_active_exploit', 'CISA KEV') }}</a>
+            <!-- CVE ID + CVSS score badge -->
+            <a v-if="f.cve_id" :href="'https://nvd.nist.gov/vuln/detail/' + f.cve_id" target="_blank" rel="noopener"
+               class="font-mono text-xs bg-slate-800 text-white px-2 py-0.5 rounded hover:bg-slate-600"
+               :title="'NVD Detail: ' + f.cve_id">{{ f.cve_id }}</a>
+            <span v-if="f.cvss_score" :class="{
+                'bg-red-600 text-white':   parseFloat(f.cvss_score) >= 9.0,
+                'bg-orange-500 text-white': parseFloat(f.cvss_score) >= 7.0 && parseFloat(f.cvss_score) < 9.0,
+                'bg-yellow-500 text-white': parseFloat(f.cvss_score) >= 4.0 && parseFloat(f.cvss_score) < 7.0,
+                'bg-green-600 text-white':  parseFloat(f.cvss_score) > 0    && parseFloat(f.cvss_score) < 4.0,
+              }" class="px-2 py-0.5 rounded text-xs font-bold"
+              title="CVSS Base Score (NIST NVD)">CVSS {{ parseFloat(f.cvss_score).toFixed(1) }}</span>
+            <a v-if="f.kev_listed" href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener"
+               class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold hover:bg-red-200"
+               title="Diese Schwachstelle wird aktiv ausgenutzt (CISA Known Exploited Vulnerabilities)">⚠️ {{ t('kev_active_exploit', 'CISA KEV') }}</a>
             <template v-if="f.remediation_sources">
               <template v-for="src in parseRemediationSources(f.remediation_sources)" :key="src.type">
-                <span v-if="src.type === 'yaml'" class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">📋 {{ t('source_badge_yaml', 'Ruleset') }}</span>
-                <a v-else-if="src.type === 'kev'" href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener" class="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-xs hover:bg-red-200">🔴 {{ t('source_badge_kev', 'KEV') }}</a>
-                <a v-else-if="src.type === 'nvd' && f.cve_id" :href="'https://nvd.nist.gov/vuln/detail/' + f.cve_id" target="_blank" rel="noopener" class="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-xs hover:bg-orange-200" :title="f.cve_fetched_at ? 'Cached: ' + fmtDate(f.cve_fetched_at) : ''">📊 {{ t('source_badge_nvd', 'NVD') }}<span v-if="f.cve_fetched_at" class="ml-1 opacity-70">({{ cacheAge(f.cve_fetched_at) }})</span></a>
-                <span v-else-if="src.type === 'nvd'" class="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-xs">📊 {{ t('source_badge_nvd', 'NVD') }}</span>
+                <span v-if="src.type === 'yaml'" class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs" title="Lösungsvorschlag aus dem PiBroadGuard-Regelwerk">📋 {{ t('source_badge_yaml', 'Ruleset') }}</span>
+                <a v-else-if="src.type === 'kev'" href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener" class="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-xs hover:bg-red-200" title="CISA Known Exploited Vulnerabilities Catalog">🔴 {{ t('source_badge_kev', 'KEV') }}</a>
+                <a v-else-if="src.type === 'nvd' && f.cve_id" :href="'https://nvd.nist.gov/vuln/detail/' + f.cve_id" target="_blank" rel="noopener" class="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-xs hover:bg-orange-200" :title="'NIST NVD' + (f.cve_fetched_at ? ' · Cached: ' + fmtDate(f.cve_fetched_at) : '')">📊 {{ t('source_badge_nvd', 'NVD') }}<span v-if="f.cve_fetched_at" class="ml-1 opacity-70">({{ cacheAge(f.cve_fetched_at) }})</span></a>
+                <span v-else-if="src.type === 'nvd'" class="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-xs" title="NIST National Vulnerability Database">📊 {{ t('source_badge_nvd', 'NVD') }}</span>
+                <a v-else-if="src.type === 'cwe' && f.cwe_id" :href="'https://cwe.mitre.org/data/definitions/' + f.cwe_id.replace('CWE-','') + '.html'" target="_blank" rel="noopener" class="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-xs hover:bg-purple-200" :title="'MITRE CWE: ' + f.cwe_id">🔑 {{ t('source_badge_cwe', 'CWE') }} {{ f.cwe_id }}</a>
                 <span v-else-if="src.type === 'cwe'" class="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-xs">🔑 {{ t('source_badge_cwe', 'CWE') }}</span>
                 <span v-else class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-xs">{{ src.label }}</span>
               </template>
@@ -509,8 +547,12 @@
           <p class="text-sm text-slate-600 mb-1"><strong>Broadcast Context:</strong> {{ f.broadcast_context || '—' }}</p>
           <div class="bg-blue-50 border-l-4 border-blue-400 p-3 mb-2 text-sm">
             <strong>Recommendation:</strong> {{ f.recommendation || '—' }}
-            <div v-if="f.kev_required_action" class="mt-1 text-red-700">⚠️ CISA KEV: {{ f.kev_required_action }}</div>
-            <div v-if="f.nvd_solution" class="mt-1">NVD: {{ f.nvd_solution }}</div>
+            <div v-if="f.kev_required_action" class="mt-1 text-red-700 font-medium">⚠️ CISA KEV – Required Action: {{ f.kev_required_action }}</div>
+            <div v-if="f.nvd_solution" class="mt-1 text-slate-700">NVD Solution: {{ f.nvd_solution }}</div>
+            <div v-if="f.cwe_recommendation" class="mt-1 text-slate-600 text-xs">{{ f.cwe_id ? f.cwe_id + ': ' : '' }}{{ f.cwe_recommendation }}</div>
+            <div v-if="f.vendor_advisory_url" class="mt-1">
+              <a :href="f.vendor_advisory_url" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs">🔗 Hersteller-Advisory</a>
+            </div>
           </div>
           <div class="flex items-center gap-3 flex-wrap">
             <div>
@@ -525,6 +567,7 @@
             <div v-if="f.compensating_control_required" class="flex-1">
               <input v-model="f.compensating_control_description" @blur="updateFinding(f)"
                 placeholder="Describe compensating control..."
+                title="Kompensationsmassnahme: Beschreiben Sie, wie das Risiko durch andere Massnahmen reduziert wird"
                 class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
             </div>
           </div>

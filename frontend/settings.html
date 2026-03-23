@@ -8,8 +8,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="/app/i18n.js"></script>
 </head>
-<body class="bg-slate-100 min-h-screen flex flex-col">
-<div id="app">
+<body class="bg-slate-100">
+<div id="app" class="flex flex-col min-h-screen bg-slate-100">
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
       <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
@@ -44,17 +44,20 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-sm font-medium text-slate-700 mb-2">Mode:</label>
+        <label class="block text-sm font-medium text-slate-700 mb-2">
+          Mode:
+          <span class="ml-1 text-slate-400 cursor-help font-normal" title="Controls whether PiBroadGuard attempts to reach external services (NVD API, CISA KEV). Use 'Force offline' for air-gapped Pi deployments.">ℹ</span>
+        </label>
         <div class="space-y-2">
-          <label class="flex items-center gap-2 cursor-pointer text-sm">
+          <label class="flex items-center gap-2 cursor-pointer text-sm" title="Automatically pings nvd.nist.gov hourly. Uses online features when reachable.">
             <input type="radio" v-model="connMode" value="auto">
             <strong>{{ t('connectivity_auto', 'Detect automatically') }}</strong> (recommended)
           </label>
-          <label class="flex items-center gap-2 cursor-pointer text-sm">
+          <label class="flex items-center gap-2 cursor-pointer text-sm" title="Always treat as online. Use if auto-detection gives wrong results (e.g. firewall allows NVD but ping fails).">
             <input type="radio" v-model="connMode" value="force_online">
             {{ t('connectivity_force_online', 'Force online') }} (CVE/KEV always active)
           </label>
-          <label class="flex items-center gap-2 cursor-pointer text-sm">
+          <label class="flex items-center gap-2 cursor-pointer text-sm" title="Never attempt external connections. Ideal for Pi deployed in production broadcast network without internet access.">
             <input type="radio" v-model="connMode" value="force_offline">
             {{ t('connectivity_force_offline', 'Force offline') }} (no external access, e.g. Pi in production network)
           </label>
@@ -90,16 +93,19 @@
     <div class="bg-white rounded-lg shadow-sm p-5">
       <h2 class="font-bold text-slate-800 mb-4">&#128451; {{ t('settings_backup', 'Database Backup') }}</h2>
       <div class="mb-4">
-        <label class="block text-sm font-medium text-slate-700 mb-2">Destination:</label>
+        <label class="block text-sm font-medium text-slate-700 mb-2">
+          Destination:
+          <span class="ml-1 text-slate-400 cursor-help font-normal" title="Local: saved to ./data/backups/ (max 5 kept). USB: written to the specified mount path on a connected USB drive.">ℹ</span>
+        </label>
         <div class="flex gap-4">
-          <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="radio" v-model="backupDest" value="local"> Save locally</label>
-          <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="radio" v-model="backupDest" value="usb"> To USB drive</label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm" title="Save to ./data/backups/ on the local filesystem (max 5 backups, oldest auto-deleted)"><input type="radio" v-model="backupDest" value="local"> Save locally</label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm" title="Write directly to a mounted USB drive. Enter the mount path below."><input type="radio" v-model="backupDest" value="usb"> To USB drive</label>
         </div>
         <div v-if="backupDest === 'usb'" class="mt-2">
-          <input v-model="backupUsbPath" placeholder="/media/pi/..." class="border border-slate-300 rounded px-3 py-2 text-sm w-full">
+          <input v-model="backupUsbPath" placeholder="/media/pi/..." class="border border-slate-300 rounded px-3 py-2 text-sm w-full" title="Mount path of the USB drive (e.g. /media/pi/BACKUP-STICK). The path must be writable.">
         </div>
       </div>
-      <label class="flex items-center gap-2 text-sm mb-4 cursor-pointer">
+      <label class="flex items-center gap-2 text-sm mb-4 cursor-pointer" title="Encrypt the backup file with AES-256-GCM using the Shared Secret configured in PIBG_SHARED_SECRET. Encrypted backups have the .db.enc extension.">
         <input type="checkbox" v-model="backupEncrypt" class="w-4 h-4">
         {{ t('encryption_title', 'Encrypt') }} (AES-256-GCM)
       </label>
@@ -207,9 +213,9 @@
       <div class="border-t border-slate-100 pt-4">
         <h3 class="text-sm font-medium text-slate-700 mb-2">Add new device type</h3>
         <div class="grid grid-cols-3 gap-2">
-          <input v-model="newDt.name" placeholder="name (e.g. klm_device)" class="border border-slate-300 rounded px-3 py-2 text-sm font-mono">
-          <input v-model="newDt.label_de" placeholder="Label DE" class="border border-slate-300 rounded px-3 py-2 text-sm">
-          <input v-model="newDt.label_en" placeholder="Label EN" class="border border-slate-300 rounded px-3 py-2 text-sm">
+          <input v-model="newDt.name" placeholder="name (e.g. klm_device)" class="border border-slate-300 rounded px-3 py-2 text-sm font-mono" title="Internal identifier – lowercase, underscores only, no spaces (e.g. frame_sync, klm_device)">
+          <input v-model="newDt.label_de" placeholder="Label DE" class="border border-slate-300 rounded px-3 py-2 text-sm" title="German display label shown in forms and the device list">
+          <input v-model="newDt.label_en" placeholder="Label EN" class="border border-slate-300 rounded px-3 py-2 text-sm" title="English display label shown in forms and the device list">
         </div>
         <button @click="addDt" :disabled="!newDt.name || !newDt.label_de" class="mt-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded text-sm">
           + {{ t('btn_add', 'Add') }}
@@ -260,9 +266,9 @@
       <div class="border-t border-slate-100 pt-4">
         <h3 class="text-sm font-medium text-slate-700 mb-2">Add device class</h3>
         <div class="grid grid-cols-3 gap-2">
-          <input v-model="newDc.name" placeholder="name (e.g. iot_device)" class="border border-slate-300 rounded px-3 py-2 text-sm font-mono">
-          <input v-model="newDc.label_de" placeholder="Label DE" class="border border-slate-300 rounded px-3 py-2 text-sm">
-          <input v-model="newDc.label_en" placeholder="Label EN" class="border border-slate-300 rounded px-3 py-2 text-sm">
+          <input v-model="newDc.name" placeholder="name (e.g. iot_device)" class="border border-slate-300 rounded px-3 py-2 text-sm font-mono" title="Internal identifier for the architectural class – lowercase, underscores only (e.g. broadcast, it, ot_ics)">
+          <input v-model="newDc.label_de" placeholder="Label DE" class="border border-slate-300 rounded px-3 py-2 text-sm" title="German display label for the device class">
+          <input v-model="newDc.label_en" placeholder="Label EN" class="border border-slate-300 rounded px-3 py-2 text-sm" title="English display label for the device class">
         </div>
         <button @click="addDc" :disabled="!newDc.name || !newDc.label_de" class="mt-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded text-sm">+ Add</button>
         <p v-if="dcMsg" class="text-green-600 text-xs mt-1">{{ dcMsg }}</p>
@@ -309,12 +315,12 @@
       <div class="border-t border-slate-100 pt-4">
         <h3 class="text-sm font-medium text-slate-700 mb-2">Add custom profile</h3>
         <div class="grid grid-cols-2 gap-2 mb-2">
-          <input v-model="newSp.name" placeholder="name (e.g. quick_udp)" class="border border-slate-300 rounded px-3 py-2 text-sm font-mono">
-          <input v-model="newSp.label" placeholder="Label" class="border border-slate-300 rounded px-3 py-2 text-sm">
+          <input v-model="newSp.name" placeholder="name (e.g. quick_udp)" class="border border-slate-300 rounded px-3 py-2 text-sm font-mono" title="Internal identifier for the scan profile – lowercase, underscores only (e.g. quick_udp, deep_ot)">
+          <input v-model="newSp.label" placeholder="Label" class="border border-slate-300 rounded px-3 py-2 text-sm" title="Short display name shown in the profile dropdown (e.g. 'Quick UDP Scan')">
         </div>
-        <textarea v-model="newSp.flags_str" rows="2" placeholder="nmap flags, one per line: -sT&#10;--top-ports&#10;500" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono mb-2"></textarea>
+        <textarea v-model="newSp.flags_str" rows="2" placeholder="nmap flags, one per line: -sT&#10;--top-ports&#10;500" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono mb-2" title="Nmap flags, one per line. The target IP is appended automatically. Do not include -oX or --host-timeout (set separately)."></textarea>
         <div class="flex items-center gap-3">
-          <input type="number" v-model.number="newSp.timeout_seconds" min="30" max="3600" class="border border-slate-300 rounded px-3 py-2 text-sm w-28" placeholder="Timeout s">
+          <input type="number" v-model.number="newSp.timeout_seconds" min="30" max="3600" class="border border-slate-300 rounded px-3 py-2 text-sm w-28" placeholder="Timeout s" title="Maximum scan duration in seconds before nmap is forcefully terminated (30–3600). Recommended: 300 for standard, 600 for extended scans.">
           <button @click="addSp" :disabled="!newSp.name || !newSp.label || !newSp.flags_str" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded text-sm">+ Add Profile</button>
         </div>
         <p v-if="spMsg" :class="spError ? 'text-red-600' : 'text-green-600'" class="text-xs mt-1">{{ spMsg }}</p>

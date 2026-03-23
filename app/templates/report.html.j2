@@ -111,7 +111,24 @@
   <div class="finding-header">
     <span class="badge {{ f.severity or 'info' }}">{{ f.severity | upper }}</span>
     <strong>{{ f.title }}</strong>
-    {% if f.kev_listed %}<span class="badge red">⚠️ CISA KEV</span>{% endif %}
+    {% if f.cve_id %}
+    <a href="https://nvd.nist.gov/vuln/detail/{{ f.cve_id }}" target="_blank" rel="noopener"
+       style="font-family:monospace;font-size:0.75rem;background:#1e293b;color:#fff;padding:2px 6px;border-radius:4px;text-decoration:none;">{{ f.cve_id }}</a>
+    {% endif %}
+    {% if f.cvss_score %}
+    <span style="font-size:0.75rem;font-weight:bold;padding:2px 6px;border-radius:4px;
+      {% set cs = f.cvss_score | float %}
+      {% if cs >= 9.0 %}background:#dc2626;color:#fff;
+      {% elif cs >= 7.0 %}background:#ea580c;color:#fff;
+      {% elif cs >= 4.0 %}background:#ca8a04;color:#fff;
+      {% else %}background:#16a34a;color:#fff;{% endif %}
+      " title="CVSS Base Score (NIST NVD)">CVSS {{ "%.1f" | format(f.cvss_score | float) }}</span>
+    {% endif %}
+    {% if f.kev_listed %}<span class="badge red" title="Diese Schwachstelle wird aktiv ausgenutzt – CISA Known Exploited Vulnerabilities">⚠️ CISA KEV</span>{% endif %}
+    {% if f.cwe_id %}
+    <a href="https://cwe.mitre.org/data/definitions/{{ f.cwe_id | replace('CWE-', '') }}.html" target="_blank" rel="noopener"
+       style="font-size:0.75rem;background:#ede9fe;color:#6d28d9;padding:2px 6px;border-radius:4px;text-decoration:none;">{{ f.cwe_id }}</a>
+    {% endif %}
   </div>
   <p><strong>Befund:</strong> {{ f.evidence or "—" }}</p>
   <p><strong>Risiko:</strong> {{ f.description or "—" }}</p>
@@ -121,12 +138,18 @@
     <strong>Empfehlung (Regelwerk):</strong> {{ f.recommendation or "—" }}
     {% if f.kev_listed %}
     <div class="kev-warning">
-      ⚠️ <strong>Aktiv ausgenutzt (CISA KEV):</strong> {{ f.kev_required_action or "Patch anwenden" }}
+      ⚠️ <strong>Aktiv ausgenutzt (CISA KEV):</strong> {{ f.kev_required_action or "Patch gemäss Herstelleranweisung anwenden." }}
+      <br><small><a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener">→ CISA KEV Catalog</a></small>
     </div>
     {% endif %}
-    {% if f.nvd_solution %}<p><strong>NVD-Empfehlung:</strong> {{ f.nvd_solution }}</p>{% endif %}
-    {% if f.vendor_advisory_url %}<p><strong>Hersteller-Advisory:</strong> <a href="{{ f.vendor_advisory_url }}">{{ f.vendor_advisory_url }}</a></p>{% endif %}
-    {% if f.cwe_recommendation %}<p><strong>{{ f.cwe_id }}:</strong> {{ f.cwe_recommendation }}</p>{% endif %}
+    {% if f.nvd_solution %}
+    <p><strong>NVD-Empfehlung:</strong> {{ f.nvd_solution }}
+    {% if f.cve_id %}<br><small><a href="https://nvd.nist.gov/vuln/detail/{{ f.cve_id }}" target="_blank" rel="noopener">→ NVD: {{ f.cve_id }}</a></small>{% endif %}</p>
+    {% endif %}
+    {% if f.vendor_advisory_url %}<p><strong>Hersteller-Advisory:</strong> <a href="{{ f.vendor_advisory_url }}" target="_blank" rel="noopener">{{ f.vendor_advisory_url }}</a></p>{% endif %}
+    {% if f.cwe_recommendation %}
+    <p><strong><a href="https://cwe.mitre.org/data/definitions/{{ f.cwe_id | replace('CWE-', '') }}.html" target="_blank" rel="noopener">{{ f.cwe_id }}</a>:</strong> {{ f.cwe_recommendation }}</p>
+    {% endif %}
   </div>
 
   <p><strong>Status:</strong> {{ f.status | status_label }}
