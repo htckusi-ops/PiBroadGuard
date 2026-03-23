@@ -113,14 +113,16 @@ async def run_scan(
     host_timeout: str = "300s",
     max_rate: int = 100,
     assessment_id: Optional[int] = None,
+    flags_override: Optional[List] = None,
+    timeout_override: Optional[int] = None,
 ) -> dict:
     safe_ip = _validate_ip(ip)
-    flags = SCAN_PROFILES.get(profile, SCAN_PROFILES["passive"])
+    flags = flags_override if flags_override is not None else SCAN_PROFILES.get(profile, SCAN_PROFILES["passive"])
 
-    # Per-profile timeout takes precedence over the global setting when it
-    # would be too short (e.g. the Pi default of 60s fails for -T2 scans
-    # where a single filtered port can take 10 s).
-    effective_timeout = PROFILE_HOST_TIMEOUT.get(profile, host_timeout)
+    if timeout_override is not None:
+        effective_timeout = f"{timeout_override}s"
+    else:
+        effective_timeout = PROFILE_HOST_TIMEOUT.get(profile, host_timeout)
 
     with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
         output_file = tmp.name

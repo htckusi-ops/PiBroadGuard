@@ -68,7 +68,8 @@
   <tr><td>NIST SP 800-30r1</td><td>Risk Assessment Methodology</td></tr>
 </table>
 <p class="meta">
-  Scan-Tool: Nmap {{ nmap_version }}, Profil: {{ assessment.scan_profile or "—" }}<br>
+  Scan-Tool: Nmap {{ nmap_version }}, Profil: {{ scan_profile_label }}{% if scan_profile_description %} – {{ scan_profile_description }}{% endif %}<br>
+  {% if nmap_command %}<code style="font-size:0.85rem">{{ nmap_command }}</code><br>{% endif %}
   {% if auth %}Scan-Autorisierung: {{ auth.authorized_by_name }} ({{ auth.authorized_by_role }}), erteilt am {{ auth.authorization_date | date }}<br>{% endif %}
   Bewertungsdatum: {{ assessment.created_at | date }}
 </p>

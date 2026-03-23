@@ -33,7 +33,13 @@
 | NIST SP 800-115 | Technical Guide to Security Testing (Scan-Methodik) |
 | NIST SP 800-30r1 | Risk Assessment Methodology (Impact × Likelihood) |
 
-**Scan-Tool:** Nmap {{ nmap_version }}, Profil: {{ assessment.scan_profile or "—" }}
+**Scan-Tool:** Nmap {{ nmap_version }}, Profil: {{ scan_profile_label }}
+{% if scan_profile_description %}
+**Profil-Beschreibung:** {{ scan_profile_description }}
+{% endif %}
+{% if nmap_command %}
+**Nmap-Befehl:** `{{ nmap_command }}`
+{% endif %}
 {% if auth %}
 **Scan-Autorisierung:** {{ auth.authorized_by_name }} ({{ auth.authorized_by_role }}), erteilt am {{ auth.authorization_date | date }}
 {% endif %}

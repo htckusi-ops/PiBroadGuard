@@ -179,9 +179,11 @@
 
       <div class="mb-4">
         <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
-        <div class="flex gap-4">
-          <label v-for="p in ['passive','standard','extended']" :key="p" class="flex items-center gap-1 text-sm cursor-pointer capitalize">
-            <input type="radio" v-model="form.scan_profile" :value="p"> {{ p }}
+        <div class="space-y-1">
+          <label v-for="p in scanProfiles" :key="p.name" class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="radio" v-model="form.scan_profile" :value="p.name">
+            <span class="font-medium">{{ p.label }}</span>
+            <span class="text-slate-400 text-xs">{{ p.description ? p.description.substring(0, 70) + '…' : '' }}</span>
           </label>
         </div>
       </div>
@@ -228,6 +230,7 @@ createApp({
   setup() {
     const schedules = ref([]);
     const devices = ref([]);
+    const scanProfiles = ref([]);
     const loading = ref(true);
     const error = ref('');
     const filterDevice = ref('');
@@ -288,6 +291,16 @@ createApp({
     async function loadDevices() {
       const r = await fetch('/api/v1/devices');
       if (r.ok) devices.value = await r.json();
+    }
+
+    async function loadScanProfiles() {
+      const r = await fetch('/api/v1/scan-profiles');
+      if (r.ok) scanProfiles.value = await r.json();
+      else scanProfiles.value = [
+        { name: 'passive', label: 'Passive', description: '' },
+        { name: 'standard', label: 'Standard', description: '' },
+        { name: 'extended', label: 'Extended', description: '' },
+      ];
     }
 
     async function createSchedule() {
@@ -358,10 +371,10 @@ createApp({
 
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await Promise.all([loadSchedules(), loadDevices()]);
+      await Promise.all([loadSchedules(), loadDevices(), loadScanProfiles()]);
     });
 
-    return { schedules, devices, loading, error, filterDevice, filterStatus, filteredSchedules, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
+    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
 
   }
 }).mount('#app');

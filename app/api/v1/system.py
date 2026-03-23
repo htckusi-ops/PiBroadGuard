@@ -248,9 +248,165 @@ def get_device_classes(
     db: Session = Depends(get_db),
     user: str = Depends(verify_credentials),
 ):
-    """Return all active device classes (architectural classification for risk scoring)."""
+    """Return all active device classes."""
     from app.models.device_class import DeviceClass
     return db.query(DeviceClass).filter(DeviceClass.active == True).order_by(DeviceClass.sort_order).all()
+
+
+@router.get("/device-classes/all")
+def get_all_device_classes(
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Return all device classes including inactive (admin)."""
+    from app.models.device_class import DeviceClass
+    return db.query(DeviceClass).order_by(DeviceClass.sort_order).all()
+
+
+@router.post("/device-classes", status_code=201)
+def create_device_class(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    from app.models.device_class import DeviceClass
+    dc = DeviceClass(
+        name=payload["name"],
+        label_de=payload.get("label_de", payload["name"]),
+        label_en=payload.get("label_en", payload["name"]),
+        sort_order=payload.get("sort_order", 99),
+        active=True,
+    )
+    db.add(dc)
+    db.commit()
+    db.refresh(dc)
+    return dc
+
+
+@router.put("/device-classes/{dc_id}")
+def update_device_class(
+    dc_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    from app.models.device_class import DeviceClass
+    dc = db.query(DeviceClass).filter(DeviceClass.id == dc_id).first()
+    if not dc:
+        raise HTTPException(404, "Device class not found")
+    for k in ("label_de", "label_en", "sort_order", "active"):
+        if k in payload:
+            setattr(dc, k, payload[k])
+    db.commit()
+    db.refresh(dc)
+    return dc
+
+
+@router.delete("/device-classes/{dc_id}")
+def delete_device_class(
+    dc_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    from app.models.device_class import DeviceClass
+    dc = db.query(DeviceClass).filter(DeviceClass.id == dc_id).first()
+    if not dc:
+        raise HTTPException(404, "Device class not found")
+    dc.active = False
+    db.commit()
+    return {"deleted": True}
+
+
+# ── Scan Profiles ─────────────────────────────────────────────────────────────
+
+@router.get("/scan-profiles")
+def get_scan_profiles(
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Return all active scan profiles."""
+    from app.models.scan_profile import ScanProfile
+    return db.query(ScanProfile).filter(ScanProfile.active == True).order_by(ScanProfile.id).all()
+
+
+@router.post("/scan-profiles", status_code=201)
+def create_scan_profile(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    import json as _json
+    from app.models.scan_profile import ScanProfile
+    flags = payload.get("nmap_flags", [])
+    sp = ScanProfile(
+        name=payload["name"],
+        label=payload.get("label", payload["name"]),
+        description=payload.get("description"),
+        nmap_flags=_json.dumps(flags) if isinstance(flags, list) else flags,
+        timeout_seconds=payload.get("timeout_seconds", 300),
+        built_in=False,
+        active=True,
+    )
+    db.add(sp)
+    db.commit()
+    db.refresh(sp)
+    return _serialize_scan_profile(sp)
+
+
+@router.put("/scan-profiles/{sp_id}")
+def update_scan_profile(
+    sp_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    import json as _json
+    from app.models.scan_profile import ScanProfile
+    sp = db.query(ScanProfile).filter(ScanProfile.id == sp_id).first()
+    if not sp:
+        raise HTTPException(404, "Scan profile not found")
+    if sp.built_in and "nmap_flags" in payload:
+        raise HTTPException(400, "Built-in profiles cannot have their flags modified")
+    for k in ("label", "description", "timeout_seconds", "active"):
+        if k in payload:
+            setattr(sp, k, payload[k])
+    if not sp.built_in and "nmap_flags" in payload:
+        flags = payload["nmap_flags"]
+        sp.nmap_flags = _json.dumps(flags) if isinstance(flags, list) else flags
+    db.commit()
+    db.refresh(sp)
+    return _serialize_scan_profile(sp)
+
+
+@router.delete("/scan-profiles/{sp_id}")
+def delete_scan_profile(
+    sp_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    from app.models.scan_profile import ScanProfile
+    sp = db.query(ScanProfile).filter(ScanProfile.id == sp_id).first()
+    if not sp:
+        raise HTTPException(404, "Scan profile not found")
+    if sp.built_in:
+        raise HTTPException(400, "Built-in profiles cannot be deleted")
+    sp.active = False
+    db.commit()
+    return {"deleted": True}
+
+
+def _serialize_scan_profile(sp) -> dict:
+    import json as _json
+    return {
+        "id": sp.id,
+        "name": sp.name,
+        "label": sp.label,
+        "description": sp.description,
+        "nmap_flags": _json.loads(sp.nmap_flags) if sp.nmap_flags else [],
+        "timeout_seconds": sp.timeout_seconds,
+        "built_in": sp.built_in,
+        "active": sp.active,
+    }
 
 
 # ── phpIPAM endpoints ────────────────────────────────────────────────────────
