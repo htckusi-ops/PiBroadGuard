@@ -1,29 +1,110 @@
-# PiBroadGuard – Broadcast Device Security Assessment
+# PiBroadGuard – Device Security Assessment Platform
 
-Standardisiertes Sicherheits-Assessment-Tool für Broadcast-Geräte in Medienunternehmen. Läuft auf dem Raspberry Pi 4 (ARM64) und Standard Linux (x86_64).
+Standardisiertes Sicherheits-Assessment für Broadcast-Geräte in Medienunternehmen.
+Läuft auf dem Raspberry Pi 4 (ARM64) und Standard Linux (x86_64).
 
-## Überblick
+---
 
-PiBroadGuard kombiniert Nmap-Scans mit einem broadcast-spezifischen Regelwerk und manuellen Bewertungsfragen zu strukturierten Security-Reports. Es berücksichtigt die besonderen Anforderungen von Broadcast-Umgebungen (Legacy-Protokolle, Produktionskritikalität, Kompensationsmassnahmen).
+## Was ist PiBroadGuard?
 
-**Bewertungsdimensionen:** Technisch | Betrieb | Kompensation | Lifecycle | Hersteller
+Broadcast-Geräte – Encoder, Decoder, Matrixsysteme, Intercom, Multiviewer – verhalten sich anders als klassische IT-Systeme. Sie haben lange Produktlebenszyklen, proprietäre Management-Interfaces und betriebsnotwendige Legacy-Protokolle. Ein offener Telnet-Port ist auf einem Broadcast-Encoder möglicherweise nicht vermeidbar – aber er muss bewertet, dokumentiert und kompensiert werden.
 
-**Standards:** IEC 62443-3-2/-4-2/-4-1, NIST SP 800-82r3/-115/-30r1, NIST CSF 2.0
+**PiBroadGuard** schafft genau diesen Prozess: kontrollierte Netzwerkscans, ein broadcast-spezifisches Regelwerk und strukturierte Reports, die Technik, Betriebskontext und Kompensationsmassnahmen gemeinsam bewerten.
 
-## Funktionsübersicht
+> PiBroadGuard ist kein Penetrationstest-Tool. Es ist ein standardisierter Assessment-Prozess für Geräte, die mit generischen Security-Tools nicht angemessen bewertet werden können.
 
-| Bereich | Features |
-|---------|----------|
-| **Geräte-Management** | CRUD, Gerätetypen aus DB, rDNS-Lookup, MAC-Erkennung, phpIPAM-Import |
-| **Scan** | 3 Profile (passive/standard/extended), Autorisierungsformular, Live-Output (SSE), Scan-Queue, parallele Jobs konfigurierbar |
-| **Geplante Scans** | Einmalig / Intervall (Stunden/Tage/Wochen/Monate) / Cron-Expression, Uhrzeit-Auswahl, APScheduler-Persistenz |
-| **Regelwerk** | YAML, 15+ broadcast-spezifische Regeln, Severity-basiertes Scoring |
-| **Findings** | CVE-Lookup (NVD API v2), KEV-Check (CISA), CWE-Empfehlungen, Lösungsquellen-Badges, KEV-Badge mit Link |
-| **Scoring** | 5 Dimensionen gewichtet, Kompensations-Override, Norm-Referenz pro Dimension |
-| **Reports** | Markdown / HTML / JSON, Methodikabschnitt, Normenreferenzen |
-| **Zweiphasig** | .bdsa-Pakete (ZIP + SHA256), optionale AES-256-GCM-Verschlüsselung, USB-Wizard (3 Schritte) |
-| **Settings** | Konnektivitätsmodus (Auto/Online/Offline), KEV-Sync, SQLite-Backup, Logfile-Viewer, Nmap-Diagnose |
-| **UI** | Vue 3 via CDN, Tailwind CSS, Deutsch/Englisch (i18n), Tooltips |
+---
+
+## Für wen ist PiBroadGuard?
+
+| Rolle | Nutzen |
+|-------|--------|
+| **IT Security Reviewer** | Technische Findings bewerten, Scores setzen, Freigabe erteilen |
+| **Broadcast Engineer** | Geräte erfassen, betriebsnotwendige Dienste dokumentieren, Hersteller-Infos ergänzen |
+| **Asset Management / Governance** | Reports als Grundlage für Einkaufsentscheide und Lifecycle-Planung |
+
+---
+
+## Was wird bewertet?
+
+| Dimension | Inhalt | Standard |
+|-----------|--------|----------|
+| **Technisch** | Angriffsfläche, offene Ports, Scan-Findings | IEC 62443-4-2 / NIST SP 800-82 |
+| **Betrieb** | Produktionskritikalität, Redundanz, Fallback | IEC 62443-3-2 |
+| **Kompensation** | Segmentierung, ACLs, Monitoring | IEC 62443: Compensating Countermeasures |
+| **Lifecycle** | Update-Fähigkeit, EOL-Datum, Support | IEC 62443-4-1 / NIST SP 800-30 |
+| **Hersteller** | PSIRT, Advisories, Reaktionsfähigkeit | IEC 62443-4-1 PSIRT / SDL |
+
+---
+
+## Wie läuft ein Assessment ab?
+
+```
+1. Gerät erfassen (manuell oder via phpIPAM-Import)
+2. Scan-Freigabe dokumentieren (Name, Rolle des Autorisierenden)
+3. Nmap-Scan starten (Profil: passive / standard / extended)
+4. Regelwerk erzeugt automatisch Findings (inkl. CVE/KEV-Lookup)
+5. Broadcast Engineer ergänzt manuelle Antworten (Default-Creds? Telnet deaktivierbar? EOL-Datum?)
+6. IT Security Reviewer setzt Scores und Kompensationsmassnahmen
+7. Report generieren (Markdown / HTML / JSON)
+8. Entscheid: Freigegeben / Mit Auflagen / Zurückgestellt / Abgelehnt
+9. Re-Assessment-Termin festlegen + Scheduled Scan konfigurieren
+```
+
+---
+
+## Scoring-Modell
+
+Fünf gewichtete Dimensionen ergeben einen Gesamtscore (0–100):
+
+| Dimension | Gewicht |
+|-----------|---------|
+| Technisch | 35 % |
+| Betrieb | 20 % |
+| Kompensation | 20 % |
+| Lifecycle | 15 % |
+| Hersteller | 10 % |
+
+**Gesamtbewertung:**
+- 🟢 Grün (≥ 75): Geeignet
+- 🟡 Gelb (≥ 55): Geeignet mit Auflagen
+- 🟠 Orange (≥ 35): Begrenzt einsetzbar
+- 🔴 Rot (< 35): Nicht freigeben
+
+**Überschreibungsregeln:**
+- 2+ kritische Findings → automatisch Rot
+- 1 unkompensiertes kritisches Finding → maximal Orange
+- Lifecycle-Score < 20 → maximal Gelb
+
+---
+
+## Zweiphasiger Betrieb (Air-Gap)
+
+```
+Phase 1: Raspberry Pi im Broadcast-Netz (offline)
+  → Gerät erfassen → Scan-Autorisierung → Nmap-Scan → .bdsa-Paket exportieren
+
+Phase 2: Workstation mit Internetzugang (online)
+  → Paket importieren → CVE/KEV-Lookup → Manuelle Fragen → Report generieren
+```
+
+Transport via USB (3-Schritt-Wizard). Optionale AES-256-GCM-Verschlüsselung mit Shared Secret.
+
+---
+
+## Angewandte Standards
+
+| Standard | Relevanz |
+|----------|----------|
+| **IEC 62443-3-2** | Risk Assessment für OT/ICS |
+| **IEC 62443-4-2** | Component Security Requirements |
+| **IEC 62443-4-1** | Product Lifecycle Security / PSIRT |
+| **NIST SP 800-82r3** | Guide to OT Security |
+| **NIST SP 800-115** | Technical Guide to Security Testing |
+| **NIST SP 800-30r1** | Risk Assessment Methodology |
+| **NIST CSF 2.0** | Cybersecurity Framework |
+
+---
 
 ## Schnellstart (Docker)
 
@@ -64,70 +145,29 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now pibroadguard
 ```
 
-## Update (Docker)
+---
 
-**Wichtig:** Alle Befehle müssen im Projektverzeichnis (`cd pibroadguard`) ausgeführt werden.
+## Update (Docker)
 
 ```bash
 cd pibroadguard
-
-# 1. Neuen Code holen
 git pull origin main
-
-# 2. Image neu bauen und Container neu starten
 docker compose up -d --build
-
-# 3. Datenbankmigrationen anwenden (neue Tabellen/Spalten)
 docker compose exec pibroadguard alembic upgrade head
 ```
-
-Daten (SQLite-Datenbank in `./data/`) bleiben beim Update erhalten.
 
 ## Update (systemd)
 
 ```bash
 cd pibroadguard
-
-# 1. Neuen Code holen
 git pull origin main
-
-# 2. Abhängigkeiten aktualisieren
 source venv/bin/activate
 pip install -r requirements.txt
-
-# 3. Datenbankmigrationen anwenden
 alembic upgrade head
-
-# 4. Service neu starten
 sudo systemctl restart pibroadguard
 ```
 
-## Zweiphasiger Betrieb (Air-Gap)
-
-```
-Phase 1: Raspberry Pi im Broadcast-Netz (offline)
-  → Gerät erfassen → Scan-Autorisierung → Nmap-Scan → .bdsa-Paket exportieren
-
-Phase 2: Workstation mit Internetzugang (online)
-  → Paket importieren → CVE/KEV-Lookup → Manuelle Fragen → Report generieren
-```
-
-Export via USB (3-Schritt-Wizard): `/app/usb_export.html`
-
-Verschlüsselung: AES-256-GCM mit Shared Secret (in `.env` oder Settings-Seite konfigurierbar).
-
-## Geplante Scans (Scheduler)
-
-Scans können zeitgesteuert ausgeführt werden:
-
-- **Einmalig** – bestimmtes Datum/Uhrzeit
-- **Intervall** – z.B. „alle 4 Wochen, dienstags um 02:00" mit Uhrzeit-Auswahl
-- **Cron** – beliebiger Cron-Ausdruck (z.B. `0 2 * * 1` für jeden Montag 02:00)
-
-Alle Schedules werden mit Betriebsfreigabe (Name/Rolle) dokumentiert.
-APScheduler persistiert die Jobs in der SQLite-DB – Schedules überleben Neustarts.
-
-Übersicht aller Schedules: `/app/schedules.html`
+---
 
 ## Konfiguration (.env)
 
@@ -137,7 +177,7 @@ APScheduler persistiert die Jobs in der SQLite-DB – Schedules überleben Neust
 | `PIBG_PASSWORD` | `changeme` | **Unbedingt ändern!** |
 | `PIBG_DB_PATH` | `./data/pibroadguard.db` | Datenbankpfad |
 | `PIBG_NVD_API_KEY` | — | Kostenlos: https://nvd.nist.gov/developers/request-an-api-key |
-| `PIBG_SHARED_SECRET` | — | Für verschlüsselten USB-Export (AES-256-GCM) |
+| `PIBG_SHARED_SECRET` | — | AES-256-GCM-Verschlüsselung für USB-Export |
 | `PIBG_LOG_LEVEL` | `INFO` | DEBUG / INFO / WARNING / ERROR |
 | `PIBG_MAX_PARALLEL_SCANS` | `1` | Gleichzeitige Scans (1 = sequenziell, empfohlen für Pi) |
 | `PIBG_SCHEDULER_TIMEZONE` | `Europe/Zurich` | Zeitzone für geplante Scans |
@@ -146,12 +186,32 @@ APScheduler persistiert die Jobs in der SQLite-DB – Schedules überleben Neust
 
 Vollständige Liste: `.env.example`
 
-## Tests
+---
 
-```bash
-pip install pytest
-pytest tests/ -v
-```
+## Geplante Scans (Scheduler)
+
+Scans können zeitgesteuert ausgeführt werden:
+
+- **Einmalig** – bestimmtes Datum/Uhrzeit
+- **Intervall** – z.B. „alle 4 Wochen, dienstags um 02:00"
+- **Cron** – beliebiger Cron-Ausdruck (z.B. `0 2 * * 1` für jeden Montag 02:00)
+
+Alle Schedules werden mit Betriebsfreigabe (Name/Rolle) dokumentiert.
+APScheduler persistiert die Jobs in der SQLite-DB – Schedules überleben Neustarts.
+
+Übersicht aller Schedules: `/app/schedules.html`
+
+---
+
+## Scan-Auswirkungen auf Broadcast-Geräte
+
+| Scan-Profil | Ports / Flags | Risiko | Empfehlung |
+|-------------|--------------|--------|------------|
+| `passive` | ~20 broadcast-relevante Ports, T2 | Niedrig | **Empfohlen für Live-Produktion** |
+| `standard` | Top 1000 Ports, T3 | Mittel | Wartungsfenster nutzen |
+| `extended` | Top 1000 TCP + UDP (SNMP/RTP), T3 | Erhöht | Nur im Testbetrieb |
+
+---
 
 ## API-Dokumentation
 
@@ -167,6 +227,7 @@ GET/PUT         /api/v1/assessments/{id}
 POST            /api/v1/assessments/{id}/scan
 GET             /api/v1/assessments/{id}/scan/status
 GET             /api/v1/assessments/{id}/scan/stream     # SSE
+GET             /api/v1/assessments/{id}/scoring-details # Transparent scoring
 GET/POST        /api/v1/assessments/{id}/manual-findings
 GET             /api/v1/assessments/{id}/findings
 GET             /api/v1/assessments/{id}/report/{md|html|json}
@@ -176,11 +237,14 @@ GET/POST        /api/v1/schedules
 GET/DELETE      /api/v1/schedules/{id}
 POST            /api/v1/schedules/{id}/pause|resume|run-now
 GET             /api/v1/scan-queue/status
-DELETE          /api/v1/scan-queue/{job_id}
+GET             /api/v1/device-types
+GET             /api/v1/device-classes
 GET/POST        /api/v1/usb/devices|export|import
 GET/POST        /api/v1/system/settings|backup|logs|connectivity|kev-sync
 GET             /health  /version  (kein Auth)
 ```
+
+---
 
 ## Frontend-Seiten
 
@@ -195,9 +259,9 @@ GET             /health  /version  (kein Auth)
 | `/app/phpipam_import.html` | Geräte aus phpIPAM importieren |
 | `/app/settings.html` | System: Konnektivität, Verschlüsselung, Backup, Logfile-Viewer |
 
-## Docker – wichtige Hinweise
+---
 
-### Nmap und Raw Sockets
+## Docker – Nmap und Raw Sockets
 
 Im Docker-Container werden Nmap-Raw-Sockets über Linux Capabilities bereitgestellt. Die `docker-compose.yml` enthält bereits:
 
@@ -207,84 +271,20 @@ cap_add:
   - NET_ADMIN
 ```
 
-**Ohne diese Capabilities** fällt Nmap stillschweigend auf TCP-Connect-Scans zurück (kein SYN-Scan, weniger präzise, keine Fehlermeldung). Prüfen im UI unter **Settings → Nmap Diagnostics**.
+**Ohne diese Capabilities** fällt Nmap stillschweigend auf TCP-Connect-Scans zurück. Prüfen unter **Settings → Nmap Diagnostics**.
 
-### Netzwerk-Modus (Raspberry Pi)
-
-Der Docker-Container verwendet standardmässig Bridge-Networking. Für Scans ins Broadcast-Netz muss der Container das Zielnetz erreichen können:
-
-```bash
-# Option A: Host-Networking (einfachste Lösung, empfohlen für den Pi)
-# In docker-compose.yml unter dem Service ergänzen:
+Für Scans ins Broadcast-Netz vom Pi aus empfohlen:
+```yaml
 network_mode: host
-
-# Option B: Statische Route auf dem Pi-Host hinzufügen
-sudo ip route add 192.168.10.0/24 via <gateway>
 ```
-
-**Prüfen ob das Zielnetz erreichbar ist:**
-```bash
-docker compose exec pibroadguard ping -c 2 <ziel-ip>
-```
-
-### Datenpersistenz
-
-Die SQLite-Datenbank liegt im Volume `./data/` ausserhalb des Containers:
-```
-./data/pibroadguard.db     # Datenbank
-./data/backups/            # Lokale Backups (max. 5, konfigurierbar)
-./data/logs/               # Logfiles (RotatingFileHandler, 5 MB / 3 Backups)
-```
-
-`docker compose down` löscht **nicht** die Daten. Nur `docker compose down -v` würde das Volume entfernen (nicht empfohlen).
 
 ---
 
-## Direktinstallation – Nmap Capabilities (systemd)
-
-Bei der direkten Installation ohne Docker müssen Raw-Socket-Rechte explizit gesetzt werden:
+## Tests
 
 ```bash
-# Einmalig nach der Installation
-sudo setcap cap_net_raw+ep $(which nmap)
-
-# Prüfen
-getcap $(which nmap)
-# Erwartete Ausgabe: /usr/bin/nmap cap_net_raw+ep
-```
-
-**Ohne `setcap`** laufen Nmap-Scans nur als TCP-Connect-Scan. Das Tool zeigt eine Warnung im Dashboard und unter Settings → Nmap Diagnostics.
-
-> **Hinweis:** Bei einem Nmap-Update via `apt upgrade` kann die Capability verloren gehen. Nach jedem Nmap-Update erneut ausführen.
-
----
-
-## Netzwerk-Hinweise für Broadcast-Umgebungen
-
-### VLAN-Zugriff
-
-Wenn der Raspberry Pi in einem separaten Management-VLAN steht, muss Routing zum Broadcast-VLAN eingerichtet sein. Empfehlung: Pi ins Management-VLAN mit gerouteten Pfaden zu allen Broadcast-Segmenten.
-
-### Scan-Auswirkungen auf Broadcast-Geräte
-
-Manche Broadcast-Geräte reagieren empfindlich auf Netzwerkscans:
-
-| Scan-Profil | Ports / Flags | Risiko | Empfehlung |
-|-------------|--------------|--------|------------|
-| `passive` | ~20 broadcast-relevante Ports, T2 | Niedrig | **Empfohlen für Live-Produktion** |
-| `standard` | Top 1000 Ports, T3 | Mittel | Wartungsfenster nutzen |
-| `extended` | Top 1000 TCP + UDP (SNMP/RTP), T3 | Erhöht | Nur im Testbetrieb / ausserhalb Produktion |
-
-**SNMP-UDP-Scans** (Extended-Profil) können bei manchen Geräten Syslog-Floods auslösen.
-
-### Firewall / ACL-Anforderungen
-
-Für Nmap-Scans muss der Pi direkte TCP/UDP-Verbindungen zu den Zielgeräten aufbauen können. Temporäre ACL-Regeln falls nötig:
-```
-Quelle:  <Pi-IP>
-Ziel:    <Broadcast-Subnetz>
-Ports:   TCP 1-65535, UDP (Extended-Profil)
-Protokoll: ICMP (optional, für Host-Discovery)
+pip install pytest
+pytest tests/ -v
 ```
 
 ---
@@ -295,4 +295,4 @@ Scans nur mit expliziter Betriebsfreigabe durchführen (NIST SP 800-115). Das To
 
 ---
 
-*PiBroadGuard v1.8 | März 2026 | Markus Gerber · markus.gerber@npn.ch*
+*PiBroadGuard v1.8 – Device Security Assessment Platform | März 2026 | Markus Gerber · markus.gerber@npn.ch*

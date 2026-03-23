@@ -8,6 +8,7 @@ class DeviceBase(BaseModel):
     manufacturer: str
     model: str
     device_type: str
+    device_class_id: Optional[int] = None
     serial_number: Optional[str] = None
     asset_tag: Optional[str] = None
     hostname: Optional[str] = None
@@ -34,6 +35,7 @@ class DeviceUpdate(DeviceBase):
     manufacturer: Optional[str] = None
     model: Optional[str] = None
     device_type: Optional[str] = None
+    device_class_id: Optional[int] = None
     ip_address: Optional[str] = None
 
     @field_validator("ip_address", mode="before")
@@ -47,6 +49,11 @@ class DeviceUpdate(DeviceBase):
 class DeviceRead(DeviceBase):
     id: int
     deleted: bool
+    device_class_id: Optional[int] = None
+    rdns_hostname: Optional[str] = None
+    mac_address: Optional[str] = None
+    mac_vendor: Optional[str] = None
+    phpipam_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     last_assessment_status: Optional[str] = None

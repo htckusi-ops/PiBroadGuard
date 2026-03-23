@@ -237,6 +237,36 @@ def recalculate_scores(assessment_id: int, db: Session = Depends(get_db), user: 
     return result
 
 
+@router.get("/assessments/{assessment_id}/scoring-details")
+def get_scoring_details(assessment_id: int, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
+    """Return detailed scoring breakdown with per-dimension reasons for UI transparency panel."""
+    _get_assessment_or_404(assessment_id, db)
+    findings = db.query(Finding).filter(Finding.assessment_id == assessment_id).all()
+    result = scoring_service.recalculate_detailed(findings)
+
+    # Serialize dataclasses to JSON-compatible dict
+    dims = {}
+    for dim, ds in result.dimensions.items():
+        dims[dim] = {
+            "dimension": ds.dimension,
+            "score": ds.score,
+            "max_score": ds.max_score,
+            "standard_ref": ds.standard_ref,
+            "reasons": [
+                {"type": r.type, "text": r.text, "impact": r.impact,
+                 "finding_id": r.finding_id, "rule_key": r.rule_key}
+                for r in ds.reasons
+            ],
+        }
+    return {
+        "overall_rating": result.overall_rating,
+        "overall_score": result.overall_score,
+        "dimensions": dims,
+        "override_reasons": result.override_reasons,
+        "decision_path": result.decision_path,
+    }
+
+
 # --- Vendor Information ---
 
 @router.get("/assessments/{assessment_id}/vendor-info", response_model=VendorInfoRead)

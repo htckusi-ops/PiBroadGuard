@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, ForeignKey, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -28,6 +28,8 @@ class Device(Base):
     mac_vendor = Column(String)
     phpipam_id = Column(Integer)
     phpipam_synced_at = Column(DateTime(timezone=True))
+    # v1.9 extension
+    device_class_id = Column(Integer, ForeignKey("device_classes.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

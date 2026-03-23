@@ -19,8 +19,10 @@ from app.core.database import SessionLocal
 
 from app.api.v1 import devices, assessments, scans, reports, system, import_export, usb, cve, schedules
 
-VERSION = "1.0.0"
+VERSION = "1.8.0"
 API_VERSION = "v1"
+APP_NAME = "PiBroadGuard"
+APP_SUBTITLE = "Device Security Assessment Platform"
 
 # Setup logging first
 os.makedirs(os.path.dirname(settings.pibg_log_path), exist_ok=True)
@@ -153,7 +155,7 @@ def health():
 
 @app.get("/version")
 def version():
-    return {"version": VERSION, "api": API_VERSION}
+    return {"name": APP_NAME, "subtitle": APP_SUBTITLE, "version": VERSION, "api": API_VERSION}
 
 
 # Frontend: serve static files with Basic Auth protection
