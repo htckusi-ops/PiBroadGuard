@@ -152,6 +152,8 @@ def create_schedule(
     interval_value: Optional[int] = None,
     cron_expression: Optional[str] = None,
     created_by: Optional[str] = None,
+    start_hour: Optional[int] = None,
+    start_minute: Optional[int] = None,
 ) -> "ScheduledScan":  # type: ignore
     from apscheduler.triggers.date import DateTrigger
     from apscheduler.triggers.interval import IntervalTrigger
@@ -164,22 +166,42 @@ def create_schedule(
 
     job_id = f"scan_{device_id}_{uuid4().hex[:8]}"
 
+    # Default time-of-day for schedules (used for interval/months triggers)
+    h = start_hour if start_hour is not None else 2
+    m = start_minute if start_minute is not None else 0
+
     if trigger_type == "once":
+        # Ensure run_at is timezone-aware so APScheduler can compare correctly
+        if run_at and run_at.tzinfo is None:
+            run_at = run_at.replace(tzinfo=timezone.utc)
         trigger = DateTrigger(run_date=run_at)
     elif trigger_type == "interval":
         # APScheduler IntervalTrigger does not support 'months'.
-        # Convert months to a CronTrigger (1st of every N months at 02:00).
+        # Convert months/days(N=1) to CronTrigger for precise time-of-day control.
         if interval_unit == "months":
-            trigger = CronTrigger(day=1, hour=2, minute=0, month=f"*/{interval_value}")
-        else:
+            trigger = CronTrigger(day=1, hour=h, minute=m, month=f"*/{interval_value}")
+        elif interval_unit == "days" and interval_value == 1:
+            trigger = CronTrigger(hour=h, minute=m)
+        elif interval_unit in ("days", "weeks"):
+            # Use IntervalTrigger with start_date at the desired time-of-day
+            from datetime import timedelta
+            now_utc = datetime.now(timezone.utc)
+            start = now_utc.replace(hour=h, minute=m, second=0, microsecond=0)
+            if start <= now_utc:
+                start += timedelta(days=1)
+            trigger = IntervalTrigger(**{interval_unit: interval_value}, start_date=start)
+        else:  # hours, minutes – no time-of-day control needed
             trigger = IntervalTrigger(**{interval_unit: interval_value})
     elif trigger_type == "cron":
         trigger = CronTrigger.from_crontab(cron_expression)
     else:
         raise ValueError(f"Unknown trigger_type: {trigger_type}")
 
-    # Compute next run time
-    next_run = trigger.get_next_fire_time(None, datetime.now(timezone.utc))
+    # Compute next run time – wrap in try/except to handle tz-naive/aware mismatches
+    try:
+        next_run = trigger.get_next_fire_time(None, datetime.now(timezone.utc))
+    except Exception:
+        next_run = None
 
     sched = ScheduledScan(
         device_id=device_id,
@@ -196,6 +218,8 @@ def create_schedule(
         next_run_at=next_run,
         run_count=0,
         created_by=created_by,
+        start_hour=start_hour,
+        start_minute=start_minute,
     )
     db.add(sched)
     db.flush()

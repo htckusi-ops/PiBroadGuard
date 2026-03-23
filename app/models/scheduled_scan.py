@@ -22,6 +22,8 @@ class ScheduledScan(Base):
     # Interval
     interval_unit = Column(Text, nullable=True)   # "hours" | "days" | "weeks" | "months"
     interval_value = Column(Integer, nullable=True)
+    start_hour = Column(Integer, nullable=True)   # time-of-day for interval/months triggers
+    start_minute = Column(Integer, nullable=True)
 
     # Cron
     cron_expression = Column(Text, nullable=True)

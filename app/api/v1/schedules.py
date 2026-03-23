@@ -28,6 +28,8 @@ class ScheduleCreate(BaseModel):
     # interval
     interval_unit: Optional[str] = None   # "hours" | "days" | "weeks" | "months"
     interval_value: Optional[int] = None
+    start_hour: Optional[int] = None      # time-of-day for interval/months
+    start_minute: Optional[int] = None
     # cron
     cron_expression: Optional[str] = None
 
@@ -44,6 +46,8 @@ class ScheduleRead(BaseModel):
     run_at: Optional[datetime] = None
     interval_unit: Optional[str] = None
     interval_value: Optional[int] = None
+    start_hour: Optional[int] = None
+    start_minute: Optional[int] = None
     cron_expression: Optional[str] = None
     last_run_at: Optional[datetime] = None
     last_run_status: Optional[str] = None
@@ -115,6 +119,8 @@ def create_schedule(
         interval_value=body.interval_value,
         cron_expression=body.cron_expression,
         created_by=user,
+        start_hour=body.start_hour,
+        start_minute=body.start_minute,
     )
     return _enrich_schedule(sched, db)
 
