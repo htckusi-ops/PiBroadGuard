@@ -13,20 +13,37 @@ logger = logging.getLogger("pibroadguard.scan")
 # SSE queues: assessment_id → asyncio.Queue of str messages
 scan_queues: Dict[int, asyncio.Queue] = {}
 
+# Fallback profiles used when the database is unavailable.
+# These mirror migration 009 (improved flags).
 SCAN_PROFILES = {
     "passive": [
         "-Pn", "-sT", "-sV", "--version-light", "-T2",
         "-p", "21,22,23,25,53,80,102,161,443,502,554,623,1194,1883,2222,4840,8080,8443,9100,47808",
+        "--max-retries", "1",
     ],
     "standard": [
-        "-Pn", "-sT", "-sV", "-T3", "--top-ports", "1000", "--version-intensity", "5",
+        "-Pn", "-sT", "-sV", "-T3", "--top-ports", "1000",
+        "--version-intensity", "5", "--max-retries", "2",
     ],
     "extended": [
         "-Pn", "-sT", "-sU", "-sV", "-T3",
         "-p", "T:1-1000,U:161,623,1194,1883,4840,47808",
         "--version-intensity", "7",
+        "--max-retries", "1", "--defeat-icmp-ratelimit",
+    ],
+    "version_deep": [
+        "-Pn", "-sT", "-sV", "--version-intensity", "9",
+        "-T3", "--top-ports", "1000",
+        "--script", "safe and (banner or http-headers)",
+        "--osscan-limit",
     ],
 }
+
+# If nmap has raw socket capability (CAP_NET_RAW / Docker cap_add NET_RAW),
+# replace -sT (TCP connect) with -sS (SYN stealth) in TCP-only profiles.
+# Extended keeps -sT because combining -sS and -sU requires root *and* some
+# nmap versions behave unexpectedly; we play it safe there.
+_SYN_ELIGIBLE_PROFILES = {"passive", "standard", "version_deep"}
 
 # Per-profile host timeouts (overrides the global setting when tighter).
 # -T2 with up to ~10s RTT per port: 20 ports worst-case = 200s, use 300s.
@@ -118,7 +135,14 @@ async def run_scan(
     interface: Optional[str] = None,
 ) -> dict:
     safe_ip = _validate_ip(ip)
-    flags = flags_override if flags_override is not None else SCAN_PROFILES.get(profile, SCAN_PROFILES["passive"])
+    flags = list(flags_override) if flags_override is not None else list(SCAN_PROFILES.get(profile, SCAN_PROFILES["passive"]))
+
+    # Upgrade -sT → -sS (SYN stealth) when raw sockets are available and the
+    # profile doesn't mix TCP+UDP (combined -sT -sU is safer with connect scan).
+    if "-sT" in flags and "-sU" not in flags and profile in _SYN_ELIGIBLE_PROFILES:
+        if _nmap_caps and _nmap_caps.get("raw_sockets"):
+            flags = ["-sS" if f == "-sT" else f for f in flags]
+            logger.debug(f"Using SYN scan (-sS) for profile={profile} (raw sockets available)")
 
     if timeout_override is not None:
         effective_timeout = f"{timeout_override}s"

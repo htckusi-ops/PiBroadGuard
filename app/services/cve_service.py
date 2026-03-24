@@ -11,6 +11,10 @@ from app.models.cve_cache import CveCache
 logger = logging.getLogger("pibroadguard.cve")
 
 NVD_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+# EPSS – Exploit Prediction Scoring System by FIRST.org
+# Free, no API key required. Returns exploitation probability (0–1) per CVE.
+# Spec: https://www.first.org/epss/api
+EPSS_BASE = "https://api.first.org/data/v1/epss"
 
 
 async def lookup_cves(
@@ -104,3 +108,36 @@ def _to_dict(c: CveCache) -> dict:
         "published_date": str(c.published_date) if c.published_date else None,
         "fetched_at": c.fetched_at.isoformat() if c.fetched_at else None,
     }
+
+
+async def get_epss_scores(cve_ids: List[str]) -> dict:
+    """
+    Fetch EPSS (Exploit Prediction Scoring System) scores from FIRST.org.
+
+    Returns a dict mapping CVE ID → {"epss": float, "percentile": float}.
+    EPSS score: probability (0–1) that a vulnerability will be exploited in
+    the wild within 30 days. Percentile: rank among all scored CVEs.
+
+    Free, no API key. Graceful fallback (empty dict) if offline/unavailable.
+    """
+    if not cve_ids:
+        return {}
+    # API accepts comma-separated CVE IDs: ?cve=CVE-a,CVE-b
+    cve_param = ",".join(cve_ids[:100])  # API limit
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(EPSS_BASE, params={"cve": cve_param})
+        resp.raise_for_status()
+        data = resp.json()
+        result = {}
+        for entry in data.get("data", []):
+            cve_id = entry.get("cve", "")
+            if cve_id:
+                result[cve_id] = {
+                    "epss": float(entry.get("epss", 0)),
+                    "percentile": float(entry.get("percentile", 0)),
+                }
+        return result
+    except Exception as e:
+        logger.warning(f"EPSS lookup failed: {e}")
+        return {}

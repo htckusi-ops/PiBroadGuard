@@ -928,3 +928,46 @@ def _build_rule_dict(body: dict, existing: dict = None) -> dict:
         "ask_compensation": bool(body.get("ask_compensation", base.get("ask_compensation", False))),
         "affects_score": affects,
     }
+
+
+# ── Device-type → Scan Profile Suggestion ────────────────────────────────────
+# Based on IEC 62443 / NIST SP 800-115 / BSI ICS recommendations.
+# Broadcast/embedded devices: passive only in production.
+# IT systems and network gear: standard or extended acceptable.
+_DEVICE_TYPE_PROFILE_MAP = {
+    # Broadcast – highly sensitive, low tolerance for active scanning
+    "encoder":          {"profile": "passive",   "reason": "Broadcast-Encoder sind empfindlich auf Netzwerklast – Passive empfohlen (IEC 62443)."},
+    "decoder":          {"profile": "passive",   "reason": "Broadcast-Decoder sind empfindlich auf Netzwerklast – Passive empfohlen (IEC 62443)."},
+    "matrix":           {"profile": "passive",   "reason": "Signalmatrix – Passive empfohlen, Standard nur im Wartungsfenster."},
+    "camera":           {"profile": "passive",   "reason": "Kameras reagieren empfindlich auf Scans – Passive zwingend in Produktion."},
+    "monitor":          {"profile": "passive",   "reason": "Broadcast-Monitor – Passive empfohlen."},
+    "multiviewer":      {"profile": "passive",   "reason": "Multiviewer – empfindlich, Passive empfohlen."},
+    "frame_sync":       {"profile": "passive",   "reason": "Frame-Sync – eingebettetes Gerät, Passive empfohlen."},
+    "signal_processor": {"profile": "passive",   "reason": "Signalprozessor – eingebettetes Gerät, Passive empfohlen."},
+    "playout":          {"profile": "standard",  "reason": "Playout-Server – oft Linux/Windows-Basis, Standard akzeptabel."},
+    "transcoder":       {"profile": "standard",  "reason": "Transcoder – oft Linux-Basis, Standard akzeptabel."},
+    "intercom":         {"profile": "passive",   "reason": "Intercom-System – echtzeitkritisch, Passive empfohlen."},
+    # Network gear
+    "router":           {"profile": "standard",  "reason": "Router – robuste IT-Plattform, Standard akzeptabel."},
+    "switch":           {"profile": "extended",  "reason": "Switch – Extended sinnvoll für SNMP/Discovery (UDP 161)."},
+    # Generic
+    "other":            {"profile": "passive",   "reason": "Unbekannter Gerätetyp – Passive als sicherster Ausgangspunkt."},
+}
+
+
+@router.get("/system/scan-profile-suggestion")
+def get_scan_profile_suggestion(
+    device_type: str,
+    user: str = Depends(verify_credentials),
+):
+    """Return recommended scan profile for a given device type."""
+    suggestion = _DEVICE_TYPE_PROFILE_MAP.get(
+        device_type.lower(),
+        {"profile": "passive", "reason": "Unbekannter Typ – Passive als sicherer Standard."},
+    )
+    return {
+        "device_type": device_type,
+        "suggested_profile": suggestion["profile"],
+        "reason": suggestion["reason"],
+        "standard_ref": "IEC 62443-3-2 / NIST SP 800-115 / BSI ICS Security Compendium",
+    }

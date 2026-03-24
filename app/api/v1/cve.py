@@ -19,7 +19,31 @@ async def cve_lookup(
     user: str = Depends(verify_credentials),
 ):
     results = await cve_service.lookup_cves(db, vendor, product, version)
+    # Enrich with EPSS scores where available (graceful fallback if offline)
+    cve_ids = [r["cve_id"] for r in results if r.get("cve_id")]
+    epss_map = await cve_service.get_epss_scores(cve_ids) if cve_ids else {}
+    for r in results:
+        epss = epss_map.get(r["cve_id"], {})
+        r["epss_score"] = epss.get("epss")       # float 0–1 or None
+        r["epss_percentile"] = epss.get("percentile")  # float 0–1 or None
     return {"vendor": vendor, "product": product, "cves": results}
+
+
+@router.get("/cve/epss")
+async def epss_lookup(
+    cve: str,
+    user: str = Depends(verify_credentials),
+):
+    """
+    EPSS (Exploit Prediction Scoring System) score for one or more CVEs.
+    Pass comma-separated CVE IDs: ?cve=CVE-2021-44228,CVE-2022-26134
+    Source: FIRST.org – free, no API key required.
+    epss_score: probability (0–1) of exploitation in the wild within 30 days.
+    epss_percentile: rank among all EPSS-scored CVEs.
+    """
+    cve_ids = [c.strip() for c in cve.split(",") if c.strip()]
+    scores = await cve_service.get_epss_scores(cve_ids)
+    return {"scores": scores}
 
 
 @router.get("/findings/{finding_id}/remediation")
