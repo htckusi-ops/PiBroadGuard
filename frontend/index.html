@@ -22,7 +22,8 @@
         {{ connectivityLabel }}
       </span>
       <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ {{ t('nav_schedules', 'Schedules') }}</a>
-      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">&#9881; {{ t('nav_settings', 'Settings') }}</a>
+      <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 {{ t('nav_rules', 'Ruleset') }}</a>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ {{ t('nav_settings', 'Settings') }}</a>
       <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
@@ -35,7 +36,7 @@
   <main class="max-w-7xl mx-auto px-4 py-6 flex-1">
 
     <!-- Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
       <div class="bg-white rounded-lg p-4 shadow-sm">
         <div class="text-2xl font-bold text-slate-800">{{ devices.length }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_total_devices', 'Total Devices') }}</div>
@@ -52,6 +53,16 @@
         <div class="text-2xl font-bold text-green-600">{{ approvedCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_pending_assessments', 'Completed') }}</div>
       </div>
+      <a href="/app/reassessment-due.html" class="block rounded-lg p-4 shadow-sm no-underline"
+         :class="dueSoon.filter(d=>d.days_overdue>0).length > 0 ? 'bg-red-50' : 'bg-white'">
+        <div class="text-2xl font-bold" :class="dueSoon.filter(d=>d.days_overdue>0).length > 0 ? 'text-red-600' : 'text-slate-800'">
+          {{ dueSoon.length }}
+        </div>
+        <div class="text-slate-500 text-sm">Re-Assessment fällig</div>
+        <div v-if="dueSoon.filter(d=>d.days_overdue>0).length > 0" class="text-xs text-red-500 mt-0.5">
+          {{ dueSoon.filter(d=>d.days_overdue>0).length }} überfällig
+        </div>
+      </a>
     </div>
 
     <!-- Queue + Next Scans Widgets -->
@@ -94,25 +105,40 @@
           <span class="bg-slate-100 px-1 rounded">{{ s.scan_profile }}</span>
         </div>
       </div>
+
+      <!-- Re-Assessment Due Widget -->
+      <div v-if="dueSoon.length > 0" class="bg-white rounded-lg shadow-sm p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-semibold text-slate-700 text-sm">📋 Re-Assessment fällig</span>
+          <a href="/app/reassessment-due.html" class="text-xs text-blue-600 hover:underline">Alle anzeigen</a>
+        </div>
+        <div v-for="d in dueSoon.slice(0,5)" :key="d.id" class="text-xs py-0.5 border-t border-slate-50 flex justify-between items-center gap-2">
+          <a :href="`/app/device_form.html?id=${d.id}`" class="text-blue-600 hover:underline truncate flex-1">{{ d.manufacturer }} {{ d.model }}</a>
+          <span :class="d.days_overdue > 0 ? 'text-red-600 font-semibold' : 'text-amber-600'">
+            {{ d.days_overdue > 0 ? d.days_overdue + 'd überfällig' : 'bald fällig' }}
+          </span>
+          <span class="text-slate-400">{{ d.reassessment_due }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- Toolbar -->
     <div class="flex items-center gap-3 mb-4 flex-wrap">
       <h1 class="text-xl font-bold text-slate-800 flex-1">{{ t('nav_devices', 'Devices') }}</h1>
-      <select v-model="filterRating" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+      <select v-model="filterRating" @change="resetDevPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
         <option value="">All Ratings</option>
         <option value="green">🟢 {{ t('rating_green', 'Green') }}</option>
         <option value="yellow">🟡 {{ t('rating_yellow', 'Yellow') }}</option>
         <option value="orange">🟠 {{ t('rating_orange', 'Orange') }}</option>
         <option value="red">🔴 {{ t('rating_red', 'Red') }}</option>
       </select>
-      <select v-model="filterType" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+      <select v-model="filterType" @change="resetDevPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
         <option value="">All Types</option>
         <option v-for="dt in deviceTypes" :key="dt.name" :value="dt.name">
           {{ currentLang === 'de' ? dt.label_de : dt.label_en }}
         </option>
       </select>
-      <input v-model="search" placeholder="Search..." class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white w-48">
+      <input v-model="search" @input="resetDevPage" placeholder="Search..." class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white w-48">
       <a href="/app/device_form.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
         + {{ t('btn_new_device', 'Add New Device') }}
       </a>
@@ -141,7 +167,7 @@
           <tr v-else-if="filteredDevices.length === 0">
             <td colspan="8" class="text-center py-8 text-slate-400">No devices found. <a href="/app/device_form.html" class="text-blue-600 hover:underline">Add first device</a></td>
           </tr>
-          <tr v-for="d in filteredDevices" :key="d.id" class="border-t border-slate-100 hover:bg-slate-50">
+          <tr v-for="d in pagedDevices" :key="d.id" class="border-t border-slate-100 hover:bg-slate-50">
             <td class="px-4 py-3">
               <div class="font-medium text-slate-800">{{ d.manufacturer }} {{ d.model }}</div>
               <div class="text-slate-400 text-xs">{{ d.asset_tag || d.serial_number || '' }}</div>
@@ -182,6 +208,22 @@
       </table>
     </div>
 
+    <!-- Pagination -->
+    <div v-if="devicesTotalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
+      <span>{{ devPageStart }}–{{ devPageEnd }} / {{ filteredDevices.length }} {{ t('pagination_devices', 'devices') }}</span>
+      <div class="flex gap-1">
+        <button @click="devPage = Math.max(1, devPage - 1)" :disabled="devPage === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-white bg-slate-50">‹</button>
+        <template v-for="p in devicesTotalPages" :key="p">
+          <button v-if="p === 1 || p === devicesTotalPages || Math.abs(p - devPage) <= 1"
+            @click="devPage = p"
+            :class="p === devPage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-white bg-slate-50'"
+            class="px-2 py-1 rounded border">{{ p }}</button>
+          <span v-else-if="Math.abs(p - devPage) === 2" class="px-1 py-1 text-slate-400">…</span>
+        </template>
+        <button @click="devPage = Math.min(devicesTotalPages, devPage + 1)" :disabled="devPage === devicesTotalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-white bg-slate-50">›</button>
+      </div>
+    </div>
+
     <div v-if="error" class="mt-4 p-3 bg-red-50 text-red-700 rounded">{{ error }}</div>
   </main>
 
@@ -207,6 +249,7 @@ createApp({
     const connectivity = ref({ effective_mode: 'unknown', mode_setting: 'auto', override_active: false });
     const queueData = ref(null);
     const nextSchedules = ref([]);
+    const dueSoon = ref([]);
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
     let queuePoll = null;
@@ -231,6 +274,8 @@ createApp({
         : 'bg-red-800 text-red-100'
     );
 
+    const PAGE_SIZE = 25;
+    const devPage = ref(1);
     const filteredDevices = computed(() => {
       return devices.value.filter(d => {
         if (filterRating.value && d.last_assessment_rating !== filterRating.value) return false;
@@ -242,6 +287,12 @@ createApp({
         return true;
       });
     });
+    const devicesTotalPages = computed(() => Math.max(1, Math.ceil(filteredDevices.value.length / PAGE_SIZE)));
+    const devPageStart      = computed(() => (devPage.value - 1) * PAGE_SIZE + 1);
+    const devPageEnd        = computed(() => Math.min(devPage.value * PAGE_SIZE, filteredDevices.value.length));
+    const pagedDevices      = computed(() => filteredDevices.value.slice((devPage.value - 1) * PAGE_SIZE, devPage.value * PAGE_SIZE));
+    // Reset to page 1 when filters change
+    function resetDevPage() { devPage.value = 1; }
 
     const criticalCount = computed(() => devices.value.filter(d => d.last_assessment_rating === 'red').length);
     const openFindingsCount = computed(() => 0);
@@ -278,6 +329,13 @@ createApp({
         }
       } catch (e) { /* ignore */ }
     }
+
+    async function loadDueSoon() {
+      try {
+        const r = await fetch('/api/v1/devices/reassessment-due?days_ahead=30');
+        if (r.ok) dueSoon.value = await r.json();
+      } catch (e) { /* ignore */ }
+    }
     function ratingLabel(r) {
       return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r;
     }
@@ -312,10 +370,11 @@ createApp({
       await load();
       await loadQueue();
       await loadNextSchedules();
+      await loadDueSoon();
       // Poll queue every 5s
       queuePoll = setInterval(loadQueue, 5000);
     });
-    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, t, currentLang, switchLang };
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, dueSoon, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

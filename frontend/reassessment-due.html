@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – Re-Assessment fällig</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/app/i18n.js"></script>
+</head>
+<body class="bg-slate-100">
+<div id="app" class="flex flex-col min-h-screen bg-slate-100">
+
+  <!-- Header -->
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
+    <div class="flex items-center gap-3">
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <span class="text-slate-400">/</span>
+      <span class="text-slate-200 text-sm">📋 Re-Assessment fällig</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
+      <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ Schedules</a>
+      <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ Settings</a>
+      <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
+        <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 flex-1">
+
+    <!-- Toolbar -->
+    <div class="flex items-center gap-3 mb-5 flex-wrap">
+      <h1 class="text-xl font-bold text-slate-800 flex-1">📋 Re-Assessment fällig</h1>
+      <select v-model="filterStatus" @change="resetPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+        <option value="">Alle</option>
+        <option value="overdue">Überfällig</option>
+        <option value="due_soon">Bald fällig (≤30 Tage)</option>
+      </select>
+      <button @click="load" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-sm">🔄 Aktualisieren</button>
+    </div>
+
+    <!-- Summary badges -->
+    <div class="flex gap-3 mb-5 flex-wrap">
+      <div class="bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+        <span class="text-red-700 font-bold text-lg">{{ overdueCount }}</span>
+        <span class="text-red-600 text-sm ml-1">Überfällig</span>
+      </div>
+      <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+        <span class="text-amber-700 font-bold text-lg">{{ dueSoonCount }}</span>
+        <span class="text-amber-600 text-sm ml-1">In den nächsten 30 Tagen</span>
+      </div>
+      <div class="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
+        <span class="text-slate-700 font-bold text-lg">{{ items.length }}</span>
+        <span class="text-slate-500 text-sm ml-1">Total</span>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-slate-700 text-white">
+            <th class="text-left px-4 py-3">Gerät</th>
+            <th class="text-left px-4 py-3">Typ</th>
+            <th class="text-left px-4 py-3">IP</th>
+            <th class="text-left px-4 py-3">Letztes Assessment</th>
+            <th class="text-left px-4 py-3">Rating</th>
+            <th class="text-left px-4 py-3">Re-Assessment fällig</th>
+            <th class="text-left px-4 py-3">Status</th>
+            <th class="text-left px-4 py-3">Aktionen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading"><td colspan="8" class="text-center py-8 text-slate-400">Loading...</td></tr>
+          <tr v-else-if="pagedItems.length === 0">
+            <td colspan="8" class="text-center py-8 text-slate-400">Keine fälligen Re-Assessments gefunden.</td>
+          </tr>
+          <tr v-for="d in pagedItems" :key="d.id" class="border-t border-slate-100 hover:bg-slate-50"
+              :class="d.days_overdue > 0 ? 'bg-red-50' : ''">
+            <td class="px-4 py-3">
+              <div class="font-medium text-slate-800">{{ d.manufacturer }} {{ d.model }}</div>
+              <div class="text-slate-400 text-xs">{{ d.asset_tag || d.serial_number || '' }}</div>
+            </td>
+            <td class="px-4 py-3 text-slate-600">{{ d.device_type }}</td>
+            <td class="px-4 py-3 font-mono text-slate-700">{{ d.ip_address }}</td>
+            <td class="px-4 py-3 text-slate-600">
+              <span v-if="d.last_assessment_date">{{ fmtDate(d.last_assessment_date) }}</span>
+              <span v-else class="text-slate-400">—</span>
+            </td>
+            <td class="px-4 py-3">
+              <span :class="ratingClass(d.last_assessment_rating)" class="px-2 py-0.5 rounded text-xs font-semibold">
+                {{ ratingLabel(d.last_assessment_rating) }}
+              </span>
+            </td>
+            <td class="px-4 py-3">
+              <span :class="d.days_overdue > 0 ? 'text-red-700 font-semibold' : 'text-amber-700'">
+                {{ d.reassessment_due }}
+              </span>
+            </td>
+            <td class="px-4 py-3">
+              <span v-if="d.days_overdue > 0" class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-semibold">
+                {{ d.days_overdue }}d überfällig
+              </span>
+              <span v-else class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs font-semibold">
+                {{ -d.days_overdue }}d verbleibend
+              </span>
+            </td>
+            <td class="px-4 py-3 flex items-center gap-2 flex-wrap">
+              <a :href="`/app/device_form.html?id=${d.id}`"
+                 class="text-blue-600 hover:underline text-xs">Gerät</a>
+              <a v-if="d.last_assessment_id"
+                 :href="`/app/assessment.html?id=${d.last_assessment_id}`"
+                 class="text-blue-600 hover:underline text-xs">Letztes Assessment</a>
+              <a :href="`/app/assessment.html?device_id=${d.id}`"
+                 class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded text-xs">
+                + Neues Assessment
+              </a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+        <span>{{ pageStart }}–{{ pageEnd }} / {{ filteredItems.length }}</span>
+        <div class="flex gap-1">
+          <button @click="page = Math.max(1, page - 1)" :disabled="page === 1"
+            class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40">‹</button>
+          <template v-for="p in totalPages" :key="p">
+            <button v-if="p === 1 || p === totalPages || Math.abs(p - page) <= 1"
+              @click="page = p" :class="p === page ? 'bg-blue-600 text-white' : 'hover:bg-slate-50'"
+              class="px-2 py-1 rounded border border-slate-200">{{ p }}</button>
+            <span v-else-if="p === 2 && page > 3" class="px-2 py-1">…</span>
+            <span v-else-if="p === totalPages - 1 && page < totalPages - 2" class="px-2 py-1">…</span>
+          </template>
+          <button @click="page = Math.min(totalPages, page + 1)" :disabled="page === totalPages"
+            class="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40">›</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const items = ref([]);
+    const loading = ref(true);
+    const filterStatus = ref('');
+    const page = ref(1);
+    const PAGE_SIZE = 25;
+    const tr = ref({});
+    const currentLang = ref(window.PiBGi18n.currentLang());
+
+    function t(key, fb) { return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key); }
+    async function switchLang(lang) { tr.value = await window.PiBGi18n.load(lang); currentLang.value = lang; }
+
+    const overdueCount = computed(() => items.value.filter(d => d.days_overdue > 0).length);
+    const dueSoonCount = computed(() => items.value.filter(d => d.days_overdue <= 0).length);
+
+    const filteredItems = computed(() => {
+      if (!filterStatus.value) return items.value;
+      if (filterStatus.value === 'overdue') return items.value.filter(d => d.days_overdue > 0);
+      return items.value.filter(d => d.days_overdue <= 0);
+    });
+    const totalPages = computed(() => Math.max(1, Math.ceil(filteredItems.value.length / PAGE_SIZE)));
+    const pageStart  = computed(() => (page.value - 1) * PAGE_SIZE + 1);
+    const pageEnd    = computed(() => Math.min(page.value * PAGE_SIZE, filteredItems.value.length));
+    const pagedItems = computed(() => filteredItems.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE));
+    function resetPage() { page.value = 1; }
+
+    function fmtDate(dt) {
+      if (!dt) return '—';
+      return new Date(dt).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+    function ratingLabel(r) {
+      return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r || '—';
+    }
+    function ratingClass(r) {
+      return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800' }[r] || 'bg-slate-100 text-slate-600';
+    }
+
+    async function load() {
+      loading.value = true;
+      try {
+        const r = await fetch('/api/v1/devices/reassessment-due?days_ahead=30');
+        if (r.ok) items.value = await r.json();
+      } catch (e) { /* ignore */ }
+      loading.value = false;
+    }
+
+    onMounted(async () => {
+      tr.value = await window.PiBGi18n.load();
+      await load();
+    });
+
+    return { items, loading, filterStatus, page, totalPages, pageStart, pageEnd, pagedItems, filteredItems, resetPage, overdueCount, dueSoonCount, fmtDate, ratingLabel, ratingClass, load, t, currentLang, switchLang };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

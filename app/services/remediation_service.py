@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import httpx
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -42,32 +43,44 @@ async def sync_kev_cache(db: Session) -> int:
         resp.raise_for_status()
         data = resp.json()
         vulns = data.get("vulnerabilities", [])
+        now = datetime.now(timezone.utc)
         count = 0
         for v in vulns:
             cve_id = v.get("cveID")
             if not cve_id:
                 continue
-            due_raw = v.get("dueDate")
-            added_raw = v.get("dateAdded")
-            entry = KevCache(
+            stmt = sqlite_insert(KevCache).values(
                 cve_id=cve_id,
                 vendor_project=v.get("vendorProject"),
                 product=v.get("product"),
                 vulnerability_name=v.get("vulnerabilityName"),
                 required_action=v.get("requiredAction"),
-                due_date=_parse_date(due_raw),
+                due_date=_parse_date(v.get("dueDate")),
                 known_ransomware=v.get("knownRansomwareCampaignUse") == "Known",
-                date_added_to_kev=_parse_date(added_raw),
-                fetched_at=datetime.now(timezone.utc),
+                date_added_to_kev=_parse_date(v.get("dateAdded")),
+                fetched_at=now,
             )
-            db.merge(entry)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["cve_id"],
+                set_={
+                    "vendor_project": stmt.excluded.vendor_project,
+                    "product": stmt.excluded.product,
+                    "vulnerability_name": stmt.excluded.vulnerability_name,
+                    "required_action": stmt.excluded.required_action,
+                    "due_date": stmt.excluded.due_date,
+                    "known_ransomware": stmt.excluded.known_ransomware,
+                    "date_added_to_kev": stmt.excluded.date_added_to_kev,
+                    "fetched_at": stmt.excluded.fetched_at,
+                },
+            )
+            db.execute(stmt)
             count += 1
         db.commit()
         logger.info(f"KEV sync complete: {count} entries")
         return count
     except Exception as e:
         logger.error(f"KEV sync failed: {e}")
-        return 0
+        raise RuntimeError(f"KEV sync failed: {e}") from e
 
 
 async def sync_kev_if_stale(db: Session, max_age_hours: int = 24) -> None:

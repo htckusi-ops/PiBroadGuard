@@ -20,7 +20,8 @@
     </div>
     <div class="flex items-center gap-4">
       <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
-      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">&#9881; Settings</a>
+      <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ Settings</a>
       <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
@@ -34,11 +35,11 @@
     <!-- Toolbar -->
     <div class="flex items-center gap-3 mb-5 flex-wrap">
       <h1 class="text-xl font-bold text-slate-800 flex-1">⏰ Scheduled Scans</h1>
-      <select v-model="filterDevice" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+      <select v-model="filterDevice" @change="resetSchPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
         <option value="">All Devices</option>
         <option v-for="d in devices" :key="d.id" :value="d.id">{{ d.manufacturer }} {{ d.model }}</option>
       </select>
-      <select v-model="filterStatus" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+      <select v-model="filterStatus" @change="resetSchPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
         <option value="">All Status</option>
         <option value="active">Active</option>
         <option value="paused">Paused</option>
@@ -70,7 +71,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="s in filteredSchedules" :key="s.id" class="border-t border-slate-100 hover:bg-slate-50">
+          <tr v-for="s in pagedSchedules" :key="s.id" class="border-t border-slate-100 hover:bg-slate-50">
             <td class="px-4 py-3">
               <div class="font-medium text-slate-800">{{ s.device_name || '—' }}</div>
             </td>
@@ -108,6 +109,21 @@
           </tr>
         </tbody>
       </table>
+      <!-- Pagination -->
+      <div v-if="schTotalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
+        <span>{{ schPageStart }}–{{ schPageEnd }} / {{ filteredSchedules.length }}</span>
+        <div class="flex gap-1">
+          <button @click="schPage = Math.max(1, schPage - 1)" :disabled="schPage === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+          <template v-for="p in schTotalPages" :key="p">
+            <button v-if="p === 1 || p === schTotalPages || Math.abs(p - schPage) <= 1"
+              @click="schPage = p"
+              :class="p === schPage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50'"
+              class="px-2 py-1 rounded border">{{ p }}</button>
+            <span v-else-if="Math.abs(p - schPage) === 2" class="px-1 py-1 text-slate-400">…</span>
+          </template>
+          <button @click="schPage = Math.min(schTotalPages, schPage + 1)" :disabled="schPage === schTotalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+        </div>
+      </div>
     </div>
 
     <div v-if="error" class="mt-4 p-3 bg-red-50 text-red-700 rounded text-sm">{{ error }}</div>
@@ -292,6 +308,13 @@ createApp({
         return true;
       });
     });
+    const SCH_PAGE_SIZE = 25;
+    const schPage = ref(1);
+    const schTotalPages = computed(() => Math.max(1, Math.ceil(filteredSchedules.value.length / SCH_PAGE_SIZE)));
+    const schPageStart  = computed(() => (schPage.value - 1) * SCH_PAGE_SIZE + 1);
+    const schPageEnd    = computed(() => Math.min(schPage.value * SCH_PAGE_SIZE, filteredSchedules.value.length));
+    const pagedSchedules = computed(() => filteredSchedules.value.slice((schPage.value - 1) * SCH_PAGE_SIZE, schPage.value * SCH_PAGE_SIZE));
+    function resetSchPage() { schPage.value = 1; }
 
     function fmtDateTime(dt) {
       if (!dt) return '—';
@@ -396,7 +419,7 @@ createApp({
       await Promise.all([loadSchedules(), loadDevices(), loadScanProfiles()]);
     });
 
-    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
+    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, pagedSchedules, schPage, schTotalPages, schPageStart, schPageEnd, resetSchPage, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
 
   }
 }).mount('#app');

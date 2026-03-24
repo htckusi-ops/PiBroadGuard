@@ -57,7 +57,8 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
         if not assessment:
             return
 
-        # Save scan results
+        # Save scan results – clear previous results for this assessment first
+        db.query(ScanResult).filter(ScanResult.assessment_id == assessment_id).delete()
         raw_xml = result.get("xml", "")
         for sr_data in result.get("results", []):
             sr = ScanResult(
@@ -79,21 +80,45 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
         manual_answers = {}
         triggered = rule_engine.apply_rules(rules, result.get("results", []), manual_answers)
 
+        # Upsert findings by rule_key – preserve user-set status/compensation
+        existing_findings: dict = {
+            f.rule_key: f
+            for f in db.query(Finding).filter(Finding.assessment_id == assessment_id).all()
+        }
+        triggered_keys = set()
         for t in triggered:
-            finding = Finding(
-                assessment_id=assessment_id,
-                rule_key=t["rule_key"],
-                title=t["title"],
-                severity=t["severity"],
-                description=t["description"],
-                evidence=t["evidence"],
-                recommendation=t["recommendation"],
-                broadcast_context=t["broadcast_context"],
-                compensating_control_required=t["compensating_control_required"],
-                remediation_sources=t.get("remediation_sources"),
-                status="open",
-            )
-            db.add(finding)
+            key = t["rule_key"]
+            triggered_keys.add(key)
+            if key in existing_findings:
+                f = existing_findings[key]
+                f.title = t["title"]
+                f.severity = t["severity"]
+                f.description = t["description"]
+                f.evidence = t["evidence"]
+                f.recommendation = t["recommendation"]
+                f.broadcast_context = t["broadcast_context"]
+                f.compensating_control_required = t["compensating_control_required"]
+                f.remediation_sources = t.get("remediation_sources")
+                # status and compensating_control_description intentionally preserved
+            else:
+                db.add(Finding(
+                    assessment_id=assessment_id,
+                    rule_key=key,
+                    title=t["title"],
+                    severity=t["severity"],
+                    description=t["description"],
+                    evidence=t["evidence"],
+                    recommendation=t["recommendation"],
+                    broadcast_context=t["broadcast_context"],
+                    compensating_control_required=t["compensating_control_required"],
+                    remediation_sources=t.get("remediation_sources"),
+                    status="open",
+                ))
+        # Remove findings whose rule no longer triggers (only if still open/unreviewed)
+        # CVE findings (rule_key starts with "cve_") are handled separately below
+        for key, f in existing_findings.items():
+            if key not in triggered_keys and f.status == "open" and not key.startswith("cve_"):
+                db.delete(f)
         db.commit()
 
         # Auto CVE lookup: for any service with a detected product+version
@@ -105,7 +130,13 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
             mode_row = db.query(SystemSettings).filter(SystemSettings.key == "connectivity_mode").first()
             conn_mode = mode_row.value if mode_row else "auto"
             if connectivity_service.is_online(conn_mode):
+                # Re-read existing findings (post-rule-upsert) for CVE dedup
+                existing_findings_now: dict = {
+                    f.rule_key: f
+                    for f in db.query(Finding).filter(Finding.assessment_id == assessment_id).all()
+                }
                 seen_cves: set = set()
+                new_cve_keys: set = set()
                 for sr_data in result.get("results", []):
                     product = sr_data.get("service_product", "").strip()
                     version = sr_data.get("service_version", "").strip()
@@ -122,6 +153,8 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
                         if cvss <= 0:
                             continue
                         seen_cves.add(cve_id)
+                        cve_rule_key = f"cve_{cve_id.lower().replace('-', '_')}"
+                        new_cve_keys.add(cve_rule_key)
                         if cvss >= 9.0:
                             sev = "critical"
                         elif cvss >= 7.0:
@@ -131,21 +164,35 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
                         else:
                             sev = "low"
                         ver_str = f" {version}" if version else ""
-                        f = Finding(
-                            assessment_id=assessment_id,
-                            rule_key=f"cve_{cve_id.lower().replace('-', '_')}",
-                            title=f"{cve_id} – {product}{ver_str} (CVSS {cvss:.1f})",
-                            severity=sev,
-                            description=cve.get("description", ""),
-                            evidence=f"Port {sr_data['port']}/{sr_data['protocol']}: {product}{ver_str}",
-                            recommendation=cve.get("nvd_solution") or f"Update {product} auf eine gepatchte Version.",
-                            broadcast_context="CVE in erkannter Softwareversion auf Broadcast-Gerät – Patch-Status prüfen.",
-                            compensating_control_required=(cvss >= 7.0),
-                            status="open",
-                        )
-                        db.add(f)
-                        cve_findings_added += 1
-                if cve_findings_added:
+                        title = f"{cve_id} – {product}{ver_str} (CVSS {cvss:.1f})"
+                        evidence = f"Port {sr_data['port']}/{sr_data['protocol']}: {product}{ver_str}"
+                        rec = cve.get("nvd_solution") or f"Update {product} auf eine gepatchte Version."
+                        if cve_rule_key in existing_findings_now:
+                            ef = existing_findings_now[cve_rule_key]
+                            ef.title = title
+                            ef.severity = sev
+                            ef.description = cve.get("description", "")
+                            ef.evidence = evidence
+                            ef.recommendation = rec
+                        else:
+                            db.add(Finding(
+                                assessment_id=assessment_id,
+                                rule_key=cve_rule_key,
+                                title=title,
+                                severity=sev,
+                                description=cve.get("description", ""),
+                                evidence=evidence,
+                                recommendation=rec,
+                                broadcast_context="CVE in erkannter Softwareversion auf Broadcast-Gerät – Patch-Status prüfen.",
+                                compensating_control_required=(cvss >= 7.0),
+                                status="open",
+                            ))
+                            cve_findings_added += 1
+                # Remove CVE findings that are no longer relevant (open only)
+                for key, f in existing_findings_now.items():
+                    if key.startswith("cve_") and key not in new_cve_keys and f.status == "open":
+                        db.delete(f)
+                if cve_findings_added or new_cve_keys:
                     db.commit()
                     # Re-read all findings (incl. CVE ones) for accurate scoring
                     triggered_all = [

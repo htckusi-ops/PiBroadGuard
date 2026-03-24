@@ -12,6 +12,7 @@ security = HTTPBasic()
 limiter = Limiter(key_func=get_remote_address)
 
 _failed_attempts: dict[str, int] = {}
+_logged_logins: set[str] = set()
 MAX_FAILURES = 10
 
 
@@ -40,4 +41,9 @@ def verify_credentials(
         )
     ip = request.client.host if request.client else "unknown"
     _failed_attempts.pop(ip, None)
+    # Log first successful login from each IP (avoids spamming per-request)
+    # We track by presence in _logged_logins (module-level set)
+    if ip not in _logged_logins:
+        _logged_logins.add(ip)
+        logger.info(f"Successful auth from {ip} (user: {credentials.username})")
     return credentials.username

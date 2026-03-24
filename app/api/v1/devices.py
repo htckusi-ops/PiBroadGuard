@@ -1,5 +1,6 @@
 import logging
 from typing import List, Optional
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -74,6 +75,51 @@ def delete_device(device_id: int, db: Session = Depends(get_db), user: str = Dep
     device.deleted = True
     db.commit()
     logger.info(f"Soft-deleted device {device_id}")
+
+
+@router.get("/devices/reassessment-due")
+def list_reassessment_due(
+    days_ahead: int = Query(30, ge=0, le=365),
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Return devices whose latest completed assessment has a reassessment_due date
+    in the past or within `days_ahead` days from today."""
+    cutoff = date.today() + timedelta(days=days_ahead)
+    # subquery: latest completed assessment per device
+    from sqlalchemy import func
+    subq = (
+        db.query(
+            Assessment.device_id,
+            func.max(Assessment.created_at).label("max_created"),
+        )
+        .filter(Assessment.status == "completed")
+        .group_by(Assessment.device_id)
+        .subquery()
+    )
+    rows = (
+        db.query(Assessment, Device)
+        .join(subq, (Assessment.device_id == subq.c.device_id) & (Assessment.created_at == subq.c.max_created))
+        .join(Device, Device.id == Assessment.device_id)
+        .filter(Device.deleted == False)
+        .filter(Assessment.reassessment_due != None)
+        .filter(Assessment.reassessment_due <= cutoff)
+        .order_by(Assessment.reassessment_due.asc())
+        .all()
+    )
+    result = []
+    for assessment, device in rows:
+        d = DeviceRead.model_validate(device)
+        d.last_assessment_id = assessment.id
+        d.last_assessment_status = assessment.status
+        d.last_assessment_rating = assessment.overall_rating
+        d.last_assessment_date = assessment.created_at
+        result.append({
+            **d.model_dump(),
+            "reassessment_due": assessment.reassessment_due.isoformat() if assessment.reassessment_due else None,
+            "days_overdue": (date.today() - assessment.reassessment_due).days if assessment.reassessment_due else None,
+        })
+    return result
 
 
 @router.get("/dns/reverse")

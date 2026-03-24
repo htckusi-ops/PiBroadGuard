@@ -23,9 +23,12 @@
         ← All Assessments
       </a>
     </div>
-    <div class="flex items-center gap-3">
-      <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-xs">⏰ Schedules</a>
-      <div class="flex items-center gap-1 border-l border-slate-600 pl-2">
+    <div class="flex items-center gap-4">
+      <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
+      <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ Schedules</a>
+      <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ Settings</a>
+      <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
@@ -116,18 +119,21 @@
     </div>
 
     <!-- Tabs -->
-    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div class="flex border-b border-slate-200">
+    <div class="bg-white rounded-lg shadow-sm w-full" style="min-width:0">
+      <div class="flex border-b border-slate-200 overflow-x-auto">
         <button v-for="tab in tabs" :key="tab.id"
           @click="activeTab = tab.id"
           :class="activeTab === tab.id ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50' : 'text-slate-600 hover:bg-slate-50'"
-          class="px-5 py-3 text-sm font-medium transition-colors">
+          class="px-5 py-3 text-sm font-medium transition-colors whitespace-nowrap flex-none">
           {{ tab.label }}
         </button>
       </div>
 
+      <!-- Shared tab body: single container so width is always the card width -->
+      <div class="p-5" style="min-width:0">
+
       <!-- Tab: Overview -->
-      <div v-if="activeTab === 'overview'" class="p-5">
+      <div v-show="activeTab === 'overview'" class="w-full">
         <div v-if="!assessment">
           <p class="text-slate-500 mb-3">No assessment yet.</p>
           <div class="mb-3">
@@ -182,7 +188,7 @@
       </div>
 
       <!-- Tab: Scan -->
-      <div v-if="activeTab === 'scan'" class="p-5">
+      <div v-show="activeTab === 'scan'" class="w-full">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <!-- Authorization form -->
@@ -308,7 +314,7 @@
       </div>
 
       <!-- Tab: Schedules -->
-      <div v-if="activeTab === 'schedules'" class="p-5">
+      <div v-show="activeTab === 'schedules'" class="w-full">
         <div v-if="!device" class="text-slate-500">No device loaded.</div>
         <div v-else>
           <div class="flex items-center justify-between mb-4">
@@ -469,7 +475,7 @@
       </div>
 
       <!-- Tab: Manual Questions -->
-      <div v-if="activeTab === 'manual'" class="p-5">
+      <div v-show="activeTab === 'manual'" class="w-full">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <p class="text-slate-500 text-sm mb-4">Answer the following questions for the security assessment of this device.</p>
@@ -511,9 +517,64 @@
       </div>
 
       <!-- Tab: Findings -->
-      <div v-if="activeTab === 'findings'" class="p-5">
-        <div v-if="findings.length === 0" class="text-slate-500">No findings yet. Run a scan or answer manual questions.</div>
-        <div v-for="f in findings" :key="f.id" class="border border-slate-200 rounded-lg p-4 mb-3">
+      <div v-show="activeTab === 'findings'" class="w-full">
+
+        <!-- Scan Port Results -->
+        <div v-if="scanResults.length > 0" class="mb-6">
+          <h3 class="font-semibold text-slate-700 mb-2 flex items-center gap-2">
+            🔌 {{ t('scan_results_title', 'Port Scan Results') }}
+            <span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded font-normal">{{ scanResults.length }} {{ t('scan_results_ports', 'open ports') }}</span>
+          </h3>
+          <div class="overflow-x-auto rounded border border-slate-200">
+            <table class="w-full text-xs">
+              <thead class="bg-slate-700 text-white">
+                <tr>
+                  <th class="px-3 py-2 text-left">Port / Proto</th>
+                  <th class="px-3 py-2 text-left">Service</th>
+                  <th class="px-3 py-2 text-left">Product / Version</th>
+                  <th class="px-3 py-2 text-left">State</th>
+                  <th class="px-3 py-2 text-left">Extra Info</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in scanResultsPage" :key="r.id"
+                    :class="r.state === 'open' ? 'border-t border-slate-100 hover:bg-amber-50' : 'border-t border-slate-100 hover:bg-slate-50 text-slate-400'">
+                  <td class="px-3 py-2 font-mono font-semibold whitespace-nowrap">
+                    {{ r.port }}<span class="text-slate-400 font-normal">/{{ r.protocol }}</span>
+                  </td>
+                  <td class="px-3 py-2">{{ r.service_name || '—' }}</td>
+                  <td class="px-3 py-2 max-w-xs truncate" :title="[r.service_product, r.service_version].filter(Boolean).join(' ')">
+                    {{ r.service_product || '' }}<span v-if="r.service_version" class="ml-1 text-slate-500">{{ r.service_version }}</span>
+                  </td>
+                  <td class="px-3 py-2 whitespace-nowrap">
+                    <span :class="r.state === 'open' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'" class="px-1.5 py-0.5 rounded">{{ r.state }}</span>
+                  </td>
+                  <td class="px-3 py-2 text-slate-400 max-w-xs truncate" :title="r.extra_info">{{ r.extra_info || '' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="scanResultsTotalPages > 1" class="flex items-center justify-between mt-2 text-xs text-slate-500">
+            <span>{{ scanResultsPageStart }}–{{ scanResultsPageEnd }} / {{ scanResults.length }}</span>
+            <div class="flex gap-1">
+              <button @click="srPage = Math.max(1, srPage - 1)" :disabled="srPage === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+              <button v-for="p in scanResultsTotalPages" :key="p" @click="srPage = p"
+                :class="p === srPage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50'"
+                class="px-2 py-1 rounded border">{{ p }}</button>
+              <button @click="srPage = Math.min(scanResultsTotalPages, srPage + 1)" :disabled="srPage === scanResultsTotalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rule-triggered Findings -->
+        <div v-if="findings.length > 0 || scanResults.length > 0" class="mb-3 flex items-center gap-2">
+          <h3 class="font-semibold text-slate-700">⚠️ {{ t('findings_title', 'Security Findings') }}</h3>
+          <span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded">{{ findings.length }}</span>
+        </div>
+        <div v-if="findings.length === 0 && scanResults.length === 0" class="text-slate-500">No findings yet. Run a scan or answer manual questions.</div>
+        <div v-else-if="findings.length === 0 && scanResults.length > 0" class="text-slate-400 text-sm mb-3">No rule-triggered findings from this scan.</div>
+
+        <div v-for="f in findingsPage" :key="f.id" class="border border-slate-200 rounded-lg p-4 mb-3">
           <div class="flex items-center gap-2 mb-2 flex-wrap">
             <span :class="severityClass(f.severity)" class="px-2 py-0.5 rounded text-xs font-bold">{{ f.severity?.toUpperCase() }}</span>
             <span class="font-semibold text-slate-800">{{ f.title }}</span>
@@ -554,28 +615,54 @@
               <a :href="f.vendor_advisory_url" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs">🔗 Hersteller-Advisory</a>
             </div>
           </div>
-          <div class="flex items-center gap-3 flex-wrap">
-            <div>
-              <label class="text-xs text-slate-500 mr-1">Status:</label>
-              <select v-model="f.status" @change="updateFinding(f)" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
+          <div class="flex items-end gap-3 flex-wrap mt-2">
+            <div class="shrink-0">
+              <label class="text-xs text-slate-500 block mb-0.5">{{ t('finding_status_label', 'Status') }}:</label>
+              <select v-model="f.status" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
                 <option value="open">{{ t('finding_status_open', 'Open') }}</option>
                 <option value="compensated">{{ t('finding_status_compensated', 'Compensated') }}</option>
                 <option value="accepted">{{ t('finding_status_accepted', 'Accepted') }}</option>
                 <option value="false_positive">{{ t('finding_status_false_positive', 'False Positive') }}</option>
               </select>
             </div>
-            <div v-if="f.compensating_control_required" class="flex-1">
-              <input v-model="f.compensating_control_description" @blur="updateFinding(f)"
-                placeholder="Describe compensating control..."
+            <div class="flex-1 min-w-48">
+              <label class="text-xs text-slate-500 block mb-0.5"
+                title="Kompensationsmassnahme: Beschreiben Sie, wie das Risiko durch andere Massnahmen reduziert wird">
+                {{ t('compensating_control', 'Compensating Control') }}
+                <span v-if="f.compensating_control_required" class="text-orange-500">*</span>:
+              </label>
+              <input v-model="f.compensating_control_description"
+                :placeholder="t('compensating_control_placeholder', 'Describe compensating control or risk acceptance note…')"
                 title="Kompensationsmassnahme: Beschreiben Sie, wie das Risiko durch andere Massnahmen reduziert wird"
                 class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
             </div>
+            <div class="shrink-0 flex items-center gap-2">
+              <button @click="updateFinding(f)"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium"
+                :title="t('btn_save_finding_title', 'Save status and compensating control for this finding')">
+                {{ t('btn_save', 'Save') }}
+              </button>
+              <span v-if="findingSavedId === f.id" class="text-green-600 text-xs font-medium">✓ {{ t('saved', 'Saved') }}</span>
+            </div>
           </div>
         </div>
+
+        <!-- Findings pagination -->
+        <div v-if="findingsTotalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
+          <span>{{ findingsPageStart }}–{{ findingsPageEnd }} / {{ findings.length }}</span>
+          <div class="flex gap-1">
+            <button @click="fPage = Math.max(1, fPage - 1)" :disabled="fPage === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+            <button v-for="p in findingsTotalPages" :key="p" @click="fPage = p"
+              :class="p === fPage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50'"
+              class="px-2 py-1 rounded border">{{ p }}</button>
+            <button @click="fPage = Math.min(findingsTotalPages, fPage + 1)" :disabled="fPage === findingsTotalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+          </div>
+        </div>
+
       </div>
 
       <!-- Tab: Report -->
-      <div v-if="activeTab === 'report'" class="p-5">
+      <div v-show="activeTab === 'report'" class="w-full">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <p class="text-slate-500 text-sm mb-4">Report downloads for Assessment #{{ assessment.id }}</p>
@@ -603,6 +690,7 @@
         </div>
       </div>
 
+      </div> <!-- /shared tab body (p-5 wrapper) -->
     </div> <!-- /tabs -->
 
     <div v-if="globalError" class="mt-4 p-3 bg-red-50 text-red-700 rounded text-sm">{{ globalError }}</div>
@@ -627,6 +715,9 @@ createApp({
     const assessment = ref(null);
     const scanResults = ref([]);
     const findings = ref([]);
+    const srPage = ref(1);
+    const fPage = ref(1);
+    const PAGE_SIZE = 25;
     const manualQuestions = ref({});
     const manualSaved = ref(false);
     const globalError = ref('');
@@ -707,6 +798,18 @@ createApp({
 
     let pollInterval = null;
     let sseSource = null;
+
+    // Pagination computed for scan results
+    const scanResultsTotalPages = computed(() => Math.max(1, Math.ceil(scanResults.value.length / PAGE_SIZE)));
+    const scanResultsPageStart  = computed(() => (srPage.value - 1) * PAGE_SIZE + 1);
+    const scanResultsPageEnd    = computed(() => Math.min(srPage.value * PAGE_SIZE, scanResults.value.length));
+    const scanResultsPage       = computed(() => scanResults.value.slice((srPage.value - 1) * PAGE_SIZE, srPage.value * PAGE_SIZE));
+
+    // Pagination computed for findings
+    const findingsTotalPages = computed(() => Math.max(1, Math.ceil(findings.value.length / PAGE_SIZE)));
+    const findingsPageStart  = computed(() => (fPage.value - 1) * PAGE_SIZE + 1);
+    const findingsPageEnd    = computed(() => Math.min(fPage.value * PAGE_SIZE, findings.value.length));
+    const findingsPage       = computed(() => findings.value.slice((fPage.value - 1) * PAGE_SIZE, fPage.value * PAGE_SIZE));
 
     const tabs = computed(() => [
       { id: 'overview', label: '📋 ' + t('assessment_tab_overview', 'Overview') },
@@ -902,11 +1005,16 @@ createApp({
       if (resp.ok) { manualSaved.value = true; setTimeout(() => manualSaved.value = false, 3000); }
     }
 
+    const findingSavedId = ref(null);
     async function updateFinding(f) {
-      await fetch(`/api/v1/assessments/${assessment.value.id}/findings/${f.id}`, {
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/findings/${f.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: f.status, compensating_control_description: f.compensating_control_description })
       });
+      if (resp.ok) {
+        findingSavedId.value = f.id;
+        setTimeout(() => { if (findingSavedId.value === f.id) findingSavedId.value = null; }, 2500);
+      }
     }
 
     async function recalculate() {
@@ -1096,7 +1204,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd };
   }
 }).mount('#app');
 </script>

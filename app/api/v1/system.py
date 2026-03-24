@@ -1,8 +1,11 @@
+import ipaddress
 import json
 import logging
+import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -80,9 +83,12 @@ async def check_connectivity(db: Session = Depends(get_db), user: str = Depends(
 async def kev_sync(db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
     mode = _get_setting(db, "connectivity_mode", "auto")
     if not connectivity_service.is_online(mode):
-        raise HTTPException(503, "System ist im Offline-Modus")
-    count = await remediation_service.sync_kev_cache(db)
-    return {"synced": count}
+        raise HTTPException(503, "System ist im Offline-Modus – KEV-Sync nicht möglich")
+    try:
+        count = await remediation_service.sync_kev_cache(db)
+        return {"synced": count}
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
 
 
 @router.post("/system/backup")
@@ -116,6 +122,67 @@ def download_backup(filename: str, db: Session = Depends(get_db), user: str = De
     return Response(content=data, media_type="application/octet-stream", headers={
         "Content-Disposition": f'attachment; filename="{filename}"'
     })
+
+
+@router.post("/system/backup/restore/{filename}")
+def restore_backup(filename: str, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
+    """
+    Restore a local backup by replacing the current database file.
+    Disposes all SQLAlchemy connections before copying, so the next
+    request will open a fresh connection to the restored DB.
+    """
+    import shutil as _shutil
+    from app.core.database import engine as _engine
+
+    backup_dir = Path("./data/backups")
+    src = backup_dir / filename
+
+    # Security: only allow filenames from the backups dir (no path traversal)
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(400, "Ungültiger Dateiname")
+    if not src.exists():
+        raise HTTPException(404, f"Backup '{filename}' nicht gefunden")
+    if src.suffix not in (".db", ".enc"):
+        raise HTTPException(400, "Nur .db und .enc Dateien können wiederhergestellt werden")
+
+    # Validate SQLite magic bytes (skip for encrypted files)
+    if filename.endswith(".db"):
+        with open(src, "rb") as f:
+            magic = f.read(16)
+        if not magic.startswith(b"SQLite format 3"):
+            raise HTTPException(400, "Datei ist keine gültige SQLite-Datenbank")
+
+    db_path = Path(settings.pibg_db_path)
+    logger.warning(f"Backup restore initiated: {filename} → {db_path} by {user}")
+
+    try:
+        # Close all active connections
+        _engine.dispose()
+        # Replace the current DB with the backup
+        _shutil.copy2(str(src), str(db_path))
+        logger.info(f"Backup restored: {filename}")
+        return {
+            "restored": True,
+            "filename": filename,
+            "message": "Backup erfolgreich wiederhergestellt. Die Anwendung lädt Daten ab der nächsten Anfrage aus der wiederhergestellten Datenbank.",
+        }
+    except Exception as e:
+        logger.error(f"Backup restore failed: {e}")
+        raise HTTPException(500, f"Wiederherstellung fehlgeschlagen: {e}")
+
+
+@router.delete("/system/backup/{filename}")
+def delete_backup(filename: str, user: str = Depends(verify_credentials)):
+    """Delete a single local backup file."""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(400, "Ungültiger Dateiname")
+    backup_dir = Path("./data/backups")
+    target = backup_dir / filename
+    if not target.exists():
+        raise HTTPException(404, f"Backup '{filename}' nicht gefunden")
+    target.unlink()
+    logger.info(f"Backup deleted: {filename} by {user}")
+    return {"deleted": True, "filename": filename}
 
 
 @router.get("/system/settings")
@@ -543,4 +610,378 @@ async def phpipam_bulk_import(
         "skipped": len(skipped),
         "created_ips": created,
         "skipped_details": skipped,
+    }
+
+
+# ── Network Configuration ────────────────────────────────────────────
+
+def _run(cmd: list[str], timeout: int = 5) -> tuple[int, str, str]:
+    """Run a subprocess and return (returncode, stdout, stderr)."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout, r.stderr
+    except FileNotFoundError:
+        return -1, "", f"Command not found: {cmd[0]}"
+    except subprocess.TimeoutExpired:
+        return -1, "", "Timeout"
+    except Exception as e:
+        return -1, "", str(e)
+
+
+def _read_network_config() -> dict:
+    """
+    Read current network config using standard Linux tools.
+    Returns dict with interfaces list (name, addresses, state)
+    plus default route and DNS servers.
+    """
+    interfaces = {}
+
+    # Parse ip -o addr show
+    rc, out, _ = _run(["ip", "-o", "addr", "show"])
+    if rc == 0:
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            idx, iface, family, addr_cidr = parts[0], parts[1], parts[2], parts[3]
+            if iface == "lo":
+                continue
+            if iface not in interfaces:
+                interfaces[iface] = {"name": iface, "addresses": [], "state": "unknown"}
+            if family in ("inet", "inet6"):
+                interfaces[iface]["addresses"].append({
+                    "family": family,
+                    "address": addr_cidr,  # e.g. 192.168.1.10/24
+                })
+
+    # Parse ip link show to get UP/DOWN state
+    rc2, out2, _ = _run(["ip", "-o", "link", "show"])
+    if rc2 == 0:
+        for line in out2.splitlines():
+            m = re.search(r"^\d+:\s+(\S+):\s+<([^>]*)>", line)
+            if m:
+                name = m.group(1).rstrip("@eth0")
+                flags = m.group(2)
+                if name in interfaces:
+                    interfaces[name]["state"] = "up" if "UP" in flags else "down"
+
+    # Default gateway
+    default_gw = ""
+    rc3, out3, _ = _run(["ip", "route", "show", "default"])
+    if rc3 == 0 and out3:
+        m = re.search(r"default via (\S+)", out3)
+        if m:
+            default_gw = m.group(1)
+
+    # DNS servers from resolv.conf
+    dns_servers = []
+    try:
+        with open("/etc/resolv.conf") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("nameserver"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        dns_servers.append(parts[1])
+    except Exception:
+        pass
+
+    # Also try systemd-resolved if available
+    if not dns_servers:
+        rc4, out4, _ = _run(["resolvectl", "status", "--no-pager"], timeout=3)
+        if rc4 == 0:
+            for line in out4.splitlines():
+                m = re.search(r"DNS Servers?:\s+(.+)", line)
+                if m:
+                    dns_servers.extend(m.group(1).split())
+
+    return {
+        "interfaces": list(interfaces.values()),
+        "default_gateway": default_gw,
+        "dns_servers": dns_servers,
+        "nmcli_available": _run(["which", "nmcli"])[0] == 0,
+        "ip_available": _run(["which", "ip"])[0] == 0,
+    }
+
+
+@router.get("/system/network-config")
+def get_network_config(user: str = Depends(verify_credentials)):
+    """Return current network configuration (IP addresses, gateway, DNS)."""
+    return _read_network_config()
+
+
+@router.post("/system/network-config/apply")
+def apply_network_config(body: dict, user: str = Depends(verify_credentials)):
+    """
+    Apply network configuration changes via nmcli (if available).
+    Supports: static IP, gateway, DNS for a given interface.
+    Falls back to informational instructions if nmcli is unavailable.
+    """
+    iface = body.get("interface", "").strip()
+    address = body.get("address", "").strip()       # e.g. 192.168.1.10/24
+    gateway = body.get("gateway", "").strip()
+    dns = body.get("dns", "").strip()               # comma-separated
+    mode = body.get("mode", "static")               # static | dhcp
+
+    if not iface:
+        raise HTTPException(400, "interface is required")
+
+    # Validate IP if static
+    if mode == "static" and address:
+        try:
+            ipaddress.ip_interface(address)
+        except ValueError:
+            raise HTTPException(400, f"Invalid address: {address}")
+    if gateway:
+        try:
+            ipaddress.ip_address(gateway)
+        except ValueError:
+            raise HTTPException(400, f"Invalid gateway: {gateway}")
+
+    # Try nmcli
+    rc, _, _ = _run(["which", "nmcli"])
+    if rc != 0:
+        # nmcli not available – return manual instructions
+        logger.info(f"Network config change requested for {iface} (nmcli not available)")
+        instructions = _build_manual_instructions(iface, address, gateway, dns, mode)
+        return {"applied": False, "method": "manual", "instructions": instructions}
+
+    try:
+        cmds = []
+        con_name = iface  # nmcli connection name often matches interface name
+
+        if mode == "dhcp":
+            cmds = [["nmcli", "connection", "modify", con_name, "ipv4.method", "auto"],
+                    ["nmcli", "connection", "up", con_name]]
+        else:
+            if address:
+                cmds.append(["nmcli", "connection", "modify", con_name,
+                              "ipv4.method", "manual",
+                              "ipv4.addresses", address])
+            if gateway:
+                cmds.append(["nmcli", "connection", "modify", con_name,
+                              "ipv4.gateway", gateway])
+            if dns:
+                cmds.append(["nmcli", "connection", "modify", con_name,
+                              "ipv4.dns", dns.replace(",", " ")])
+            cmds.append(["nmcli", "connection", "up", con_name])
+
+        errors = []
+        for cmd in cmds:
+            rc2, stdout, stderr = _run(cmd, timeout=15)
+            if rc2 != 0:
+                errors.append(f"{' '.join(cmd)}: {stderr.strip()}")
+
+        if errors:
+            logger.warning(f"Network config partial failure for {iface}: {errors}")
+            return {"applied": False, "method": "nmcli", "errors": errors}
+
+        logger.info(f"Network config applied for {iface}: mode={mode} addr={address} gw={gateway}")
+        return {"applied": True, "method": "nmcli"}
+
+    except Exception as e:
+        logger.error(f"Network config apply failed: {e}")
+        raise HTTPException(500, str(e))
+
+
+def _build_manual_instructions(iface, address, gateway, dns, mode):
+    """Build shell commands for manual application when nmcli is unavailable."""
+    lines = [f"# Apply on the host as root / via sudo:"]
+    if mode == "dhcp":
+        lines += [f"dhclient {iface}",
+                  f"# or: ip link set {iface} up && dhcpcd {iface}"]
+    else:
+        if address:
+            lines.append(f"ip addr add {address} dev {iface}")
+        if gateway:
+            lines.append(f"ip route replace default via {gateway} dev {iface}")
+        if dns:
+            for srv in dns.split(","):
+                lines.append(f"echo 'nameserver {srv.strip()}' >> /etc/resolv.conf")
+    return "\n".join(lines)
+
+# ── Rules Management ──────────────────────────────────────────────────────────
+
+import yaml as _yaml
+from threading import Lock as _Lock
+
+_rules_lock = _Lock()
+
+
+def _rules_path() -> Path:
+    return Path(settings.pibg_rules_path)
+
+
+def _load_rules_raw() -> list:
+    p = _rules_path()
+    if not p.exists():
+        return []
+    with open(p, "r", encoding="utf-8") as f:
+        data = _yaml.safe_load(f)
+    return data or []
+
+
+def _save_rules_raw(rules: list) -> None:
+    p = _rules_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write("# PiBroadGuard – Default Rules\n")
+        f.write("# Regelwerk für Broadcast Device Security Assessment\n\n")
+        _yaml.dump(rules, f, allow_unicode=True, default_flow_style=False,
+                   sort_keys=False, width=120)
+
+
+@router.get("/rules")
+def list_rules(user: str = Depends(verify_credentials)):
+    """Return all rules from the YAML ruleset."""
+    return _load_rules_raw()
+
+
+@router.post("/rules")
+def create_rule(body: dict, user: str = Depends(verify_credentials)):
+    """Add a new rule to the YAML ruleset."""
+    rk = (body.get("rule_key") or "").strip()
+    if not rk:
+        raise HTTPException(400, "rule_key ist erforderlich")
+    with _rules_lock:
+        rules = _load_rules_raw()
+        if any(r.get("rule_key") == rk for r in rules):
+            raise HTTPException(409, f"Regel '{rk}' existiert bereits")
+        rule = _build_rule_dict(body)
+        rules.append(rule)
+        _save_rules_raw(rules)
+    logger.info(f"Rule created: {rk} by {user}")
+    return rule
+
+
+@router.put("/rules/{rule_key}")
+def update_rule(rule_key: str, body: dict, user: str = Depends(verify_credentials)):
+    """Update an existing rule in the YAML ruleset."""
+    with _rules_lock:
+        rules = _load_rules_raw()
+        idx = next((i for i, r in enumerate(rules) if r.get("rule_key") == rule_key), None)
+        if idx is None:
+            raise HTTPException(404, f"Regel '{rule_key}' nicht gefunden")
+        updated = _build_rule_dict(body, existing=rules[idx])
+        updated["rule_key"] = rule_key  # key is immutable
+        rules[idx] = updated
+        _save_rules_raw(rules)
+    logger.info(f"Rule updated: {rule_key} by {user}")
+    return updated
+
+
+@router.delete("/rules/{rule_key}")
+def delete_rule(rule_key: str, user: str = Depends(verify_credentials)):
+    """Delete a rule from the YAML ruleset."""
+    with _rules_lock:
+        rules = _load_rules_raw()
+        new_rules = [r for r in rules if r.get("rule_key") != rule_key]
+        if len(new_rules) == len(rules):
+            raise HTTPException(404, f"Regel '{rule_key}' nicht gefunden")
+        _save_rules_raw(new_rules)
+    logger.info(f"Rule deleted: {rule_key} by {user}")
+    return {"deleted": True, "rule_key": rule_key}
+
+
+@router.post("/rules/{rule_key}/move")
+def move_rule(rule_key: str, body: dict, user: str = Depends(verify_credentials)):
+    """Move a rule up or down in the list (direction: 'up' or 'down')."""
+    direction = body.get("direction", "up")
+    with _rules_lock:
+        rules = _load_rules_raw()
+        idx = next((i for i, r in enumerate(rules) if r.get("rule_key") == rule_key), None)
+        if idx is None:
+            raise HTTPException(404, f"Regel '{rule_key}' nicht gefunden")
+        if direction == "up" and idx > 0:
+            rules[idx], rules[idx - 1] = rules[idx - 1], rules[idx]
+        elif direction == "down" and idx < len(rules) - 1:
+            rules[idx], rules[idx + 1] = rules[idx + 1], rules[idx]
+        _save_rules_raw(rules)
+    return {"moved": True}
+
+
+def _build_rule_dict(body: dict, existing: dict = None) -> dict:
+    """Build a validated rule dict from request body."""
+    base = existing.copy() if existing else {}
+    # Condition sub-dict
+    cond_type = body.get("condition_type") or (base.get("condition") or {}).get("type", "port_open")
+    condition: dict = {"type": cond_type}
+    if cond_type == "port_open":
+        port = body.get("condition_port")
+        if port is not None:
+            condition["port"] = int(port)
+        proto = body.get("condition_protocol", "").strip()
+        if proto and proto != "tcp":
+            condition["protocol"] = proto
+    elif cond_type == "service_detected":
+        svc = body.get("condition_service", "").strip()
+        if svc:
+            condition["service"] = svc
+    elif cond_type == "manual_answer":
+        qk = body.get("condition_question_key", "").strip()
+        ans = body.get("condition_answer", "no").strip()
+        if qk:
+            condition["question_key"] = qk
+        condition["answer"] = ans
+
+    severity = body.get("severity", base.get("severity", "medium"))
+    if severity not in ("critical", "high", "medium", "low", "info"):
+        severity = "medium"
+    affects = body.get("affects_score", base.get("affects_score", "technical"))
+    if affects not in ("technical", "operational", "lifecycle", "vendor", "compensation"):
+        affects = "technical"
+
+    return {
+        "rule_key": body.get("rule_key", base.get("rule_key", "")),
+        "title": body.get("title", base.get("title", "")),
+        "description": body.get("description", base.get("description", "")),
+        "condition": condition,
+        "severity": severity,
+        "broadcast_context": body.get("broadcast_context", base.get("broadcast_context", "")),
+        "recommendation": body.get("recommendation", base.get("recommendation", "")),
+        "ask_compensation": bool(body.get("ask_compensation", base.get("ask_compensation", False))),
+        "affects_score": affects,
+    }
+
+
+# ── Device-type → Scan Profile Suggestion ────────────────────────────────────
+# Based on IEC 62443 / NIST SP 800-115 / BSI ICS recommendations.
+# Broadcast/embedded devices: passive only in production.
+# IT systems and network gear: standard or extended acceptable.
+_DEVICE_TYPE_PROFILE_MAP = {
+    # Broadcast – highly sensitive, low tolerance for active scanning
+    "encoder":          {"profile": "passive",   "reason": "Broadcast-Encoder sind empfindlich auf Netzwerklast – Passive empfohlen (IEC 62443)."},
+    "decoder":          {"profile": "passive",   "reason": "Broadcast-Decoder sind empfindlich auf Netzwerklast – Passive empfohlen (IEC 62443)."},
+    "matrix":           {"profile": "passive",   "reason": "Signalmatrix – Passive empfohlen, Standard nur im Wartungsfenster."},
+    "camera":           {"profile": "passive",   "reason": "Kameras reagieren empfindlich auf Scans – Passive zwingend in Produktion."},
+    "monitor":          {"profile": "passive",   "reason": "Broadcast-Monitor – Passive empfohlen."},
+    "multiviewer":      {"profile": "passive",   "reason": "Multiviewer – empfindlich, Passive empfohlen."},
+    "frame_sync":       {"profile": "passive",   "reason": "Frame-Sync – eingebettetes Gerät, Passive empfohlen."},
+    "signal_processor": {"profile": "passive",   "reason": "Signalprozessor – eingebettetes Gerät, Passive empfohlen."},
+    "playout":          {"profile": "standard",  "reason": "Playout-Server – oft Linux/Windows-Basis, Standard akzeptabel."},
+    "transcoder":       {"profile": "standard",  "reason": "Transcoder – oft Linux-Basis, Standard akzeptabel."},
+    "intercom":         {"profile": "passive",   "reason": "Intercom-System – echtzeitkritisch, Passive empfohlen."},
+    # Network gear
+    "router":           {"profile": "standard",  "reason": "Router – robuste IT-Plattform, Standard akzeptabel."},
+    "switch":           {"profile": "extended",  "reason": "Switch – Extended sinnvoll für SNMP/Discovery (UDP 161)."},
+    # Generic
+    "other":            {"profile": "passive",   "reason": "Unbekannter Gerätetyp – Passive als sicherster Ausgangspunkt."},
+}
+
+
+@router.get("/system/scan-profile-suggestion")
+def get_scan_profile_suggestion(
+    device_type: str,
+    user: str = Depends(verify_credentials),
+):
+    """Return recommended scan profile for a given device type."""
+    suggestion = _DEVICE_TYPE_PROFILE_MAP.get(
+        device_type.lower(),
+        {"profile": "passive", "reason": "Unbekannter Typ – Passive als sicherer Standard."},
+    )
+    return {
+        "device_type": device_type,
+        "suggested_profile": suggestion["profile"],
+        "reason": suggestion["reason"],
+        "standard_ref": "IEC 62443-3-2 / NIST SP 800-115 / BSI ICS Security Compendium",
     }

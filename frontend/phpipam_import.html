@@ -8,18 +8,21 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/app/i18n.js"></script>
 </head>
-<body>
-<div id="app" class="flex flex-col min-h-screen">
+<body class="bg-slate-100">
+<div id="app" class="flex flex-col min-h-screen bg-slate-100">
 
   <!-- Header -->
-  <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-4">
-      <a href="/app/index.html" class="text-slate-300 hover:text-white text-sm">← Dashboard</a>
-      <span class="text-slate-500">|</span>
-      <span class="font-semibold">{{ t('phpipam_import_page', 'phpIPAM Bulk Import') }}</span>
-    </div>
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
-      <div class="text-xs text-slate-400">PiBroadGuard</div>
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <span class="text-slate-400">/</span>
+      <span class="text-slate-200 text-sm">{{ t('phpipam_import_page', 'phpIPAM Bulk Import') }}</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
+      <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ Schedules</a>
+      <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ Settings</a>
       <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>

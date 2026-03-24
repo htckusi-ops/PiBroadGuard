@@ -61,7 +61,8 @@ def init_default_settings(db):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Startup – re-apply logging after uvicorn has configured its handlers
+    setup_logging(settings.pibg_log_level, settings.pibg_log_path)
     run_migrations()
     db = SessionLocal()
     try:
