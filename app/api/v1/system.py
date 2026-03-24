@@ -735,3 +735,146 @@ def _build_manual_instructions(iface, address, gateway, dns, mode):
             for srv in dns.split(","):
                 lines.append(f"echo 'nameserver {srv.strip()}' >> /etc/resolv.conf")
     return "\n".join(lines)
+
+# ── Rules Management ──────────────────────────────────────────────────────────
+
+import yaml as _yaml
+from threading import Lock as _Lock
+
+_rules_lock = _Lock()
+
+
+def _rules_path() -> Path:
+    return Path(settings.pibg_rules_path)
+
+
+def _load_rules_raw() -> list:
+    p = _rules_path()
+    if not p.exists():
+        return []
+    with open(p, "r", encoding="utf-8") as f:
+        data = _yaml.safe_load(f)
+    return data or []
+
+
+def _save_rules_raw(rules: list) -> None:
+    p = _rules_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write("# PiBroadGuard – Default Rules\n")
+        f.write("# Regelwerk für Broadcast Device Security Assessment\n\n")
+        _yaml.dump(rules, f, allow_unicode=True, default_flow_style=False,
+                   sort_keys=False, width=120)
+
+
+@router.get("/rules")
+def list_rules(user: str = Depends(verify_credentials)):
+    """Return all rules from the YAML ruleset."""
+    return _load_rules_raw()
+
+
+@router.post("/rules")
+def create_rule(body: dict, user: str = Depends(verify_credentials)):
+    """Add a new rule to the YAML ruleset."""
+    rk = (body.get("rule_key") or "").strip()
+    if not rk:
+        raise HTTPException(400, "rule_key ist erforderlich")
+    with _rules_lock:
+        rules = _load_rules_raw()
+        if any(r.get("rule_key") == rk for r in rules):
+            raise HTTPException(409, f"Regel '{rk}' existiert bereits")
+        rule = _build_rule_dict(body)
+        rules.append(rule)
+        _save_rules_raw(rules)
+    logger.info(f"Rule created: {rk} by {user}")
+    return rule
+
+
+@router.put("/rules/{rule_key}")
+def update_rule(rule_key: str, body: dict, user: str = Depends(verify_credentials)):
+    """Update an existing rule in the YAML ruleset."""
+    with _rules_lock:
+        rules = _load_rules_raw()
+        idx = next((i for i, r in enumerate(rules) if r.get("rule_key") == rule_key), None)
+        if idx is None:
+            raise HTTPException(404, f"Regel '{rule_key}' nicht gefunden")
+        updated = _build_rule_dict(body, existing=rules[idx])
+        updated["rule_key"] = rule_key  # key is immutable
+        rules[idx] = updated
+        _save_rules_raw(rules)
+    logger.info(f"Rule updated: {rule_key} by {user}")
+    return updated
+
+
+@router.delete("/rules/{rule_key}")
+def delete_rule(rule_key: str, user: str = Depends(verify_credentials)):
+    """Delete a rule from the YAML ruleset."""
+    with _rules_lock:
+        rules = _load_rules_raw()
+        new_rules = [r for r in rules if r.get("rule_key") != rule_key]
+        if len(new_rules) == len(rules):
+            raise HTTPException(404, f"Regel '{rule_key}' nicht gefunden")
+        _save_rules_raw(new_rules)
+    logger.info(f"Rule deleted: {rule_key} by {user}")
+    return {"deleted": True, "rule_key": rule_key}
+
+
+@router.post("/rules/{rule_key}/move")
+def move_rule(rule_key: str, body: dict, user: str = Depends(verify_credentials)):
+    """Move a rule up or down in the list (direction: 'up' or 'down')."""
+    direction = body.get("direction", "up")
+    with _rules_lock:
+        rules = _load_rules_raw()
+        idx = next((i for i, r in enumerate(rules) if r.get("rule_key") == rule_key), None)
+        if idx is None:
+            raise HTTPException(404, f"Regel '{rule_key}' nicht gefunden")
+        if direction == "up" and idx > 0:
+            rules[idx], rules[idx - 1] = rules[idx - 1], rules[idx]
+        elif direction == "down" and idx < len(rules) - 1:
+            rules[idx], rules[idx + 1] = rules[idx + 1], rules[idx]
+        _save_rules_raw(rules)
+    return {"moved": True}
+
+
+def _build_rule_dict(body: dict, existing: dict = None) -> dict:
+    """Build a validated rule dict from request body."""
+    base = existing.copy() if existing else {}
+    # Condition sub-dict
+    cond_type = body.get("condition_type") or (base.get("condition") or {}).get("type", "port_open")
+    condition: dict = {"type": cond_type}
+    if cond_type == "port_open":
+        port = body.get("condition_port")
+        if port is not None:
+            condition["port"] = int(port)
+        proto = body.get("condition_protocol", "").strip()
+        if proto and proto != "tcp":
+            condition["protocol"] = proto
+    elif cond_type == "service_detected":
+        svc = body.get("condition_service", "").strip()
+        if svc:
+            condition["service"] = svc
+    elif cond_type == "manual_answer":
+        qk = body.get("condition_question_key", "").strip()
+        ans = body.get("condition_answer", "no").strip()
+        if qk:
+            condition["question_key"] = qk
+        condition["answer"] = ans
+
+    severity = body.get("severity", base.get("severity", "medium"))
+    if severity not in ("critical", "high", "medium", "low", "info"):
+        severity = "medium"
+    affects = body.get("affects_score", base.get("affects_score", "technical"))
+    if affects not in ("technical", "operational", "lifecycle", "vendor", "compensation"):
+        affects = "technical"
+
+    return {
+        "rule_key": body.get("rule_key", base.get("rule_key", "")),
+        "title": body.get("title", base.get("title", "")),
+        "description": body.get("description", base.get("description", "")),
+        "condition": condition,
+        "severity": severity,
+        "broadcast_context": body.get("broadcast_context", base.get("broadcast_context", "")),
+        "recommendation": body.get("recommendation", base.get("recommendation", "")),
+        "ask_compensation": bool(body.get("ask_compensation", base.get("ask_compensation", False))),
+        "affects_score": affects,
+    }

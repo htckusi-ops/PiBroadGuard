@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiBroadGuard – Ruleset</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/app/i18n.js"></script>
+</head>
+<body class="bg-slate-100">
+<div id="app" class="flex flex-col min-h-screen bg-slate-100">
+
+  <!-- Header -->
+  <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
+    <div class="flex items-center gap-3">
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <span class="text-slate-400">/</span>
+      <span class="text-slate-200 text-sm">📋 Ruleset</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
+      <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ Schedules</a>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">&#9881; Settings</a>
+      <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
+        <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-6xl mx-auto px-4 py-6 flex-1 w-full">
+
+    <!-- Toolbar -->
+    <div class="flex items-center gap-3 mb-5 flex-wrap">
+      <h1 class="text-xl font-bold text-slate-800 flex-1">📋 Security Ruleset
+        <span class="ml-2 bg-slate-200 text-slate-600 text-sm font-normal px-2 py-0.5 rounded">{{ rules.length }} rules</span>
+      </h1>
+      <!-- Filter: severity -->
+      <select v-model="filterSev" @change="resetPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+        <option value="">All Severities</option>
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+        <option value="info">Info</option>
+      </select>
+      <!-- Filter: condition type -->
+      <select v-model="filterType" @change="resetPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+        <option value="">All Conditions</option>
+        <option value="port_open">Port Open</option>
+        <option value="service_detected">Service Detected</option>
+        <option value="manual_answer">Manual Answer</option>
+      </select>
+      <!-- Filter: affects_score -->
+      <select v-model="filterScore" @change="resetPage" class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white">
+        <option value="">All Dimensions</option>
+        <option value="technical">Technical</option>
+        <option value="operational">Operational</option>
+        <option value="lifecycle">Lifecycle</option>
+        <option value="vendor">Vendor</option>
+        <option value="compensation">Compensation</option>
+      </select>
+      <button @click="openNew" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+        + New Rule
+      </button>
+    </div>
+
+    <!-- Error -->
+    <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">{{ error }}</div>
+
+    <!-- Rules table -->
+    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-700 text-white text-xs">
+          <tr>
+            <th class="px-4 py-2.5 text-left w-8">#</th>
+            <th class="px-4 py-2.5 text-left">Severity</th>
+            <th class="px-4 py-2.5 text-left">Title / Rule Key</th>
+            <th class="px-4 py-2.5 text-left">Condition</th>
+            <th class="px-4 py-2.5 text-left">Score Dimension</th>
+            <th class="px-4 py-2.5 text-left">Compensation</th>
+            <th class="px-4 py-2.5 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="filteredRules.length === 0">
+            <td colspan="7" class="px-4 py-8 text-center text-slate-400">No rules match the current filter.</td>
+          </tr>
+          <tr v-for="(r, idx) in pagedRules" :key="r.rule_key"
+              class="border-t border-slate-100 hover:bg-slate-50 group">
+            <td class="px-4 py-2.5 text-slate-400 text-xs">{{ (page - 1) * PAGE_SIZE + idx + 1 }}</td>
+            <td class="px-4 py-2.5">
+              <span :class="sevClass(r.severity)" class="px-2 py-0.5 rounded text-xs font-bold uppercase">{{ r.severity }}</span>
+            </td>
+            <td class="px-4 py-2.5">
+              <div class="font-medium text-slate-800">{{ r.title }}</div>
+              <div class="text-xs text-slate-400 font-mono">{{ r.rule_key }}</div>
+            </td>
+            <td class="px-4 py-2.5 text-xs text-slate-600">
+              <span v-if="r.condition?.type === 'port_open'" class="font-mono bg-slate-100 px-1.5 py-0.5 rounded">
+                Port {{ r.condition.port }}/{{ r.condition.protocol || 'tcp' }}
+              </span>
+              <span v-else-if="r.condition?.type === 'service_detected'" class="font-mono bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                service: {{ r.condition.service }}
+              </span>
+              <span v-else-if="r.condition?.type === 'manual_answer'" class="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">
+                {{ r.condition.question_key }} = {{ r.condition.answer }}
+              </span>
+              <span v-else class="text-slate-400">—</span>
+            </td>
+            <td class="px-4 py-2.5 text-xs">
+              <span :class="scoreDimClass(r.affects_score)" class="px-2 py-0.5 rounded font-medium capitalize">{{ r.affects_score }}</span>
+            </td>
+            <td class="px-4 py-2.5 text-center">
+              <span v-if="r.ask_compensation" class="text-orange-500 text-xs" title="Compensating control field shown in UI">✓</span>
+              <span v-else class="text-slate-300 text-xs">—</span>
+            </td>
+            <td class="px-4 py-2.5 text-right">
+              <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button @click="moveRule(r.rule_key, 'up')" title="Move up" class="text-slate-400 hover:text-slate-700 px-1 py-0.5 rounded">↑</button>
+                <button @click="moveRule(r.rule_key, 'down')" title="Move down" class="text-slate-400 hover:text-slate-700 px-1 py-0.5 rounded">↓</button>
+                <button @click="openEdit(r)" class="text-blue-500 hover:text-blue-700 px-2 py-0.5 rounded text-xs font-medium">Edit</button>
+                <button @click="confirmDelete(r)" class="text-red-400 hover:text-red-600 px-2 py-0.5 rounded text-xs font-medium">Delete</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+        <span>{{ pageStart }}–{{ pageEnd }} / {{ filteredRules.length }}</span>
+        <div class="flex gap-1">
+          <button @click="page = Math.max(1, page - 1)" :disabled="page === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+          <template v-for="p in totalPages" :key="p">
+            <button v-if="p === 1 || p === totalPages || Math.abs(p - page) <= 1"
+              @click="page = p" :class="p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50'"
+              class="px-2 py-1 rounded border">{{ p }}</button>
+            <span v-else-if="p === 2 && page > 3" class="px-1 py-1">…</span>
+            <span v-else-if="p === totalPages - 1 && page < totalPages - 2" class="px-1 py-1">…</span>
+          </template>
+          <button @click="page = Math.min(totalPages, page + 1)" :disabled="page === totalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rule detail expansion (description + broadcast_context + recommendation) -->
+    <!-- Shown below table as info box when a row is clicked -->
+
+  </main>
+
+  <!-- Edit / New Rule Modal -->
+  <div v-if="modal.show" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-screen overflow-y-auto">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+        <h2 class="font-bold text-slate-800 text-lg">{{ modal.isNew ? '+ New Rule' : 'Edit Rule: ' + modal.data.rule_key }}</h2>
+        <button @click="modal.show = false" class="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+
+        <!-- rule_key (only for new) -->
+        <div v-if="modal.isNew">
+          <label class="block text-xs font-medium text-slate-700 mb-1">Rule Key <span class="text-red-500">*</span>
+            <span class="text-slate-400 font-normal ml-1">(unique identifier, e.g. custom_port_1234)</span>
+          </label>
+          <input v-model="modal.data.rule_key" placeholder="my_custom_rule"
+            class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono"
+            :class="modal.errors.rule_key ? 'border-red-400' : ''">
+          <p v-if="modal.errors.rule_key" class="text-red-500 text-xs mt-0.5">{{ modal.errors.rule_key }}</p>
+        </div>
+
+        <!-- Title -->
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1">Title <span class="text-red-500">*</span></label>
+          <input v-model="modal.data.title" placeholder="Short descriptive title"
+            class="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+            :class="modal.errors.title ? 'border-red-400' : ''">
+          <p v-if="modal.errors.title" class="text-red-500 text-xs mt-0.5">{{ modal.errors.title }}</p>
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1">Description</label>
+          <textarea v-model="modal.data.description" rows="2" placeholder="Risk explanation"
+            class="w-full border border-slate-300 rounded px-3 py-2 text-sm resize-none"></textarea>
+        </div>
+
+        <!-- Condition -->
+        <div class="bg-slate-50 rounded-lg p-4 space-y-3">
+          <label class="block text-xs font-bold text-slate-700">Condition</label>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Type</label>
+            <select v-model="modal.data.condition_type" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-full">
+              <option value="port_open">Port Open</option>
+              <option value="service_detected">Service Detected</option>
+              <option value="manual_answer">Manual Answer</option>
+            </select>
+          </div>
+          <!-- port_open fields -->
+          <div v-if="modal.data.condition_type === 'port_open'" class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Port <span class="text-red-500">*</span></label>
+              <input v-model.number="modal.data.condition_port" type="number" min="1" max="65535"
+                placeholder="e.g. 23"
+                class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono"
+                :class="modal.errors.port ? 'border-red-400' : ''">
+              <p v-if="modal.errors.port" class="text-red-500 text-xs mt-0.5">{{ modal.errors.port }}</p>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Protocol</label>
+              <select v-model="modal.data.condition_protocol" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-full">
+                <option value="tcp">tcp</option>
+                <option value="udp">udp</option>
+              </select>
+            </div>
+          </div>
+          <!-- service_detected fields -->
+          <div v-if="modal.data.condition_type === 'service_detected'">
+            <label class="block text-xs text-slate-500 mb-1">Service Name <span class="text-red-500">*</span></label>
+            <input v-model="modal.data.condition_service" placeholder="e.g. telnet, ftp, http"
+              class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono">
+          </div>
+          <!-- manual_answer fields -->
+          <div v-if="modal.data.condition_type === 'manual_answer'" class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Question Key <span class="text-red-500">*</span></label>
+              <input v-model="modal.data.condition_question_key" placeholder="e.g. psirt_available"
+                class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono">
+              <p class="text-slate-400 text-xs mt-0.5">Must match a question_key in the manual findings form.</p>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Expected Answer</label>
+              <select v-model="modal.data.condition_answer" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-full">
+                <option value="no">no</option>
+                <option value="yes">yes</option>
+                <option value="partial">partial</option>
+                <option value="unknown">unknown</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Severity + affects_score in 2 cols -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">Severity <span class="text-red-500">*</span></label>
+            <select v-model="modal.data.severity" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-full">
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="info">Info</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">Affects Score Dimension</label>
+            <select v-model="modal.data.affects_score" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-full">
+              <option value="technical">Technical (×0.35)</option>
+              <option value="operational">Operational (×0.20)</option>
+              <option value="compensation">Compensation (×0.20)</option>
+              <option value="lifecycle">Lifecycle (×0.15)</option>
+              <option value="vendor">Vendor (×0.10)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Broadcast Context -->
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1">Broadcast Context
+            <span class="text-slate-400 font-normal ml-1">(broadcast-specific risk context for the report)</span>
+          </label>
+          <textarea v-model="modal.data.broadcast_context" rows="2"
+            placeholder="Broadcast-specific context, shown in findings and reports"
+            class="w-full border border-slate-300 rounded px-3 py-2 text-sm resize-none"></textarea>
+        </div>
+
+        <!-- Recommendation -->
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1">Recommendation</label>
+          <textarea v-model="modal.data.recommendation" rows="2"
+            placeholder="Remediation steps shown in findings"
+            class="w-full border border-slate-300 rounded px-3 py-2 text-sm resize-none"></textarea>
+        </div>
+
+        <!-- ask_compensation -->
+        <div>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" v-model="modal.data.ask_compensation" class="w-4 h-4">
+            <span class="text-slate-700">Show compensating control field in findings UI</span>
+            <span class="text-slate-400 text-xs">(for findings where a compensating measure may justify the risk)</span>
+          </label>
+        </div>
+
+        <!-- save error -->
+        <div v-if="modal.saveError" class="p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">{{ modal.saveError }}</div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3">
+        <button @click="modal.show = false" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 rounded border border-slate-300 hover:bg-slate-50">Cancel</button>
+        <button @click="saveRule" :disabled="modal.saving"
+          class="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white px-5 py-2 rounded text-sm font-medium">
+          {{ modal.saving ? 'Saving…' : (modal.isNew ? 'Create Rule' : 'Save Changes') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div v-if="deleteTarget" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+      <h2 class="font-bold text-slate-800 text-lg mb-2">Delete Rule?</h2>
+      <p class="text-slate-600 text-sm mb-1"><strong>{{ deleteTarget.title }}</strong></p>
+      <p class="text-slate-400 text-xs font-mono mb-4">{{ deleteTarget.rule_key }}</p>
+      <p class="text-orange-600 text-sm mb-5">⚠️ This rule will be permanently removed from the YAML file. Existing findings from past scans are not affected.</p>
+      <div class="flex gap-3 justify-end">
+        <button @click="deleteTarget = null" class="px-4 py-2 text-sm text-slate-600 rounded border border-slate-300 hover:bg-slate-50">Cancel</button>
+        <button @click="doDelete" class="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded text-sm font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between mt-auto">
+    <span>PiBroadGuard · Broadcast Device Security Assessment</span>
+    <span>IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1</span>
+    <span>v1.9 | March 2026</span>
+  </footer>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+createApp({
+  setup() {
+    const { t, currentLang, switchLang } = window.PiBGi18n
+      ? window.PiBGi18n.useI18n()
+      : { t: (k, fb) => fb || k, currentLang: ref('en'), switchLang: () => {} };
+
+    const rules = ref([]);
+    const error = ref('');
+    const filterSev = ref('');
+    const filterType = ref('');
+    const filterScore = ref('');
+    const page = ref(1);
+    const PAGE_SIZE = 25;
+    const deleteTarget = ref(null);
+
+    // ── Modal state ────────────────────────────────────────────────
+    const EMPTY_MODAL = () => ({
+      show: false, isNew: false, saving: false, saveError: '',
+      errors: {},
+      data: {
+        rule_key: '', title: '', description: '',
+        condition_type: 'port_open',
+        condition_port: null,
+        condition_protocol: 'tcp',
+        condition_service: '',
+        condition_question_key: '',
+        condition_answer: 'no',
+        severity: 'medium',
+        affects_score: 'technical',
+        broadcast_context: '',
+        recommendation: '',
+        ask_compensation: false,
+      }
+    });
+    const modal = ref(EMPTY_MODAL());
+
+    // ── Load rules ─────────────────────────────────────────────────
+    async function loadRules() {
+      error.value = '';
+      try {
+        const r = await fetch('/api/v1/rules');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        rules.value = await r.json();
+      } catch (e) {
+        error.value = 'Failed to load rules: ' + e.message;
+      }
+    }
+
+    // ── Filtering & pagination ─────────────────────────────────────
+    const filteredRules = computed(() => {
+      return rules.value.filter(r => {
+        if (filterSev.value && r.severity !== filterSev.value) return false;
+        if (filterType.value && r.condition?.type !== filterType.value) return false;
+        if (filterScore.value && r.affects_score !== filterScore.value) return false;
+        return true;
+      });
+    });
+    const totalPages = computed(() => Math.max(1, Math.ceil(filteredRules.value.length / PAGE_SIZE)));
+    const pageStart  = computed(() => (page.value - 1) * PAGE_SIZE + 1);
+    const pageEnd    = computed(() => Math.min(page.value * PAGE_SIZE, filteredRules.value.length));
+    const pagedRules = computed(() => filteredRules.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE));
+    function resetPage() { page.value = 1; }
+
+    // ── Helpers ────────────────────────────────────────────────────
+    function sevClass(sev) {
+      return {
+        critical: 'bg-red-600 text-white',
+        high:     'bg-orange-500 text-white',
+        medium:   'bg-yellow-500 text-black',
+        low:      'bg-blue-200 text-blue-800',
+        info:     'bg-slate-200 text-slate-600',
+      }[sev] || 'bg-slate-200 text-slate-600';
+    }
+    function scoreDimClass(dim) {
+      return {
+        technical:    'bg-red-100 text-red-700',
+        operational:  'bg-orange-100 text-orange-700',
+        lifecycle:    'bg-yellow-100 text-yellow-800',
+        vendor:       'bg-purple-100 text-purple-700',
+        compensation: 'bg-green-100 text-green-700',
+      }[dim] || 'bg-slate-100 text-slate-600';
+    }
+
+    // ── Open modals ────────────────────────────────────────────────
+    function openNew() {
+      modal.value = EMPTY_MODAL();
+      modal.value.show = true;
+      modal.value.isNew = true;
+    }
+    function openEdit(rule) {
+      const cond = rule.condition || {};
+      modal.value = EMPTY_MODAL();
+      modal.value.show = true;
+      modal.value.isNew = false;
+      modal.value.data = {
+        rule_key: rule.rule_key,
+        title: rule.title || '',
+        description: rule.description || '',
+        condition_type: cond.type || 'port_open',
+        condition_port: cond.port ?? null,
+        condition_protocol: cond.protocol || 'tcp',
+        condition_service: cond.service || '',
+        condition_question_key: cond.question_key || '',
+        condition_answer: cond.answer || 'no',
+        severity: rule.severity || 'medium',
+        affects_score: rule.affects_score || 'technical',
+        broadcast_context: rule.broadcast_context || '',
+        recommendation: rule.recommendation || '',
+        ask_compensation: !!rule.ask_compensation,
+      };
+    }
+
+    // ── Validate + save ────────────────────────────────────────────
+    function validateModal() {
+      const e = {};
+      const d = modal.value.data;
+      if (modal.value.isNew && !d.rule_key.trim()) e.rule_key = 'Required';
+      else if (modal.value.isNew && !/^[a-z0-9_]+$/.test(d.rule_key.trim())) e.rule_key = 'Only lowercase letters, digits and _ allowed';
+      if (!d.title.trim()) e.title = 'Required';
+      if (d.condition_type === 'port_open') {
+        if (!d.condition_port || d.condition_port < 1 || d.condition_port > 65535)
+          e.port = 'Valid port 1–65535 required';
+      }
+      modal.value.errors = e;
+      return Object.keys(e).length === 0;
+    }
+
+    async function saveRule() {
+      if (!validateModal()) return;
+      modal.value.saving = true;
+      modal.value.saveError = '';
+      const d = modal.value.data;
+      const body = { ...d };
+      try {
+        const url = modal.value.isNew ? '/api/v1/rules' : `/api/v1/rules/${d.rule_key}`;
+        const method = modal.value.isNew ? 'POST' : 'PUT';
+        const resp = await fetch(url, {
+          method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json.detail || `HTTP ${resp.status}`);
+        await loadRules();
+        modal.value.show = false;
+      } catch (e) {
+        modal.value.saveError = String(e.message || e);
+      } finally {
+        modal.value.saving = false;
+      }
+    }
+
+    // ── Delete ─────────────────────────────────────────────────────
+    function confirmDelete(rule) { deleteTarget.value = rule; }
+    async function doDelete() {
+      if (!deleteTarget.value) return;
+      const key = deleteTarget.value.rule_key;
+      deleteTarget.value = null;
+      try {
+        const resp = await fetch(`/api/v1/rules/${key}`, { method: 'DELETE' });
+        if (!resp.ok) { const j = await resp.json(); throw new Error(j.detail); }
+        await loadRules();
+      } catch (e) {
+        error.value = 'Delete failed: ' + e.message;
+      }
+    }
+
+    // ── Move ───────────────────────────────────────────────────────
+    async function moveRule(ruleKey, direction) {
+      try {
+        await fetch(`/api/v1/rules/${ruleKey}/move`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ direction })
+        });
+        await loadRules();
+      } catch (e) {
+        error.value = 'Move failed: ' + e.message;
+      }
+    }
+
+    onMounted(async () => {
+      if (window.PiBGi18n) await window.PiBGi18n.load();
+      await loadRules();
+    });
+
+    return {
+      rules, error, filterSev, filterType, filterScore,
+      filteredRules, totalPages, pageStart, pageEnd, pagedRules, page, PAGE_SIZE,
+      resetPage, modal, deleteTarget,
+      sevClass, scoreDimClass,
+      openNew, openEdit, saveRule, confirmDelete, doDelete, moveRule,
+      t, currentLang, switchLang,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
