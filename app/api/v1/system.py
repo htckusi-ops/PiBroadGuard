@@ -640,13 +640,13 @@ def _read_network_config() -> dict:
     }
 
 
-@router.get("/network-config")
+@router.get("/system/network-config")
 def get_network_config(user: str = Depends(verify_credentials)):
     """Return current network configuration (IP addresses, gateway, DNS)."""
     return _read_network_config()
 
 
-@router.post("/network-config/apply")
+@router.post("/system/network-config/apply")
 def apply_network_config(body: dict, user: str = Depends(verify_credentials)):
     """
     Apply network configuration changes via nmcli (if available).

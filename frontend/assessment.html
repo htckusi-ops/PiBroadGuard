@@ -612,9 +612,9 @@
               <a :href="f.vendor_advisory_url" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs">🔗 Hersteller-Advisory</a>
             </div>
           </div>
-          <div class="flex items-start gap-3 flex-wrap mt-2">
+          <div class="flex items-end gap-3 flex-wrap mt-2">
             <div class="shrink-0">
-              <label class="text-xs text-slate-500 mr-1">Status:</label>
+              <label class="text-xs text-slate-500 block mb-0.5">{{ t('finding_status_label', 'Status') }}:</label>
               <select v-model="f.status" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
                 <option value="open">{{ t('finding_status_open', 'Open') }}</option>
                 <option value="compensated">{{ t('finding_status_compensated', 'Compensated') }}</option>
@@ -633,12 +633,13 @@
                 title="Kompensationsmassnahme: Beschreiben Sie, wie das Risiko durch andere Massnahmen reduziert wird"
                 class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
             </div>
-            <div class="shrink-0 flex items-end">
+            <div class="shrink-0 flex items-center gap-2">
               <button @click="updateFinding(f)"
-                class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium mt-4"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium"
                 :title="t('btn_save_finding_title', 'Save status and compensating control for this finding')">
                 {{ t('btn_save', 'Save') }}
               </button>
+              <span v-if="findingSavedId === f.id" class="text-green-600 text-xs font-medium">✓ {{ t('saved', 'Saved') }}</span>
             </div>
           </div>
         </div>
@@ -1001,11 +1002,16 @@ createApp({
       if (resp.ok) { manualSaved.value = true; setTimeout(() => manualSaved.value = false, 3000); }
     }
 
+    const findingSavedId = ref(null);
     async function updateFinding(f) {
-      await fetch(`/api/v1/assessments/${assessment.value.id}/findings/${f.id}`, {
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/findings/${f.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: f.status, compensating_control_description: f.compensating_control_description })
       });
+      if (resp.ok) {
+        findingSavedId.value = f.id;
+        setTimeout(() => { if (findingSavedId.value === f.id) findingSavedId.value = null; }, 2500);
+      }
     }
 
     async function recalculate() {
@@ -1195,7 +1201,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd };
   }
 }).mount('#app');
 </script>
