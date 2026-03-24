@@ -23,7 +23,7 @@
 
 ## Inhaltsübersicht
 
-Die Spec besteht aus der Basis (v1.0) und 8 kumulativen Updates:
+Die Spec besteht aus der Basis (v1.0) und 9 kumulativen Updates:
 
 | Abschnitt | Inhalt |
 |-----------|--------|
@@ -37,6 +37,7 @@ Die Spec besteht aus der Basis (v1.0) und 8 kumulativen Updates:
 | **Update v1.6** | Assessment-Historie in Geräteansicht, Scan-Profil-Persistenz, i18n (EN/DE via `i18n.js`), Tooltips, CVE-Cache-Alter-Anzeige, klickbare NVD/KEV-Badges, korrigierte Scan-Profil-Beschreibungen |
 | **Update v1.7** | Scan-Queue Service (`asyncio.Queue` + Semaphore), Queue-Status-Widget im UI, Duplikat-Schutz (gleiche Device-ID nicht doppelt), 50-Job-History, Cancel-Support |
 | **Update v1.8** | Geplante Scans (APScheduler 3.x), Trigger-Typen: Einmalig/Intervall/Cron, Uhrzeit-Auswahl (HH:MM UTC) für Tages-/Wochen-/Monats-Intervalle, Schedules-Seite (`schedules.html`), nächste Schedules-Widget auf Dashboard |
+| **Update v1.9** | Netzwerk-Konfiguration über UI (IP/Gateway/DNS via nmcli), Paginierung in allen Listen, Port-Scan-Resultate in Findings-Tab, Befund-Speichern-Button, Logging-Fix, Auth-Log-Deduplication |
 
 **Bei Widersprüchen zwischen Abschnitten gilt immer das neuere Update.**
 
@@ -3517,3 +3518,274 @@ shutdown_scheduler()
 ---
 
 *Update v1.8 | März 2026*
+
+---
+
+# BDSA_SPEC.md – Update v1.9
+## UI-Verbesserungen: Pagination, Netzwerk-Konfiguration, Findings-Fix, Logging
+
+Ergänzung zu v1.0–v1.8 | Stand: März 2026
+
+---
+
+## ÄNDERUNG 1: Paginierung in allen Listen
+
+Alle Listenansichten zeigen ab einer konfigurierbaren Anzahl Einträge mehrere Seiten an.
+Die Paginierung erfolgt clientseitig via Vue 3 `computed`-Properties.
+
+### Paginierte Seiten und Standardgrössen
+
+| Seite / Bereich | Einträge pro Seite | Beschreibung |
+|---|---|---|
+| `index.html` – Geräteliste | 25 | Gefilterte Gerätliste mit Such- und Filterfeldern |
+| `device_form.html` – Assessment-Historie | 10 | Bisherige Assessments eines Geräts |
+| `assessment.html` – Findings | 25 | Rule-triggered Findings pro Assessment |
+| `assessment.html` – Scan-Resultate | 25 | Offene Ports aus dem letzten Nmap-Scan |
+| `schedules.html` – Schedule-Liste | 25 | Alle geplanten Scans |
+
+### Paginierungs-Muster (Vue 3)
+
+```javascript
+// Refs
+const page = ref(1);
+const PAGE_SIZE = 25;
+
+// Computeds
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredItems.value.length / PAGE_SIZE)));
+const pageStart  = computed(() => (page.value - 1) * PAGE_SIZE + 1);
+const pageEnd    = computed(() => Math.min(page.value * PAGE_SIZE, filteredItems.value.length));
+const pagedItems = computed(() => filteredItems.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE));
+
+// Bei Filteränderung Seite zurücksetzen
+function resetPage() { page.value = 1; }
+```
+
+### Paginierungs-UI mit Ellipsis
+
+```html
+<div v-if="totalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
+  <span>{{ pageStart }}–{{ pageEnd }} / {{ items.length }}</span>
+  <div class="flex gap-1">
+    <button @click="page = Math.max(1, page - 1)" :disabled="page === 1" ...>‹</button>
+    <template v-for="p in totalPages" :key="p">
+      <button v-if="p === 1 || p === totalPages || Math.abs(p - page) <= 1"
+        @click="page = p" :class="p === page ? 'bg-blue-600 text-white' : ''" ...>{{ p }}</button>
+      <span v-else-if="p === 2 && page > 3" class="px-2 py-1">…</span>
+      <span v-else-if="p === totalPages - 1 && page < totalPages - 2" class="px-2 py-1">…</span>
+    </template>
+    <button @click="page = Math.min(totalPages, page + 1)" :disabled="page === totalPages" ...>›</button>
+  </div>
+</div>
+```
+
+---
+
+## ÄNDERUNG 2: Port-Scan-Resultate im Findings-Tab
+
+Im Findings-Tab von `assessment.html` werden neu vor den rule-triggered Findings alle
+erkannten offenen Ports aus dem letzten Nmap-Scan als Tabelle angezeigt.
+
+### Tabellen-Spalten
+
+| Spalte | Datenquelle | Beschreibung |
+|---|---|---|
+| Port / Proto | `scan_results.port` / `.protocol` | z.B. `22/tcp` |
+| Service | `scan_results.service_name` | z.B. `ssh` |
+| Product / Version | `.service_product` / `.service_version` | z.B. `OpenSSH 8.4` |
+| State | `.state` | `open` (rot hinterlegt) / `filtered` |
+| Extra Info | `.extra_info` | OS-Hinweise, SSH-Version etc. |
+
+Die Tabelle hat dieselbe Paginierung (25 Einträge pro Seite) wie die Findings-Liste.
+Wenn keine Scan-Resultate vorhanden sind, wird der Abschnitt nicht angezeigt.
+
+---
+
+## ÄNDERUNG 3: Finding-Karten – immer sichtbares Kompensationsfeld + Speichern-Button
+
+### Vorher
+- Kompensationsfeld (`v-if="f.compensating_control_required"`) nur sichtbar wenn Regel `ask_compensation: true`
+- Automatisches Speichern via `@change` / `@blur` (kein sichtbarer Button)
+
+### Nachher
+- Kompensationsfeld immer sichtbar (kein `v-if`); Pflichtfeld-Marker `*` wenn `compensating_control_required`
+- Expliziter **Save**-Button pro Finding-Karte (`@click="updateFinding(f)"`)
+- Status-Dropdown ohne Auto-Save (erst beim Klick auf Save)
+
+### Layout der Finding-Karte (Bottom Row)
+
+```
+[ Status-Dropdown ] [ Compensating Control Input Field ... ] [ Save ]
+```
+
+---
+
+## ÄNDERUNG 4: Netzwerk-Konfiguration über das UI
+
+### Übersicht
+
+Auf der Settings-Seite (`settings.html`) gibt es eine neue Sektion **Network Configuration**.
+Sie zeigt alle Netzwerk-Interfaces des Systems und erlaubt, IP-Adresse, Gateway und DNS
+über das UI zu konfigurieren – ohne direkten SSH-Zugriff.
+
+### Backend: Neue API-Endpunkte in `app/api/v1/system.py`
+
+```
+GET  /api/v1/system/network-config         # Alle Interfaces, Gateway, DNS abrufen
+POST /api/v1/system/network-config/apply   # Netzwerk-Konfiguration anwenden
+```
+
+**GET Response-Schema:**
+```json
+{
+  "interfaces": [
+    {
+      "name": "eth0",
+      "state": "UP",
+      "addresses": ["192.168.1.100/24"],
+      "mac": "b8:27:eb:xx:xx:xx"
+    }
+  ],
+  "default_gateway": "192.168.1.1",
+  "dns_servers": ["8.8.8.8", "1.1.1.1"],
+  "nmcli_available": true
+}
+```
+
+**POST Body:**
+```json
+{
+  "interface": "eth0",
+  "mode": "static",           // "static" | "dhcp"
+  "ip_cidr": "192.168.1.100/24",
+  "gateway": "192.168.1.1",
+  "dns": "8.8.8.8 1.1.1.1"
+}
+```
+
+**POST Response (nmcli verfügbar):**
+```json
+{
+  "success": true,
+  "message": "Network configuration applied via nmcli",
+  "applied_commands": ["nmcli connection modify eth0 ipv4.addresses 192.168.1.100/24 ..."]
+}
+```
+
+**POST Response (nmcli nicht verfügbar – Fallback):**
+```json
+{
+  "success": false,
+  "manual_instructions": true,
+  "message": "nmcli not available. Use these shell commands manually:",
+  "commands": ["ip addr add 192.168.1.100/24 dev eth0", "ip route add default via 192.168.1.1"]
+}
+```
+
+### Implementierung: `_read_network_config()`
+
+Liest aktuelle Netzwerkkonfiguration via Shell-Kommandos:
+- `ip -o addr show` → Interfaces mit IP-Adressen
+- `ip -o link show` → Interface-Status (UP/DOWN) und MAC
+- `ip route show default` → Standard-Gateway
+- `/etc/resolv.conf` + `resolvectl status` → DNS-Server
+
+### Implementierung: Anwenden via nmcli
+
+```python
+# Static-Konfiguration
+nmcli connection modify {iface} ipv4.method manual ipv4.addresses {ip_cidr} ipv4.gateway {gw} ipv4.dns "{dns}"
+nmcli connection up {iface}
+
+# DHCP
+nmcli connection modify {iface} ipv4.method auto ipv4.addresses "" ipv4.gateway "" ipv4.dns ""
+nmcli connection up {iface}
+```
+
+### UI: Settings-Seite – Network Configuration Sektion
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  🌐 NETWORK CONFIGURATION                                           │
+│                                                                     │
+│  Interface  State  Addresses               MAC          Action      │
+│  eth0       UP     192.168.1.100/24        b8:27:eb:…   [Configure] │
+│  lo         UP     127.0.0.1/8, ::1/128    —                        │
+│                                                                     │
+│  Default Gateway: 192.168.1.1                                       │
+│  DNS Servers: 8.8.8.8, 1.1.1.1                                     │
+│  nmcli: ✅ Available                                                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Klick auf **Configure** öffnet ein Modal mit:
+- **Mode**: Static / DHCP (Radio-Buttons)
+- **IP Address / Prefix**: `192.168.1.100/24` (nur bei Static)
+- **Default Gateway**: `192.168.1.1` (nur bei Static)
+- **DNS Servers**: `8.8.8.8 1.1.1.1` (nur bei Static)
+- **Apply**-Button → POST an Backend → zeigt Ergebnis oder Shell-Befehle
+
+---
+
+## ÄNDERUNG 5: Logging-Fix (uvicorn-Konflikt)
+
+### Problem
+`setup_logging()` wird beim Modul-Import ausgeführt, bevor uvicorn seine eigenen
+Handler konfiguriert. Uvicorn's `configure_logging()` kann danach die Root-Logger-Handler
+zurücksetzen, wodurch der File-Handler verloren geht.
+
+### Lösung
+`setup_logging()` wird **zusätzlich** als erste Aktion im `lifespan`-Startup-Context
+aufgerufen (nach uvicorn-Initialisierung):
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Re-apply after uvicorn has configured its handlers
+    setup_logging(settings.pibg_log_level, settings.pibg_log_path)
+    run_migrations()
+    ...
+```
+
+---
+
+## ÄNDERUNG 6: Auth-Log-Deduplication
+
+### Problem
+Basic Auth wird bei jedem API-Request geprüft. Bei normaler Nutzung würde dadurch
+ein Log-Eintrag pro Request entstehen (potentiell Hunderte pro Minute).
+
+### Lösung
+Ein module-level Set `_logged_logins: set[str]` in `app/core/security.py` trackt,
+von welchen IP-Adressen bereits ein erfolgreicher Login geloggt wurde. Jede IP wird
+nur beim **ersten** erfolgreichen Login in `pibroadguard.auth` auf INFO-Level geloggt.
+
+```python
+_logged_logins: set[str] = set()
+
+# In verify_credentials():
+if ip not in _logged_logins:
+    _logged_logins.add(ip)
+    logger.info(f"Successful auth from {ip} (user: {credentials.username})")
+```
+
+Fehlgeschlagene Auth-Versuche werden weiterhin **jeden** Versuch auf WARNING geloggt
+(für Security-Monitoring wichtig).
+
+---
+
+## ZUSAMMENFASSUNG v1.9
+
+| Bereich | Änderung |
+|---------|----------|
+| Frontend | Paginierung in index.html, device_form.html, assessment.html (Findings + ScanResults), schedules.html |
+| Frontend | Port-Scan-Resultate als Tabelle im Findings-Tab |
+| Frontend | Finding-Karte: immer sichtbares Kompensationsfeld + expliziter Save-Button |
+| Frontend | Settings: Network Configuration Sektion mit Interface-Übersicht und Modal-Editor |
+| API | `GET /api/v1/system/network-config` |
+| API | `POST /api/v1/system/network-config/apply` |
+| Backend | Logging-Fix: setup_logging() im lifespan-Startup wiederholt aufrufen |
+| Backend | Auth-Log-Deduplication: nur erster Login pro IP geloggt |
+
+---
+
+*Update v1.9 | März 2026*
