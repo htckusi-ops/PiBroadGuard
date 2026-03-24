@@ -130,9 +130,15 @@
           <div class="flex items-center gap-3">
             <span class="text-slate-400 text-xs">{{ formatBytes(b.size_bytes) }}</span>
             <a :href="`/api/v1/system/backup/${b.filename}`" class="text-blue-600 hover:underline text-xs">&#8681; {{ t('btn_download', 'Download') }}</a>
+            <button @click="doRestore(b.filename)"
+              class="text-amber-600 hover:text-amber-800 text-xs font-medium"
+              title="Restore this backup – replaces the current database. The app continues with the restored data immediately.">
+              ♻ Restore
+            </button>
           </div>
         </div>
       </div>
+      <p v-if="restoreMsg" :class="restoreError ? 'text-red-600' : 'text-green-600'" class="text-sm mt-2">{{ restoreMsg }}</p>
     </div>
 
     <!-- Logs -->
@@ -486,6 +492,8 @@ createApp({
     const backupMsg = ref('');
     const backupError = ref(false);
     const backups = ref([]);
+    const restoreMsg = ref('');
+    const restoreError = ref(false);
     const logs = ref([]);
     const logLines = ref(50);
     const nmapCaps = ref(null);
@@ -520,7 +528,7 @@ createApp({
       kevSyncing.value = true; kevMsg.value = ''; kevError.value = false;
       const resp = await fetch('/api/v1/system/kev-sync', { method: 'POST' });
       if (resp.ok) { const r = await resp.json(); kevMsg.value = `Synced: ${r.synced} entries`; await loadConn(); }
-      else { kevMsg.value = 'Sync failed'; kevError.value = true; }
+      else { try { const e = await resp.json(); kevMsg.value = e.detail || 'Sync failed'; } catch { kevMsg.value = 'Sync failed'; } kevError.value = true; }
       kevSyncing.value = false;
     }
     async function doBackup() {
@@ -536,6 +544,17 @@ createApp({
     async function loadBackups() {
       const resp = await fetch('/api/v1/system/backup/list');
       if (resp.ok) backups.value = await resp.json();
+    }
+    async function doRestore(filename) {
+      if (!confirm(`Restore backup "${filename}"?\n\nThis replaces the current database immediately. The app will continue with the restored data.`)) return;
+      restoreMsg.value = ''; restoreError.value = false;
+      const resp = await fetch(`/api/v1/system/backup/restore/${encodeURIComponent(filename)}`, { method: 'POST' });
+      if (resp.ok) {
+        restoreMsg.value = `✅ Restored from ${filename}. Reload the page to see updated data.`;
+      } else {
+        try { const e = await resp.json(); restoreMsg.value = e.detail || 'Restore failed'; } catch { restoreMsg.value = 'Restore failed'; }
+        restoreError.value = true;
+      }
     }
     async function loadLogs() {
       const resp = await fetch(`/api/v1/system/logs?lines=${logLines.value}`);
@@ -718,7 +737,7 @@ createApp({
       finally { netEdit.value.applying = false; }
     }
 
-    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
+    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, restoreMsg, restoreError, doRestore, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

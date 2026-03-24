@@ -83,9 +83,12 @@ async def check_connectivity(db: Session = Depends(get_db), user: str = Depends(
 async def kev_sync(db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
     mode = _get_setting(db, "connectivity_mode", "auto")
     if not connectivity_service.is_online(mode):
-        raise HTTPException(503, "System ist im Offline-Modus")
-    count = await remediation_service.sync_kev_cache(db)
-    return {"synced": count}
+        raise HTTPException(503, "System ist im Offline-Modus – KEV-Sync nicht möglich")
+    try:
+        count = await remediation_service.sync_kev_cache(db)
+        return {"synced": count}
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
 
 
 @router.post("/system/backup")
@@ -119,6 +122,53 @@ def download_backup(filename: str, db: Session = Depends(get_db), user: str = De
     return Response(content=data, media_type="application/octet-stream", headers={
         "Content-Disposition": f'attachment; filename="{filename}"'
     })
+
+
+@router.post("/system/backup/restore/{filename}")
+def restore_backup(filename: str, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
+    """
+    Restore a local backup by replacing the current database file.
+    Disposes all SQLAlchemy connections before copying, so the next
+    request will open a fresh connection to the restored DB.
+    """
+    import shutil as _shutil
+    from app.core.database import engine as _engine
+
+    backup_dir = Path("./data/backups")
+    src = backup_dir / filename
+
+    # Security: only allow filenames from the backups dir (no path traversal)
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(400, "Ungültiger Dateiname")
+    if not src.exists():
+        raise HTTPException(404, f"Backup '{filename}' nicht gefunden")
+    if src.suffix not in (".db", ".enc"):
+        raise HTTPException(400, "Nur .db und .enc Dateien können wiederhergestellt werden")
+
+    # Validate SQLite magic bytes (skip for encrypted files)
+    if filename.endswith(".db"):
+        with open(src, "rb") as f:
+            magic = f.read(16)
+        if not magic.startswith(b"SQLite format 3"):
+            raise HTTPException(400, "Datei ist keine gültige SQLite-Datenbank")
+
+    db_path = Path(settings.pibg_db_path)
+    logger.warning(f"Backup restore initiated: {filename} → {db_path} by {user}")
+
+    try:
+        # Close all active connections
+        _engine.dispose()
+        # Replace the current DB with the backup
+        _shutil.copy2(str(src), str(db_path))
+        logger.info(f"Backup restored: {filename}")
+        return {
+            "restored": True,
+            "filename": filename,
+            "message": "Backup erfolgreich wiederhergestellt. Die Anwendung lädt Daten ab der nächsten Anfrage aus der wiederhergestellten Datenbank.",
+        }
+    except Exception as e:
+        logger.error(f"Backup restore failed: {e}")
+        raise HTTPException(500, f"Wiederherstellung fehlgeschlagen: {e}")
 
 
 @router.get("/system/settings")

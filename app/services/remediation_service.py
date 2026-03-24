@@ -67,7 +67,7 @@ async def sync_kev_cache(db: Session) -> int:
         return count
     except Exception as e:
         logger.error(f"KEV sync failed: {e}")
-        return 0
+        raise RuntimeError(f"KEV sync failed: {e}") from e
 
 
 async def sync_kev_if_stale(db: Session, max_age_hours: int = 24) -> None:

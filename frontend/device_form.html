@@ -16,10 +16,15 @@
       <span class="text-slate-400">/</span>
       <span class="text-slate-200">{{ isEdit ? t('device_form_title_edit', 'Edit Device') : t('device_form_title_new', 'Add New Device') }}</span>
     </div>
-    <div class="flex items-center gap-1">
-      <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
-      <span class="text-slate-600 text-xs">|</span>
-      <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+    <div class="flex items-center gap-4">
+      <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ Schedules</a>
+      <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
+      <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ Settings</a>
+      <div class="flex items-center gap-1 border-l border-slate-600 pl-3">
+        <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+      </div>
     </div>
   </header>
 

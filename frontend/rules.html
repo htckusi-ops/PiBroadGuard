@@ -334,9 +334,15 @@
 const { createApp, ref, computed, onMounted } = Vue;
 createApp({
   setup() {
-    const { t, currentLang, switchLang } = window.PiBGi18n
-      ? window.PiBGi18n.useI18n()
-      : { t: (k, fb) => fb || k, currentLang: ref('en'), switchLang: () => {} };
+    const tr = ref({});
+    const currentLang = ref(window.PiBGi18n ? window.PiBGi18n.currentLang() : 'en');
+    function t(key, fb) {
+      return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
+    }
+    async function switchLang(lang) {
+      tr.value = await window.PiBGi18n.load(lang);
+      currentLang.value = lang;
+    }
 
     const rules = ref([]);
     const error = ref('');
@@ -511,7 +517,7 @@ createApp({
     }
 
     onMounted(async () => {
-      if (window.PiBGi18n) await window.PiBGi18n.load();
+      if (window.PiBGi18n) tr.value = await window.PiBGi18n.load();
       await loadRules();
     });
 
