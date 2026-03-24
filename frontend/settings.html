@@ -135,10 +135,16 @@
               title="Restore this backup – replaces the current database. The app continues with the restored data immediately.">
               ♻ Restore
             </button>
+            <button @click="doDeleteBackup(b.filename)"
+              class="text-red-500 hover:text-red-700 text-xs font-medium"
+              title="Delete this backup permanently.">
+              🗑 Delete
+            </button>
           </div>
         </div>
       </div>
       <p v-if="restoreMsg" :class="restoreError ? 'text-red-600' : 'text-green-600'" class="text-sm mt-2">{{ restoreMsg }}</p>
+      <p v-if="deleteBackupMsg" :class="deleteBackupError ? 'text-red-600' : 'text-green-600'" class="text-sm mt-2">{{ deleteBackupMsg }}</p>
     </div>
 
     <!-- Logs -->
@@ -494,6 +500,8 @@ createApp({
     const backups = ref([]);
     const restoreMsg = ref('');
     const restoreError = ref(false);
+    const deleteBackupMsg = ref('');
+    const deleteBackupError = ref(false);
     const logs = ref([]);
     const logLines = ref(50);
     const nmapCaps = ref(null);
@@ -554,6 +562,18 @@ createApp({
       } else {
         try { const e = await resp.json(); restoreMsg.value = e.detail || 'Restore failed'; } catch { restoreMsg.value = 'Restore failed'; }
         restoreError.value = true;
+      }
+    }
+    async function doDeleteBackup(filename) {
+      if (!confirm(`Delete backup "${filename}"?\n\nThis cannot be undone.`)) return;
+      deleteBackupMsg.value = ''; deleteBackupError.value = false;
+      const resp = await fetch(`/api/v1/system/backup/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      if (resp.ok) {
+        deleteBackupMsg.value = `✅ Backup "${filename}" deleted.`;
+        await loadBackups();
+      } else {
+        try { const e = await resp.json(); deleteBackupMsg.value = e.detail || 'Delete failed'; } catch { deleteBackupMsg.value = 'Delete failed'; }
+        deleteBackupError.value = true;
       }
     }
     async function loadLogs() {
@@ -737,7 +757,7 @@ createApp({
       finally { netEdit.value.applying = false; }
     }
 
-    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, restoreMsg, restoreError, doRestore, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
+    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, restoreMsg, restoreError, deleteBackupMsg, deleteBackupError, doRestore, doDeleteBackup, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

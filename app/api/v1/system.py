@@ -171,6 +171,20 @@ def restore_backup(filename: str, db: Session = Depends(get_db), user: str = Dep
         raise HTTPException(500, f"Wiederherstellung fehlgeschlagen: {e}")
 
 
+@router.delete("/system/backup/{filename}")
+def delete_backup(filename: str, user: str = Depends(verify_credentials)):
+    """Delete a single local backup file."""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(400, "Ungültiger Dateiname")
+    backup_dir = Path("./data/backups")
+    target = backup_dir / filename
+    if not target.exists():
+        raise HTTPException(404, f"Backup '{filename}' nicht gefunden")
+    target.unlink()
+    logger.info(f"Backup deleted: {filename} by {user}")
+    return {"deleted": True, "filename": filename}
+
+
 @router.get("/system/settings")
 def get_all_settings(db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
     rows = db.query(SystemSettings).all()

@@ -36,7 +36,7 @@
   <main class="max-w-7xl mx-auto px-4 py-6 flex-1">
 
     <!-- Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
       <div class="bg-white rounded-lg p-4 shadow-sm">
         <div class="text-2xl font-bold text-slate-800">{{ devices.length }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_total_devices', 'Total Devices') }}</div>
@@ -53,6 +53,16 @@
         <div class="text-2xl font-bold text-green-600">{{ approvedCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_pending_assessments', 'Completed') }}</div>
       </div>
+      <a href="/app/reassessment-due.html" class="block rounded-lg p-4 shadow-sm no-underline"
+         :class="dueSoon.filter(d=>d.days_overdue>0).length > 0 ? 'bg-red-50' : 'bg-white'">
+        <div class="text-2xl font-bold" :class="dueSoon.filter(d=>d.days_overdue>0).length > 0 ? 'text-red-600' : 'text-slate-800'">
+          {{ dueSoon.length }}
+        </div>
+        <div class="text-slate-500 text-sm">Re-Assessment fällig</div>
+        <div v-if="dueSoon.filter(d=>d.days_overdue>0).length > 0" class="text-xs text-red-500 mt-0.5">
+          {{ dueSoon.filter(d=>d.days_overdue>0).length }} überfällig
+        </div>
+      </a>
     </div>
 
     <!-- Queue + Next Scans Widgets -->
@@ -93,6 +103,21 @@
           <span>{{ fmtDateTime(s.next_run_at) }}</span>
           <span class="text-slate-500">{{ s.device_name }}</span>
           <span class="bg-slate-100 px-1 rounded">{{ s.scan_profile }}</span>
+        </div>
+      </div>
+
+      <!-- Re-Assessment Due Widget -->
+      <div v-if="dueSoon.length > 0" class="bg-white rounded-lg shadow-sm p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-semibold text-slate-700 text-sm">📋 Re-Assessment fällig</span>
+          <a href="/app/reassessment-due.html" class="text-xs text-blue-600 hover:underline">Alle anzeigen</a>
+        </div>
+        <div v-for="d in dueSoon.slice(0,5)" :key="d.id" class="text-xs py-0.5 border-t border-slate-50 flex justify-between items-center gap-2">
+          <a :href="`/app/device_form.html?id=${d.id}`" class="text-blue-600 hover:underline truncate flex-1">{{ d.manufacturer }} {{ d.model }}</a>
+          <span :class="d.days_overdue > 0 ? 'text-red-600 font-semibold' : 'text-amber-600'">
+            {{ d.days_overdue > 0 ? d.days_overdue + 'd überfällig' : 'bald fällig' }}
+          </span>
+          <span class="text-slate-400">{{ d.reassessment_due }}</span>
         </div>
       </div>
     </div>
@@ -224,6 +249,7 @@ createApp({
     const connectivity = ref({ effective_mode: 'unknown', mode_setting: 'auto', override_active: false });
     const queueData = ref(null);
     const nextSchedules = ref([]);
+    const dueSoon = ref([]);
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
     let queuePoll = null;
@@ -303,6 +329,13 @@ createApp({
         }
       } catch (e) { /* ignore */ }
     }
+
+    async function loadDueSoon() {
+      try {
+        const r = await fetch('/api/v1/devices/reassessment-due?days_ahead=30');
+        if (r.ok) dueSoon.value = await r.json();
+      } catch (e) { /* ignore */ }
+    }
     function ratingLabel(r) {
       return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r;
     }
@@ -337,10 +370,11 @@ createApp({
       await load();
       await loadQueue();
       await loadNextSchedules();
+      await loadDueSoon();
       // Poll queue every 5s
       queuePoll = setInterval(loadQueue, 5000);
     });
-    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, t, currentLang, switchLang };
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, dueSoon, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>
