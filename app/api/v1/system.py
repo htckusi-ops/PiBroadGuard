@@ -1,8 +1,11 @@
+import ipaddress
 import json
 import logging
+import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -544,3 +547,191 @@ async def phpipam_bulk_import(
         "created_ips": created,
         "skipped_details": skipped,
     }
+
+
+# ── Network Configuration ────────────────────────────────────────────
+
+def _run(cmd: list[str], timeout: int = 5) -> tuple[int, str, str]:
+    """Run a subprocess and return (returncode, stdout, stderr)."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout, r.stderr
+    except FileNotFoundError:
+        return -1, "", f"Command not found: {cmd[0]}"
+    except subprocess.TimeoutExpired:
+        return -1, "", "Timeout"
+    except Exception as e:
+        return -1, "", str(e)
+
+
+def _read_network_config() -> dict:
+    """
+    Read current network config using standard Linux tools.
+    Returns dict with interfaces list (name, addresses, state)
+    plus default route and DNS servers.
+    """
+    interfaces = {}
+
+    # Parse ip -o addr show
+    rc, out, _ = _run(["ip", "-o", "addr", "show"])
+    if rc == 0:
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            idx, iface, family, addr_cidr = parts[0], parts[1], parts[2], parts[3]
+            if iface == "lo":
+                continue
+            if iface not in interfaces:
+                interfaces[iface] = {"name": iface, "addresses": [], "state": "unknown"}
+            if family in ("inet", "inet6"):
+                interfaces[iface]["addresses"].append({
+                    "family": family,
+                    "address": addr_cidr,  # e.g. 192.168.1.10/24
+                })
+
+    # Parse ip link show to get UP/DOWN state
+    rc2, out2, _ = _run(["ip", "-o", "link", "show"])
+    if rc2 == 0:
+        for line in out2.splitlines():
+            m = re.search(r"^\d+:\s+(\S+):\s+<([^>]*)>", line)
+            if m:
+                name = m.group(1).rstrip("@eth0")
+                flags = m.group(2)
+                if name in interfaces:
+                    interfaces[name]["state"] = "up" if "UP" in flags else "down"
+
+    # Default gateway
+    default_gw = ""
+    rc3, out3, _ = _run(["ip", "route", "show", "default"])
+    if rc3 == 0 and out3:
+        m = re.search(r"default via (\S+)", out3)
+        if m:
+            default_gw = m.group(1)
+
+    # DNS servers from resolv.conf
+    dns_servers = []
+    try:
+        with open("/etc/resolv.conf") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("nameserver"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        dns_servers.append(parts[1])
+    except Exception:
+        pass
+
+    # Also try systemd-resolved if available
+    if not dns_servers:
+        rc4, out4, _ = _run(["resolvectl", "status", "--no-pager"], timeout=3)
+        if rc4 == 0:
+            for line in out4.splitlines():
+                m = re.search(r"DNS Servers?:\s+(.+)", line)
+                if m:
+                    dns_servers.extend(m.group(1).split())
+
+    return {
+        "interfaces": list(interfaces.values()),
+        "default_gateway": default_gw,
+        "dns_servers": dns_servers,
+        "nmcli_available": _run(["which", "nmcli"])[0] == 0,
+        "ip_available": _run(["which", "ip"])[0] == 0,
+    }
+
+
+@router.get("/network-config")
+def get_network_config(user: str = Depends(verify_credentials)):
+    """Return current network configuration (IP addresses, gateway, DNS)."""
+    return _read_network_config()
+
+
+@router.post("/network-config/apply")
+def apply_network_config(body: dict, user: str = Depends(verify_credentials)):
+    """
+    Apply network configuration changes via nmcli (if available).
+    Supports: static IP, gateway, DNS for a given interface.
+    Falls back to informational instructions if nmcli is unavailable.
+    """
+    iface = body.get("interface", "").strip()
+    address = body.get("address", "").strip()       # e.g. 192.168.1.10/24
+    gateway = body.get("gateway", "").strip()
+    dns = body.get("dns", "").strip()               # comma-separated
+    mode = body.get("mode", "static")               # static | dhcp
+
+    if not iface:
+        raise HTTPException(400, "interface is required")
+
+    # Validate IP if static
+    if mode == "static" and address:
+        try:
+            ipaddress.ip_interface(address)
+        except ValueError:
+            raise HTTPException(400, f"Invalid address: {address}")
+    if gateway:
+        try:
+            ipaddress.ip_address(gateway)
+        except ValueError:
+            raise HTTPException(400, f"Invalid gateway: {gateway}")
+
+    # Try nmcli
+    rc, _, _ = _run(["which", "nmcli"])
+    if rc != 0:
+        # nmcli not available – return manual instructions
+        logger.info(f"Network config change requested for {iface} (nmcli not available)")
+        instructions = _build_manual_instructions(iface, address, gateway, dns, mode)
+        return {"applied": False, "method": "manual", "instructions": instructions}
+
+    try:
+        cmds = []
+        con_name = iface  # nmcli connection name often matches interface name
+
+        if mode == "dhcp":
+            cmds = [["nmcli", "connection", "modify", con_name, "ipv4.method", "auto"],
+                    ["nmcli", "connection", "up", con_name]]
+        else:
+            if address:
+                cmds.append(["nmcli", "connection", "modify", con_name,
+                              "ipv4.method", "manual",
+                              "ipv4.addresses", address])
+            if gateway:
+                cmds.append(["nmcli", "connection", "modify", con_name,
+                              "ipv4.gateway", gateway])
+            if dns:
+                cmds.append(["nmcli", "connection", "modify", con_name,
+                              "ipv4.dns", dns.replace(",", " ")])
+            cmds.append(["nmcli", "connection", "up", con_name])
+
+        errors = []
+        for cmd in cmds:
+            rc2, stdout, stderr = _run(cmd, timeout=15)
+            if rc2 != 0:
+                errors.append(f"{' '.join(cmd)}: {stderr.strip()}")
+
+        if errors:
+            logger.warning(f"Network config partial failure for {iface}: {errors}")
+            return {"applied": False, "method": "nmcli", "errors": errors}
+
+        logger.info(f"Network config applied for {iface}: mode={mode} addr={address} gw={gateway}")
+        return {"applied": True, "method": "nmcli"}
+
+    except Exception as e:
+        logger.error(f"Network config apply failed: {e}")
+        raise HTTPException(500, str(e))
+
+
+def _build_manual_instructions(iface, address, gateway, dns, mode):
+    """Build shell commands for manual application when nmcli is unavailable."""
+    lines = [f"# Apply on the host as root / via sudo:"]
+    if mode == "dhcp":
+        lines += [f"dhclient {iface}",
+                  f"# or: ip link set {iface} up && dhcpcd {iface}"]
+    else:
+        if address:
+            lines.append(f"ip addr add {address} dev {iface}")
+        if gateway:
+            lines.append(f"ip route replace default via {gateway} dev {iface}")
+        if dns:
+            for srv in dns.split(","):
+                lines.append(f"echo 'nameserver {srv.strip()}' >> /etc/resolv.conf")
+    return "\n".join(lines)

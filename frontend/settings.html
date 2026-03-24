@@ -348,6 +348,113 @@ PIBG_PHPIPAM_TOKEN=your-api-token</pre>
       </div>
     </div>
 
+    <!-- Network Configuration -->
+    <div class="bg-white rounded-lg shadow-sm p-5">
+      <h2 class="font-bold text-slate-800 mb-1">🌐 {{ t('settings_network', 'Network Configuration') }}</h2>
+      <p class="text-sm text-slate-500 mb-4">
+        View and configure IP addresses, gateway and DNS for each network interface.
+        Changes are applied via <code class="bg-slate-100 px-1 rounded">nmcli</code> (NetworkManager).
+        If nmcli is unavailable, shell commands are shown for manual execution.
+      </p>
+
+      <div v-if="netLoading" class="text-slate-400 text-sm py-4 text-center">Loading...</div>
+      <div v-else-if="netError" class="text-red-600 text-sm mb-3">{{ netError }}</div>
+      <div v-else>
+        <!-- Global info -->
+        <div class="grid grid-cols-2 gap-3 text-sm mb-4">
+          <div class="text-slate-500">Default Gateway:</div>
+          <div class="font-mono text-slate-800">{{ netConfig.default_gateway || '—' }}</div>
+          <div class="text-slate-500">DNS Servers:</div>
+          <div class="font-mono text-slate-800">{{ netConfig.dns_servers?.join(', ') || '—' }}</div>
+          <div class="text-slate-500">nmcli:</div>
+          <div>
+            <span v-if="netConfig.nmcli_available" class="text-green-600">✅ Available</span>
+            <span v-else class="text-amber-600">⚠️ Not available – shell commands will be shown</span>
+          </div>
+        </div>
+
+        <!-- Per-interface panels -->
+        <div v-for="iface in netConfig.interfaces" :key="iface.name" class="border border-slate-200 rounded-lg mb-3 overflow-hidden">
+          <div class="flex items-center justify-between bg-slate-50 px-4 py-2 border-b border-slate-200">
+            <div class="flex items-center gap-3">
+              <span class="font-mono font-semibold text-slate-800">{{ iface.name }}</span>
+              <span :class="iface.state === 'up' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'" class="text-xs px-2 py-0.5 rounded font-medium">{{ iface.state }}</span>
+            </div>
+            <button @click="openNetEdit(iface)" class="text-xs text-blue-600 hover:underline">
+              ✏️ Configure
+            </button>
+          </div>
+          <div class="px-4 py-3 text-sm">
+            <div v-if="iface.addresses.length === 0" class="text-slate-400 text-xs">No addresses assigned</div>
+            <div v-for="addr in iface.addresses" :key="addr.address" class="flex items-center gap-2">
+              <span class="text-slate-400 text-xs w-10">{{ addr.family }}</span>
+              <span class="font-mono text-slate-800">{{ addr.address }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="!netConfig.interfaces?.length" class="text-slate-400 text-sm py-3">No interfaces found.</div>
+
+        <button @click="loadNetConfig" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm">🔄 Refresh</button>
+      </div>
+
+      <!-- Edit modal -->
+      <div v-if="netEdit.show" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+          <h3 class="font-bold text-slate-800 mb-4">Configure {{ netEdit.name }}</h3>
+
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-slate-700 mb-1">
+              Mode
+              <span class="ml-1 text-slate-400 cursor-help" title="Static: fixed IP address you specify. DHCP: automatically assigned by the network router.">ℹ</span>
+            </label>
+            <div class="flex gap-4 text-sm">
+              <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="netEdit.mode" value="static"> Static</label>
+              <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="netEdit.mode" value="dhcp"> DHCP</label>
+            </div>
+          </div>
+
+          <template v-if="netEdit.mode === 'static'">
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                IP Address / Prefix
+                <span class="ml-1 text-slate-400 cursor-help" title="IPv4 address with subnet prefix length, e.g. 192.168.1.10/24">ℹ</span>
+              </label>
+              <input v-model="netEdit.address" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono" placeholder="192.168.1.10/24">
+            </div>
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Default Gateway
+                <span class="ml-1 text-slate-400 cursor-help" title="IPv4 address of the default router, e.g. 192.168.1.1">ℹ</span>
+              </label>
+              <input v-model="netEdit.gateway" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono" placeholder="192.168.1.1">
+            </div>
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                DNS Servers
+                <span class="ml-1 text-slate-400 cursor-help" title="Comma-separated list of DNS server IPs, e.g. 8.8.8.8, 1.1.1.1">ℹ</span>
+              </label>
+              <input v-model="netEdit.dns" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono" placeholder="8.8.8.8, 1.1.1.1">
+            </div>
+          </template>
+
+          <div v-if="netEdit.error" class="mb-3 text-red-600 text-sm">{{ netEdit.error }}</div>
+          <div v-if="netEdit.instructions" class="mb-3">
+            <p class="text-sm font-medium text-amber-700 mb-1">⚠️ nmcli not available – apply manually:</p>
+            <pre class="bg-slate-900 text-green-300 font-mono text-xs p-3 rounded overflow-x-auto">{{ netEdit.instructions }}</pre>
+          </div>
+          <div v-if="netEdit.success" class="mb-3 text-green-600 text-sm">✅ {{ netEdit.success }}</div>
+
+          <div class="flex justify-end gap-3">
+            <button @click="netEdit.show = false" class="px-4 py-2 text-sm border border-slate-300 rounded hover:bg-slate-50">Cancel</button>
+            <button @click="applyNetConfig" :disabled="netEdit.applying"
+              class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-slate-300">
+              {{ netEdit.applying ? 'Applying…' : 'Apply' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
@@ -555,9 +662,58 @@ createApp({
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
       // Use allSettled so one failing loader doesn't crash the whole page
-      await Promise.allSettled([loadConn(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam()]);
+      await Promise.allSettled([loadConn(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam(), loadNetConfig()]);
     });
-    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, t, currentLang, switchLang };
+
+    // ── Network Config ─────────────────────────────────────────
+    const netConfig = ref({ interfaces: [], default_gateway: '', dns_servers: [], nmcli_available: false });
+    const netLoading = ref(false);
+    const netError = ref('');
+    const netEdit = ref({ show: false, name: '', mode: 'static', address: '', gateway: '', dns: '', applying: false, error: '', instructions: '', success: '' });
+
+    async function loadNetConfig() {
+      netLoading.value = true; netError.value = '';
+      try {
+        const r = await fetch('/api/v1/system/network-config');
+        if (r.ok) netConfig.value = await r.json();
+        else netError.value = 'Failed to load network config';
+      } catch (e) { netError.value = String(e); }
+      finally { netLoading.value = false; }
+    }
+
+    function openNetEdit(iface) {
+      const ipv4 = iface.addresses.find(a => a.family === 'inet');
+      netEdit.value = {
+        show: true, name: iface.name,
+        mode: ipv4 ? 'static' : 'dhcp',
+        address: ipv4 ? ipv4.address : '',
+        gateway: netConfig.value.default_gateway || '',
+        dns: (netConfig.value.dns_servers || []).join(', '),
+        applying: false, error: '', instructions: '', success: ''
+      };
+    }
+
+    async function applyNetConfig() {
+      netEdit.value.applying = true; netEdit.value.error = ''; netEdit.value.instructions = ''; netEdit.value.success = '';
+      try {
+        const r = await fetch('/api/v1/system/network-config/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            interface: netEdit.value.name, mode: netEdit.value.mode,
+            address: netEdit.value.address, gateway: netEdit.value.gateway, dns: netEdit.value.dns,
+          })
+        });
+        const data = await r.json();
+        if (!r.ok) { netEdit.value.error = data.detail || 'Error'; }
+        else if (data.instructions) { netEdit.value.instructions = data.instructions; }
+        else if (data.errors?.length) { netEdit.value.error = data.errors.join('\n'); }
+        else { netEdit.value.success = 'Configuration applied successfully'; await loadNetConfig(); }
+      } catch (e) { netEdit.value.error = String(e); }
+      finally { netEdit.value.applying = false; }
+    }
+
+    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

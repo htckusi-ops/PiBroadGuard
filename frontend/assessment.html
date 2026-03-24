@@ -116,7 +116,7 @@
     </div>
 
     <!-- Tabs -->
-    <div class="bg-white rounded-lg shadow-sm overflow-hidden w-full">
+    <div class="bg-white rounded-lg shadow-sm w-full" style="min-width:0">
       <div class="flex border-b border-slate-200 overflow-x-auto">
         <button v-for="tab in tabs" :key="tab.id"
           @click="activeTab = tab.id"
@@ -126,8 +126,11 @@
         </button>
       </div>
 
+      <!-- Shared tab body: single container so width is always the card width -->
+      <div class="p-5" style="min-width:0">
+
       <!-- Tab: Overview -->
-      <div v-show="activeTab === 'overview'" class="p-5">
+      <div v-show="activeTab === 'overview'" class="w-full">
         <div v-if="!assessment">
           <p class="text-slate-500 mb-3">No assessment yet.</p>
           <div class="mb-3">
@@ -182,7 +185,7 @@
       </div>
 
       <!-- Tab: Scan -->
-      <div v-show="activeTab === 'scan'" class="p-5">
+      <div v-show="activeTab === 'scan'" class="w-full">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <!-- Authorization form -->
@@ -308,7 +311,7 @@
       </div>
 
       <!-- Tab: Schedules -->
-      <div v-show="activeTab === 'schedules'" class="p-5">
+      <div v-show="activeTab === 'schedules'" class="w-full">
         <div v-if="!device" class="text-slate-500">No device loaded.</div>
         <div v-else>
           <div class="flex items-center justify-between mb-4">
@@ -469,7 +472,7 @@
       </div>
 
       <!-- Tab: Manual Questions -->
-      <div v-show="activeTab === 'manual'" class="p-5">
+      <div v-show="activeTab === 'manual'" class="w-full">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <p class="text-slate-500 text-sm mb-4">Answer the following questions for the security assessment of this device.</p>
@@ -511,7 +514,7 @@
       </div>
 
       <!-- Tab: Findings -->
-      <div v-show="activeTab === 'findings'" class="p-5">
+      <div v-show="activeTab === 'findings'" class="w-full">
 
         <!-- Scan Port Results -->
         <div v-if="scanResults.length > 0" class="mb-6">
@@ -609,21 +612,33 @@
               <a :href="f.vendor_advisory_url" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs">🔗 Hersteller-Advisory</a>
             </div>
           </div>
-          <div class="flex items-center gap-3 flex-wrap">
-            <div>
+          <div class="flex items-start gap-3 flex-wrap mt-2">
+            <div class="shrink-0">
               <label class="text-xs text-slate-500 mr-1">Status:</label>
-              <select v-model="f.status" @change="updateFinding(f)" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
+              <select v-model="f.status" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
                 <option value="open">{{ t('finding_status_open', 'Open') }}</option>
                 <option value="compensated">{{ t('finding_status_compensated', 'Compensated') }}</option>
                 <option value="accepted">{{ t('finding_status_accepted', 'Accepted') }}</option>
                 <option value="false_positive">{{ t('finding_status_false_positive', 'False Positive') }}</option>
               </select>
             </div>
-            <div v-if="f.compensating_control_required" class="flex-1">
-              <input v-model="f.compensating_control_description" @blur="updateFinding(f)"
-                placeholder="Describe compensating control..."
+            <div class="flex-1 min-w-48">
+              <label class="text-xs text-slate-500 block mb-0.5"
+                title="Kompensationsmassnahme: Beschreiben Sie, wie das Risiko durch andere Massnahmen reduziert wird">
+                {{ t('compensating_control', 'Compensating Control') }}
+                <span v-if="f.compensating_control_required" class="text-orange-500">*</span>:
+              </label>
+              <input v-model="f.compensating_control_description"
+                :placeholder="t('compensating_control_placeholder', 'Describe compensating control or risk acceptance note…')"
                 title="Kompensationsmassnahme: Beschreiben Sie, wie das Risiko durch andere Massnahmen reduziert wird"
                 class="w-full border border-slate-300 rounded px-2 py-1 text-xs">
+            </div>
+            <div class="shrink-0 flex items-end">
+              <button @click="updateFinding(f)"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium mt-4"
+                :title="t('btn_save_finding_title', 'Save status and compensating control for this finding')">
+                {{ t('btn_save', 'Save') }}
+              </button>
             </div>
           </div>
         </div>
@@ -643,7 +658,7 @@
       </div>
 
       <!-- Tab: Report -->
-      <div v-show="activeTab === 'report'" class="p-5">
+      <div v-show="activeTab === 'report'" class="w-full">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <p class="text-slate-500 text-sm mb-4">Report downloads for Assessment #{{ assessment.id }}</p>
@@ -671,6 +686,7 @@
         </div>
       </div>
 
+      </div> <!-- /shared tab body (p-5 wrapper) -->
     </div> <!-- /tabs -->
 
     <div v-if="globalError" class="mt-4 p-3 bg-red-50 text-red-700 rounded text-sm">{{ globalError }}</div>
