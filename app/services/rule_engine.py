@@ -49,6 +49,15 @@ QUESTION_CATALOG = {
         {"key": "hardening_guide_available", "question": "Gibt es ein Hardening-Guide?"},
         {"key": "security_roadmap", "question": "Gibt es eine nachvollziehbare Security-Roadmap?"},
     ],
+    # Shown only when a discovery/extended/R7 profile was used
+    "scan_effects": [
+        {"key": "scan_device_reboot", "question": "Hat das Gerät während oder nach dem Scan neu gestartet oder war es nicht mehr erreichbar?"},
+        {"key": "scan_service_disruption", "question": "Gab es Betriebsunterbrechungen (Signalausfall, Aussetzer) während des Scans?"},
+        {"key": "scan_av_alert", "question": "Hat ein Monitoring- oder AV-System während des Scans Alarm ausgelöst?"},
+        {"key": "scan_performance_degradation", "question": "War eine spürbare Leistungsdegradation des Geräts während des Scans feststellbar?"},
+        {"key": "scan_config_change", "question": "Hat der Scan eine unbeabsichtigte Konfigurationsänderung am Gerät ausgelöst?"},
+        {"key": "scan_side_effects_notes", "question": "Weitere Beobachtungen während des Scans (Freitext)?"},
+    ],
 }
 
 

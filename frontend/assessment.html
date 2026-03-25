@@ -138,9 +138,12 @@
           <p class="text-slate-500 mb-3">No assessment yet.</p>
           <div class="mb-3">
             <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
-            <select v-model="newProfile" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white">
-              <option v-for="p in scanProfiles" :key="p.name" :value="p.name">{{ p.label }}<template v-if="p.description"> – {{ p.description }}</template></option>
+            <select v-model="newProfile" class="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-full">
+              <option v-for="p in scanProfiles" :key="p.name" :value="p.name">{{ p.label }}</option>
             </select>
+            <p v-if="scanProfiles.find(p=>p.name===newProfile)?.description" class="text-xs text-slate-500 mt-1 bg-slate-50 rounded px-2 py-1">
+              {{ scanProfiles.find(p=>p.name===newProfile).description }}
+            </p>
           </div>
           <button @click="createAssessment" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
             {{ t('btn_new_assessment', 'Start Assessment') }}
@@ -228,8 +231,11 @@
                 <select :value="auth.profile" @change="changeProfile($event.target.value)"
                         :disabled="assessment.status === 'scan_complete' || assessment.status === 'completed'"
                         class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white disabled:bg-slate-100">
-                  <option v-for="p in scanProfiles" :key="p.name" :value="p.name">{{ p.label }}<template v-if="p.description"> – {{ p.description }}</template></option>
+                  <option v-for="p in scanProfiles" :key="p.name" :value="p.name">{{ p.label }}</option>
                 </select>
+                <p v-if="scanProfiles.find(p=>p.name===auth.profile)?.description" class="text-xs text-slate-500 mt-1 bg-slate-50 rounded px-2 py-1">
+                  {{ scanProfiles.find(p=>p.name===auth.profile).description }}
+                </p>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
@@ -291,6 +297,21 @@
           <div v-if="assessment.status === 'scan_complete' || assessment.status === 'exported'">
             <div class="bg-green-50 border border-green-200 rounded p-4 mb-4 text-green-800 text-sm">
               ✅ Scan complete. {{ scanResults.length }} ports found, {{ findings.length }} findings generated.
+            </div>
+            <!-- Scan initiator info -->
+            <div v-if="scanInitiator" class="bg-slate-50 border border-slate-200 rounded p-3 text-xs text-slate-600 mb-4">
+              <span class="font-semibold text-slate-700">Scan-Initiierung: </span>
+              <span v-if="scanInitiator.confirmed_by_user === 'scheduler'">
+                🤖 <strong>Geplanter Scan</strong> –
+                autorisiert von {{ scanInitiator.authorized_by_name }}
+                ({{ scanInitiator.authorized_by_role }})
+              </span>
+              <span v-else>
+                👤 <strong>Manuell</strong> gestartet von <strong>{{ scanInitiator.confirmed_by_user }}</strong> –
+                autorisiert von {{ scanInitiator.authorized_by_name }}
+                ({{ scanInitiator.authorized_by_role }})
+              </span>
+              <span class="text-slate-400 ml-2">{{ fmtDateTime(scanInitiator.authorization_date) }}</span>
             </div>
           </div>
 
@@ -479,8 +500,16 @@
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <p class="text-slate-500 text-sm mb-4">Answer the following questions for the security assessment of this device.</p>
-          <div v-for="(questions, cat) in manualQuestions" :key="cat" class="mb-6">
-            <h3 class="font-semibold text-slate-700 capitalize mb-3 border-b border-slate-200 pb-1">{{ catLabel(cat) }}</h3>
+          <div v-for="(questions, cat) in manualQuestions" :key="cat" class="mb-6"
+               :class="cat === 'scan_effects' ? 'border border-amber-300 rounded-lg p-4 bg-amber-50' : ''">
+            <h3 class="font-semibold capitalize mb-3 border-b pb-1"
+                :class="cat === 'scan_effects' ? 'text-amber-800 border-amber-300' : 'text-slate-700 border-slate-200'">
+              {{ catLabel(cat) }}
+            </h3>
+            <p v-if="cat === 'scan_effects'" class="text-xs text-amber-700 mb-3">
+              Diese Fragen erscheinen, weil ein Discovery- oder erweitertes Scan-Profil verwendet wurde.
+              Bitte dokumentieren Sie alle beobachteten Auswirkungen des Scans auf das Gerät.
+            </p>
             <div class="space-y-3">
               <div v-for="q in questions" :key="q.question_key" class="grid grid-cols-3 gap-3 items-start">
                 <div class="col-span-1 text-sm text-slate-700 pt-2 flex items-start gap-1">
@@ -669,7 +698,11 @@
           <div class="flex gap-3 flex-wrap">
             <a :href="`/api/v1/assessments/${assessment.id}/report/html`" target="_blank"
                class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
-              &#128196; Open HTML Report
+              &#128196; HTML öffnen
+            </a>
+            <a :href="`/api/v1/assessments/${assessment.id}/report/pdf`"
+               class="bg-red-700 hover:bg-red-800 text-white px-5 py-2 rounded font-medium text-sm">
+              &#8681; PDF herunterladen
             </a>
             <a :href="`/api/v1/assessments/${assessment.id}/report/md`"
                class="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2 rounded font-medium text-sm">
@@ -781,6 +814,7 @@ createApp({
     // Schedules
     const schedules = ref([]);
     const schedulesLoading = ref(false);
+    const scanInitiator = ref(null); // loaded from ScanAuthorization after scan
     const showScheduleModal = ref(false);
     const scheduleError = ref('');
     const newSchedule = ref({
@@ -841,7 +875,8 @@ createApp({
         hardening: '🛡️ Hardening',
         monitoring: '📡 Monitoring',
         operational: '⚙️ Operational',
-        vendor: '🏭 Vendor'
+        vendor: '🏭 Vendor',
+        scan_effects: '⚠️ Scan-Auswirkungen (Discovery/Extended)',
       }[c] || c;
     }
 
@@ -1052,6 +1087,11 @@ createApp({
           // Pre-fill scan profile from saved assessment value
           if (assessment.value.scan_profile) auth.value.profile = assessment.value.scan_profile;
           if (assessment.value.status === 'scan_running') { scanRunning.value = true; startPolling(); }
+          // Load scan initiator info
+          try {
+            const authResp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/authorize`);
+            if (authResp.ok) scanInitiator.value = await authResp.json();
+          } catch (e) { /* optional */ }
         }
       }
       // Load schedules for this device
@@ -1204,7 +1244,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
   }
 }).mount('#app');
 </script>
