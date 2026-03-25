@@ -405,10 +405,37 @@ def create_scan_profile(
 ):
     import json as _json
     from app.models.scan_profile import ScanProfile
-    flags = payload.get("nmap_flags", [])
+
+    name = payload.get("name", "").strip()
+    if not name:
+        raise HTTPException(400, "name is required")
+
+    # Sanitize nmap flags: strip leading "nmap" token and any "<target>" placeholder
+    raw_flags = payload.get("nmap_flags", [])
+    if isinstance(raw_flags, list):
+        flags = [f for f in raw_flags if f.strip().lower() not in ("nmap", "<target>")]
+        if flags and flags[0].lower() == "nmap":
+            flags = flags[1:]
+    else:
+        flags = raw_flags
+
+    # If an inactive profile with the same name already exists, reactivate and update it
+    existing = db.query(ScanProfile).filter(ScanProfile.name == name).first()
+    if existing:
+        if existing.active:
+            raise HTTPException(409, f"Ein Scan-Profil mit dem Namen '{name}' existiert bereits.")
+        existing.label = payload.get("label", existing.label)
+        existing.description = payload.get("description", existing.description)
+        existing.nmap_flags = _json.dumps(flags) if isinstance(flags, list) else flags
+        existing.timeout_seconds = payload.get("timeout_seconds", existing.timeout_seconds)
+        existing.active = True
+        db.commit()
+        db.refresh(existing)
+        return _serialize_scan_profile(existing)
+
     sp = ScanProfile(
-        name=payload["name"],
-        label=payload.get("label", payload["name"]),
+        name=name,
+        label=payload.get("label", name),
         description=payload.get("description"),
         nmap_flags=_json.dumps(flags) if isinstance(flags, list) else flags,
         timeout_seconds=payload.get("timeout_seconds", 300),
@@ -439,8 +466,12 @@ def update_scan_profile(
         if k in payload:
             setattr(sp, k, payload[k])
     if not sp.built_in and "nmap_flags" in payload:
-        flags = payload["nmap_flags"]
-        sp.nmap_flags = _json.dumps(flags) if isinstance(flags, list) else flags
+        raw = payload["nmap_flags"]
+        if isinstance(raw, list):
+            raw = [f for f in raw if f.strip().lower() not in ("nmap", "<target>")]
+            if raw and raw[0].lower() == "nmap":
+                raw = raw[1:]
+        sp.nmap_flags = _json.dumps(raw) if isinstance(raw, list) else raw
     db.commit()
     db.refresh(sp)
     return _serialize_scan_profile(sp)

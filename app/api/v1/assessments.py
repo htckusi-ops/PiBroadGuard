@@ -147,15 +147,32 @@ def get_scan_authorization(assessment_id: int, db: Session = Depends(get_db), us
 
 # --- Manual Findings ---
 
+# Profiles that trigger the 'scan_effects' questions
+_DISCOVERY_PROFILES = {
+    "extended", "version_deep",
+    "r7_discovery_safe", "r7_light_discovery_ports",
+    "r7_standard_full_tcp", "r7_extended_tcp_udp",
+    "r7_vuln_check_light", "r7_broadcast_safe",
+}
+
+
 @router.get("/assessments/{assessment_id}/manual-findings")
 def get_manual_findings(assessment_id: int, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
-    _get_assessment_or_404(assessment_id, db)
+    assessment = _get_assessment_or_404(assessment_id, db)
     existing = {
         mf.question_key: mf
         for mf in db.query(ManualFinding).filter(ManualFinding.assessment_id == assessment_id).all()
     }
+    profile = (assessment.scan_profile or "").lower()
+    show_scan_effects = profile in _DISCOVERY_PROFILES
     result = {}
     for category, questions in QUESTION_CATALOG.items():
+        # Only include scan_effects when a discovery/extended profile was used,
+        # BUT always include if any answers are already saved (backwards compat)
+        if category == "scan_effects":
+            has_answers = any(q["key"] in existing for q in questions)
+            if not show_scan_effects and not has_answers:
+                continue
         result[category] = [
             {
                 "question_key": q["key"],
