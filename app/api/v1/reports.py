@@ -7,13 +7,17 @@ from app.core.security import verify_credentials
 from app.models.assessment import Assessment
 from app.services import report_service
 
+logger = logging.getLogger("pibroadguard.api")
+
 try:
     import weasyprint as _weasyprint
     _PDF_AVAILABLE = True
-except Exception:
+    logger.debug("weasyprint loaded successfully")
+except Exception as _pdf_import_err:
     _PDF_AVAILABLE = False
+    _pdf_import_msg = str(_pdf_import_err)
+    logger.warning(f"weasyprint not available – PDF export disabled: {_pdf_import_err}")
 
-logger = logging.getLogger("pibroadguard.api")
 router = APIRouter(tags=["reports"])
 
 
