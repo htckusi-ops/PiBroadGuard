@@ -35,3 +35,4 @@ class Device(Base):
 
     assessments = relationship("Assessment", back_populates="device")
     scheduled_scans = relationship("ScheduledScan", back_populates="device")
+    probes = relationship("ProbeResult", back_populates="device")

@@ -17,7 +17,7 @@ from app.core.logging_config import setup_logging
 from app.core.security import limiter
 from app.core.database import SessionLocal
 
-from app.api.v1 import devices, assessments, scans, reports, system, import_export, usb, cve, schedules
+from app.api.v1 import devices, assessments, scans, reports, system, import_export, usb, cve, schedules, probes
 
 VERSION = "1.8.0"
 API_VERSION = "v1"
@@ -138,6 +138,7 @@ app.include_router(import_export.router, prefix=PREFIX)
 app.include_router(usb.router, prefix=PREFIX)
 app.include_router(cve.router, prefix=PREFIX)
 app.include_router(schedules.router, prefix=PREFIX)
+app.include_router(probes.router, prefix=PREFIX)
 
 
 @app.middleware("http")
