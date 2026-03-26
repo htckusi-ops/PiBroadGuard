@@ -192,7 +192,7 @@
 {% if nmap_raw_output %}
 <h2>Anhang: Nmap-Rohdaten (XML)</h2>
 <p class="meta">Vollständiger Nmap-Output des letzten Scans. Scan-Profil: <strong>{{ scan_profile_label }}</strong>{% if nmap_command %} · Befehl: <code>{{ nmap_command }}</code>{% endif %}</p>
-<pre class="nmap-output">{{ nmap_raw_output }}</pre>
+<pre class="nmap-output">{{ nmap_raw_output | e }}</pre>
 {% endif %}
 
 <hr>
