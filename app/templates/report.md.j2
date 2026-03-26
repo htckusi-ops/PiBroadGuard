@@ -145,6 +145,18 @@ Quelle: <https://nvd.nist.gov/vuln/detail/{{ f.cve_id }}>
 Keine Massnahmeneinträge vorhanden.
 {% endif %}
 
+{% if nmap_raw_output %}
+---
+
+## Anhang: Nmap-Rohdaten (XML)
+
+Scan-Profil: **{{ scan_profile_label }}**{% if nmap_command %} · Befehl: `{{ nmap_command }}`{% endif %}
+
+```xml
+{{ nmap_raw_output }}
+```
+
+{% endif %}
 ---
 
 *Report generiert am {{ generated_at.strftime("%d.%m.%Y %H:%M") }} UTC durch PiBroadGuard*

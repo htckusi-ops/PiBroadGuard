@@ -27,6 +27,8 @@
   .kev-warning { background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 0.5rem 1rem; margin: 0.5rem 0; }
   .recommendations { background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 0.5rem 1rem; margin: 0.5rem 0; }
   .meta { color: #64748b; font-size: 0.9rem; }
+  .nmap-output { font-family: 'Courier New', Courier, monospace; font-size: 0.75rem; background: #0f172a; color: #94a3b8; padding: 1rem; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; page-break-inside: auto; }
+  code { font-family: 'Courier New', Courier, monospace; background: #f1f5f9; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.85em; }
   @media print { .no-print { display: none; } }
   /* PDF / print page-break rules */
   h1, h2 { page-break-after: avoid; }
@@ -185,6 +187,12 @@
   </tr>
   {% endfor %}
 </table>
+{% endif %}
+
+{% if nmap_raw_output %}
+<h2>Anhang: Nmap-Rohdaten (XML)</h2>
+<p class="meta">Vollständiger Nmap-Output des letzten Scans. Scan-Profil: <strong>{{ scan_profile_label }}</strong>{% if nmap_command %} · Befehl: <code>{{ nmap_command }}</code>{% endif %}</p>
+<pre class="nmap-output">{{ nmap_raw_output }}</pre>
 {% endif %}
 
 <hr>

@@ -114,6 +114,14 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
     except Exception:
         pass
 
+    # Collect raw nmap output – use the first result that has it
+    nmap_raw_output = None
+    for sr in scan_results:
+        raw = getattr(sr, "raw_nmap_output", None)
+        if raw:
+            nmap_raw_output = raw
+            break
+
     return {
         "device": device,
         "assessment": assessment,
@@ -127,6 +135,7 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
         "nmap_command": nmap_command,
         "scan_profile_label": scan_profile_label,
         "scan_profile_description": scan_profile_description,
+        "nmap_raw_output": nmap_raw_output,
         "generated_at": datetime.utcnow(),
     }
 

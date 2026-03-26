@@ -169,212 +169,216 @@
       </form>
     </div>
 
-    <!-- Assessment History (edit mode only) -->
-    <div id="history" v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-bold text-slate-800">📋 Assessment History</h2>
-        <a :href="`/app/assessment.html?device_id=${deviceId}`"
-           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">
+    <!-- Tabbed history section (edit mode only) -->
+    <div v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm">
+      <!-- Tab bar -->
+      <div class="border-b border-slate-200 px-6 pt-4 flex items-center justify-between">
+        <div class="flex gap-0">
+          <button @click="historyTab = 'assessments'"
+            :class="historyTab === 'assessments' ? 'border-b-2 border-blue-600 text-blue-700 font-semibold' : 'text-slate-500 hover:text-slate-700'"
+            class="px-4 py-2 text-sm -mb-px bg-transparent border-0 cursor-pointer">
+            📋 Assessments
+            <span v-if="assessments.length" class="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{{ assessments.length }}</span>
+          </button>
+          <button @click="historyTab = 'probes'"
+            :class="historyTab === 'probes' ? 'border-b-2 border-indigo-600 text-indigo-700 font-semibold' : 'text-slate-500 hover:text-slate-700'"
+            class="px-4 py-2 text-sm -mb-px bg-transparent border-0 cursor-pointer">
+            🔍 Device Probes
+            <span v-if="probes.length" class="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{{ probes.length }}</span>
+          </button>
+        </div>
+        <!-- Tab-specific action button -->
+        <a v-if="historyTab === 'assessments'" :href="`/app/assessment.html?device_id=${deviceId}`"
+           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
           + New Assessment
         </a>
       </div>
 
-      <div v-if="historyLoading" class="text-slate-400 text-sm py-4 text-center">Loading...</div>
-      <div v-else-if="!assessments.length" class="text-slate-400 text-sm py-4 text-center">No assessments yet.</div>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-slate-200 text-slate-500 text-left">
-              <th class="pb-2 pr-4 font-medium">Date</th>
-              <th class="pb-2 pr-4 font-medium">Status</th>
-              <th class="pb-2 pr-4 font-medium">Rating</th>
-              <th class="pb-2 pr-4 font-medium">Profile</th>
-              <th class="pb-2 pr-4 font-medium">Reviewer</th>
-              <th class="pb-2 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="a in pagedAssessments" :key="a.id" class="border-b border-slate-100 hover:bg-slate-50">
-              <td class="py-2 pr-4 text-slate-700 whitespace-nowrap">{{ fmtDate(a.created_at) }}</td>
-              <td class="py-2 pr-4">
-                <span :class="statusClass(a.status)" class="px-2 py-0.5 rounded text-xs font-medium">{{ a.status }}</span>
-              </td>
-              <td class="py-2 pr-4">
-                <span v-if="a.overall_rating" :class="ratingClass(a.overall_rating)" class="px-2 py-0.5 rounded text-xs font-bold uppercase">{{ a.overall_rating }}</span>
-                <span v-else class="text-slate-300 text-xs">—</span>
-              </td>
-              <td class="py-2 pr-4 text-slate-600 capitalize">{{ a.scan_profile || '—' }}</td>
-              <td class="py-2 pr-4 text-slate-600">{{ a.reviewer || '—' }}</td>
-              <td class="py-2">
-                <div class="flex items-center gap-1 flex-wrap">
-                  <a :href="`/app/assessment.html?assessment_id=${a.id}`"
-                     class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs">Open</a>
-                  <a v-if="a.status === 'completed' || a.status === 'scan_complete'"
-                     :href="`/api/v1/assessments/${a.id}/report/html`" target="_blank"
-                     class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">HTML</a>
-                  <a v-if="a.status === 'completed' || a.status === 'scan_complete'"
-                     :href="`/api/v1/assessments/${a.id}/report/md`"
-                     class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">MD</a>
-                  <a v-if="a.status === 'completed' || a.status === 'scan_complete'"
-                     :href="`/api/v1/assessments/${a.id}/report/json`"
-                     class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">JSON</a>
-                  <button @click="cloneAssessment(a.id)"
-                          :title="'Use as base for new assessment'"
-                          class="bg-green-50 hover:bg-green-100 text-green-700 px-2 py-1 rounded text-xs">🔁</button>
-                  <button @click="deleteAssessment(a.id)"
-                          class="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded text-xs">🗑</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <!-- Pagination -->
-        <div v-if="assessmentsTotalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
-          <span>{{ asmPageStart }}–{{ asmPageEnd }} / {{ assessments.length }}</span>
-          <div class="flex gap-1">
-            <button @click="asmPage = Math.max(1, asmPage - 1)" :disabled="asmPage === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
-            <template v-for="p in assessmentsTotalPages" :key="p">
-              <button v-if="p === 1 || p === assessmentsTotalPages || Math.abs(p - asmPage) <= 1"
-                @click="asmPage = p"
-                :class="p === asmPage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50'"
-                class="px-2 py-1 rounded border">{{ p }}</button>
-              <span v-else-if="Math.abs(p - asmPage) === 2" class="px-1 py-1 text-slate-400">…</span>
-            </template>
-            <button @click="asmPage = Math.min(assessmentsTotalPages, asmPage + 1)" :disabled="asmPage === assessmentsTotalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+      <!-- Assessments tab -->
+      <div v-if="historyTab === 'assessments'" class="p-6">
+        <div v-if="historyLoading" class="text-slate-400 text-sm py-4 text-center">Loading...</div>
+        <div v-else-if="!assessments.length" class="text-slate-400 text-sm py-4 text-center">No assessments yet.</div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-200 text-slate-500 text-left">
+                <th class="pb-2 pr-4 font-medium">Date</th>
+                <th class="pb-2 pr-4 font-medium">Status</th>
+                <th class="pb-2 pr-4 font-medium">Rating</th>
+                <th class="pb-2 pr-4 font-medium">Profile</th>
+                <th class="pb-2 pr-4 font-medium">Reviewer</th>
+                <th class="pb-2 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="a in pagedAssessments" :key="a.id" class="border-b border-slate-100 hover:bg-slate-50">
+                <td class="py-2 pr-4 text-slate-700 whitespace-nowrap">{{ fmtDate(a.created_at) }}</td>
+                <td class="py-2 pr-4">
+                  <span :class="statusClass(a.status)" class="px-2 py-0.5 rounded text-xs font-medium">{{ a.status }}</span>
+                </td>
+                <td class="py-2 pr-4">
+                  <span v-if="a.overall_rating" :class="ratingClass(a.overall_rating)" class="px-2 py-0.5 rounded text-xs font-bold uppercase">{{ a.overall_rating }}</span>
+                  <span v-else class="text-slate-300 text-xs">—</span>
+                </td>
+                <td class="py-2 pr-4 text-slate-600 capitalize">{{ a.scan_profile || '—' }}</td>
+                <td class="py-2 pr-4 text-slate-600">{{ a.reviewer || '—' }}</td>
+                <td class="py-2">
+                  <div class="flex items-center gap-1 flex-wrap">
+                    <a :href="`/app/assessment.html?assessment_id=${a.id}`"
+                       class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs">Open</a>
+                    <a v-if="a.status === 'completed' || a.status === 'scan_complete'"
+                       :href="`/api/v1/assessments/${a.id}/report/html`" target="_blank"
+                       class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">HTML</a>
+                    <a v-if="a.status === 'completed' || a.status === 'scan_complete'"
+                       :href="`/api/v1/assessments/${a.id}/report/md`"
+                       class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">MD</a>
+                    <a v-if="a.status === 'completed' || a.status === 'scan_complete'"
+                       :href="`/api/v1/assessments/${a.id}/report/json`"
+                       class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">JSON</a>
+                    <button @click="cloneAssessment(a.id)"
+                            title="Use as base for new assessment"
+                            class="bg-green-50 hover:bg-green-100 text-green-700 px-2 py-1 rounded text-xs">🔁</button>
+                    <button @click="deleteAssessment(a.id)"
+                            class="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded text-xs">🗑</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <!-- Pagination -->
+          <div v-if="assessmentsTotalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
+            <span>{{ asmPageStart }}–{{ asmPageEnd }} / {{ assessments.length }}</span>
+            <div class="flex gap-1">
+              <button @click="asmPage = Math.max(1, asmPage - 1)" :disabled="asmPage === 1" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+              <template v-for="p in assessmentsTotalPages" :key="p">
+                <button v-if="p === 1 || p === assessmentsTotalPages || Math.abs(p - asmPage) <= 1"
+                  @click="asmPage = p"
+                  :class="p === asmPage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50'"
+                  class="px-2 py-1 rounded border">{{ p }}</button>
+                <span v-else-if="Math.abs(p - asmPage) === 2" class="px-1 py-1 text-slate-400">…</span>
+              </template>
+              <button @click="asmPage = Math.min(assessmentsTotalPages, asmPage + 1)" :disabled="asmPage === assessmentsTotalPages" class="px-2 py-1 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </main>
 
-    <!-- Device Probes (edit mode only) -->
-    <div v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm p-6">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-lg font-bold text-slate-800">🔍 Device Probes</h2>
-          <p class="text-xs text-slate-500 mt-0.5">Run lightweight discovery scans independently — no assessment, no findings, no scoring. For observation only.</p>
-        </div>
-      </div>
+      <!-- Probes tab -->
+      <div v-if="historyTab === 'probes'" class="p-6">
+        <p class="text-xs text-slate-500 mb-4">Lightweight discovery scans run independently — no assessment, no findings, no scoring. For observation only.</p>
 
-      <!-- Start probe form -->
-      <div class="flex items-end gap-3 mb-5 p-3 bg-slate-50 rounded border border-slate-200">
-        <div class="flex-1">
-          <label class="block text-xs font-medium text-slate-600 mb-1">Scan Profile</label>
-          <select v-model="probeProfile" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
-            <option v-for="sp in probeProfiles" :key="sp.name" :value="sp.name">
-              {{ sp.label || sp.name }}
-            </option>
-          </select>
-        </div>
-        <button @click="startProbe" :disabled="probeRunning"
-          class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-4 py-2 rounded text-sm font-medium whitespace-nowrap">
-          {{ probeRunning ? '⟳ Running...' : '▶ Start Probe' }}
-        </button>
-      </div>
-
-      <!-- Active probe status -->
-      <div v-if="activeProbe" class="mb-4 p-3 rounded border"
-           :class="activeProbe.status === 'running' ? 'bg-yellow-50 border-yellow-200' : activeProbe.status === 'failed' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-sm font-medium">
-            <span v-if="activeProbe.status === 'running'">⟳ Probe running — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
-            <span v-else-if="activeProbe.status === 'failed'">❌ Probe failed — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
-            <span v-else>✅ Probe complete — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
-          </span>
-          <span class="text-xs text-slate-500">{{ fmtDate(activeProbe.created_at) }}</span>
+        <!-- Start probe -->
+        <div class="flex items-end gap-3 mb-5 p-3 bg-slate-50 rounded border border-slate-200">
+          <div class="flex-1">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Scan Profile</label>
+            <select v-model="probeProfile" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+              <option v-for="sp in probeProfiles" :key="sp.name" :value="sp.name">{{ sp.label || sp.name }}</option>
+            </select>
+          </div>
+          <button @click="startProbe" :disabled="probeRunning"
+            class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-4 py-2 rounded text-sm font-medium whitespace-nowrap">
+            {{ probeRunning ? '⟳ Running...' : '▶ Start Probe' }}
+          </button>
         </div>
 
-        <!-- Done: show results -->
-        <div v-if="activeProbe.status === 'done'">
-          <div class="text-sm mb-2">
-            <span class="text-slate-600">Reachable:</span>
-            <span :class="activeProbe.reachable === 'yes' ? 'text-green-700 font-medium' : 'text-red-700 font-medium'">
-              {{ activeProbe.reachable || '—' }}
+        <!-- Active / last probe result -->
+        <div v-if="activeProbe" class="mb-5 p-4 rounded border"
+             :class="activeProbe.status === 'running' ? 'bg-yellow-50 border-yellow-200' : activeProbe.status === 'failed' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-semibold">
+              <span v-if="activeProbe.status === 'running'">⟳ Scan läuft — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
+              <span v-else-if="activeProbe.status === 'failed'">❌ Fehlgeschlagen — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
+              <span v-else>✅ Abgeschlossen — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
             </span>
-            <span class="ml-4 text-slate-600">Ports found:</span>
-            <span class="font-medium ml-1">{{ (activeProbe.ports || []).length }}</span>
-            <span v-if="activeProbe.scan_duration_seconds" class="ml-4 text-slate-500 text-xs">
-              {{ activeProbe.scan_duration_seconds.toFixed(1) }}s · nmap {{ activeProbe.nmap_version }}
-            </span>
+            <span class="text-xs text-slate-500">{{ fmtDate(activeProbe.created_at) }}</span>
           </div>
 
-          <!-- Port table -->
-          <div v-if="activeProbe.ports && activeProbe.ports.length" class="overflow-x-auto mb-3">
-            <table class="w-full text-xs">
-              <thead>
+          <div v-if="activeProbe.status === 'done'">
+            <div class="text-sm mb-3 flex flex-wrap gap-4">
+              <span>Reachable: <strong :class="activeProbe.reachable === 'yes' ? 'text-green-700' : 'text-red-700'">{{ activeProbe.reachable || '—' }}</strong></span>
+              <span>Ports found: <strong>{{ (activeProbe.ports || []).length }}</strong></span>
+              <span v-if="activeProbe.scan_duration_seconds" class="text-slate-500 text-xs self-center">{{ activeProbe.scan_duration_seconds.toFixed(1) }}s · nmap {{ activeProbe.nmap_version }}</span>
+            </div>
+
+            <!-- Port table -->
+            <div v-if="activeProbe.ports && activeProbe.ports.length" class="overflow-x-auto mb-4 rounded border border-slate-200 bg-white">
+              <table class="w-full text-xs">
+                <thead class="bg-slate-50">
+                  <tr class="border-b border-slate-200 text-slate-500 text-left">
+                    <th class="py-1.5 px-3 font-medium">Port</th>
+                    <th class="py-1.5 px-3 font-medium">State</th>
+                    <th class="py-1.5 px-3 font-medium">Service</th>
+                    <th class="py-1.5 px-3 font-medium">Product / Version</th>
+                    <th class="py-1.5 px-3 font-medium">Extra</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in activeProbe.ports" :key="`${p.port}/${p.protocol}`" class="border-b border-slate-50">
+                    <td class="py-1 px-3 font-mono font-semibold">{{ p.port }}/{{ p.protocol }}</td>
+                    <td class="py-1 px-3"><span :class="p.state === 'open' ? 'text-red-600 font-semibold' : 'text-slate-500'">{{ p.state }}</span></td>
+                    <td class="py-1 px-3 text-slate-700">{{ p.service_name || '—' }}</td>
+                    <td class="py-1 px-3 text-slate-600">{{ [p.service_product, p.service_version].filter(Boolean).join(' ') || '—' }}</td>
+                    <td class="py-1 px-3 text-slate-400">{{ p.extra_info || '' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="text-xs text-slate-500 mb-4">No open ports detected.</div>
+
+            <!-- Observations -->
+            <div class="border-t border-slate-200 pt-3">
+              <p class="text-xs font-semibold text-slate-700 mb-2">Observations</p>
+              <div v-for="(obs, idx) in activeProbeObservations" :key="idx" class="flex gap-2 mb-1.5">
+                <input v-model="activeProbeObservations[idx].text" class="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
+                       :placeholder="`Observation ${idx + 1}…`">
+                <button @click="activeProbeObservations.splice(idx, 1)" class="text-red-400 hover:text-red-600 px-1 text-xs">✕</button>
+              </div>
+              <div class="flex gap-3 mt-2 items-center">
+                <button @click="activeProbeObservations.push({text:''})" class="text-xs text-indigo-600 hover:underline">+ Add</button>
+                <button @click="saveObservations" class="ml-auto bg-slate-700 hover:bg-slate-800 text-white px-3 py-1 rounded text-xs">💾 Save</button>
+              </div>
+              <p v-if="obsSaveMsg" class="text-xs text-green-600 mt-1">{{ obsSaveMsg }}</p>
+            </div>
+          </div>
+
+          <div v-if="activeProbe.status === 'failed'" class="text-xs text-red-700 mt-1">{{ activeProbe.error_message }}</div>
+        </div>
+
+        <!-- Probe history table -->
+        <div v-if="probes.length">
+          <h3 class="text-sm font-semibold text-slate-700 mb-2">History</h3>
+          <div class="overflow-x-auto rounded border border-slate-200">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50">
                 <tr class="border-b border-slate-200 text-slate-500 text-left">
-                  <th class="pb-1 pr-3 font-medium">Port</th>
-                  <th class="pb-1 pr-3 font-medium">State</th>
-                  <th class="pb-1 pr-3 font-medium">Service</th>
-                  <th class="pb-1 font-medium">Product / Version</th>
+                  <th class="py-2 px-3 font-medium">Date</th>
+                  <th class="py-2 px-3 font-medium">Profile</th>
+                  <th class="py-2 px-3 font-medium">Status</th>
+                  <th class="py-2 px-3 font-medium">Reachable</th>
+                  <th class="py-2 px-3 font-medium">Ports</th>
+                  <th class="py-2 px-3 font-medium">Duration</th>
+                  <th class="py-2 px-3 font-medium">By</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="p in activeProbe.ports" :key="`${p.port}/${p.protocol}`" class="border-b border-slate-50">
-                  <td class="py-1 pr-3 font-mono">{{ p.port }}/{{ p.protocol }}</td>
-                  <td class="py-1 pr-3">
-                    <span :class="p.state === 'open' ? 'text-red-600 font-medium' : 'text-slate-500'">{{ p.state }}</span>
+                <tr v-for="p in pagedProbes" :key="p.id"
+                    class="border-b border-slate-100 hover:bg-indigo-50 cursor-pointer"
+                    :class="activeProbe && activeProbe.id === p.id ? 'bg-indigo-50' : ''"
+                    @click="openProbeDetail(p.id)">
+                  <td class="py-2 px-3 text-slate-700 whitespace-nowrap">{{ fmtDate(p.created_at) }}</td>
+                  <td class="py-2 px-3 text-slate-700">{{ p.profile_label || p.profile_name }}</td>
+                  <td class="py-2 px-3">
+                    <span :class="p.status === 'done' ? 'bg-green-100 text-green-800' : p.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'"
+                          class="px-2 py-0.5 rounded text-xs font-medium">{{ p.status }}</span>
                   </td>
-                  <td class="py-1 pr-3 text-slate-700">{{ p.service_name || '—' }}</td>
-                  <td class="py-1 text-slate-600">{{ [p.service_product, p.service_version].filter(Boolean).join(' ') || '—' }}</td>
+                  <td class="py-2 px-3 text-slate-700">{{ p.reachable || '—' }}</td>
+                  <td class="py-2 px-3 text-slate-700">{{ p.port_count ?? '—' }}</td>
+                  <td class="py-2 px-3 text-slate-500 text-xs">{{ p.scan_duration_seconds ? p.scan_duration_seconds.toFixed(1) + 's' : '—' }}</td>
+                  <td class="py-2 px-3 text-slate-500 text-xs">{{ p.initiated_by || '—' }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div v-else class="text-xs text-slate-500 mb-3">No open ports detected.</div>
-
-          <!-- Observations -->
-          <div class="border-t border-slate-200 pt-3">
-            <p class="text-xs font-medium text-slate-700 mb-2">Observations (free text notes about device behaviour during probe)</p>
-            <div v-for="(obs, idx) in activeProbeObservations" :key="idx" class="flex gap-2 mb-2">
-              <input v-model="activeProbeObservations[idx].text" class="flex-1 border border-slate-300 rounded px-2 py-1 text-xs"
-                     :placeholder="`Observation ${idx+1}...`">
-              <button @click="activeProbeObservations.splice(idx,1)" class="text-red-400 hover:text-red-600 px-1 text-xs">✕</button>
-            </div>
-            <div class="flex gap-2 mt-1">
-              <button @click="activeProbeObservations.push({text:''})" class="text-xs text-indigo-600 hover:underline">+ Add observation</button>
-              <button @click="saveObservations" class="ml-auto bg-slate-700 hover:bg-slate-800 text-white px-3 py-1 rounded text-xs">💾 Save observations</button>
-            </div>
-            <p v-if="obsSaveMsg" class="text-xs text-green-600 mt-1">{{ obsSaveMsg }}</p>
-          </div>
-        </div>
-
-        <!-- Error -->
-        <div v-if="activeProbe.status === 'failed'" class="text-xs text-red-600 mt-1">{{ activeProbe.error_message }}</div>
-      </div>
-
-      <!-- Probe History -->
-      <div v-if="probes.length">
-        <h3 class="text-sm font-medium text-slate-700 mb-2">Probe History</h3>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 text-slate-500 text-left">
-                <th class="pb-2 pr-3 font-medium">Date</th>
-                <th class="pb-2 pr-3 font-medium">Profile</th>
-                <th class="pb-2 pr-3 font-medium">Status</th>
-                <th class="pb-2 pr-3 font-medium">Reachable</th>
-                <th class="pb-2 pr-3 font-medium">Ports</th>
-                <th class="pb-2 pr-3 font-medium">Duration</th>
-                <th class="pb-2 font-medium">By</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="p in pagedProbes" :key="p.id" class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                  @click="openProbeDetail(p.id)">
-                <td class="py-2 pr-3 text-slate-700 whitespace-nowrap">{{ fmtDate(p.created_at) }}</td>
-                <td class="py-2 pr-3 text-slate-700">{{ p.profile_label || p.profile_name }}</td>
-                <td class="py-2 pr-3">
-                  <span :class="p.status === 'done' ? 'bg-green-100 text-green-800' : p.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'"
-                        class="px-2 py-0.5 rounded text-xs font-medium">{{ p.status }}</span>
-                </td>
-                <td class="py-2 pr-3 text-slate-700">{{ p.reachable || '—' }}</td>
-                <td class="py-2 pr-3 text-slate-700">{{ p.port_count ?? '—' }}</td>
-                <td class="py-2 pr-3 text-slate-500 text-xs">{{ p.scan_duration_seconds ? p.scan_duration_seconds.toFixed(1) + 's' : '—' }}</td>
-                <td class="py-2 text-slate-500 text-xs">{{ p.initiated_by || '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
           <!-- Probe pagination -->
           <div v-if="probesTotalPages > 1" class="flex items-center justify-between mt-3 text-xs text-slate-500">
             <span>{{ probePageStart }}–{{ probePageEnd }} / {{ probes.length }}</span>
@@ -383,7 +387,7 @@
               <template v-for="p in probesTotalPages" :key="p">
                 <button v-if="p === 1 || p === probesTotalPages || Math.abs(p - probePage) <= 1"
                   @click="probePage = p"
-                  :class="p === probePage ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50'"
+                  :class="p === probePage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 hover:bg-slate-50'"
                   class="px-2 py-1 rounded border">{{ p }}</button>
                 <span v-else-if="Math.abs(p - probePage) === 2" class="px-1 py-1 text-slate-400">…</span>
               </template>
@@ -391,8 +395,8 @@
             </div>
           </div>
         </div>
+        <div v-else-if="!probeRunning && !activeProbe" class="text-slate-400 text-sm py-4 text-center">No probes yet. Start the first probe above.</div>
       </div>
-      <div v-else-if="!activeProbe" class="text-slate-400 text-sm py-2 text-center">No probes yet for this device.</div>
     </div>
   </main>
 
@@ -425,6 +429,8 @@ createApp({
     const pagedAssessments = computed(() => assessments.value.slice((asmPage.value - 1) * ASM_PAGE_SIZE, asmPage.value * ASM_PAGE_SIZE));
     const deviceTypes = ref([]);
     const deviceClasses = ref([]);
+    const historyTab = ref('assessments');
+
     // Probes state
     const probes = ref([]);
     const probeProfiles = ref([]);
@@ -667,6 +673,7 @@ createApp({
              probes, probeProfiles, probeProfile, probeRunning, activeProbe,
              activeProbeObservations, obsSaveMsg,
              pagedProbes, probePage, probesTotalPages, probePageStart, probePageEnd,
+             historyTab,
              save, lookupRdns, deleteDevice, cloneAssessment, deleteAssessment,
              startProbe, openProbeDetail, saveObservations,
              fmtDate, ratingClass, statusClass,

@@ -701,6 +701,7 @@
               &#128196; HTML öffnen
             </a>
             <a :href="`/api/v1/assessments/${assessment.id}/report/pdf`"
+               :download="`report-${assessment.id}.pdf`"
                class="bg-red-700 hover:bg-red-800 text-white px-5 py-2 rounded font-medium text-sm">
               &#8681; PDF herunterladen
             </a>
