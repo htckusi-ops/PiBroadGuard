@@ -44,8 +44,9 @@
         <div>
           <h1 class="text-xl font-bold text-slate-800">{{ device?.manufacturer }} {{ device?.model }}</h1>
           <p class="text-slate-500 text-sm">Assessment #{{ assessment.id }} | Status: {{ assessment.status }}</p>
+          <span v-if="assessment.scan_mode === 'discovery'" class="inline-block mt-1 bg-purple-100 text-purple-700 text-xs font-semibold px-2 py-0.5 rounded">🔍 Discovery-Modus – kein Scoring, kein Regelwerk</span>
         </div>
-        <div class="flex items-center gap-3">
+        <div v-if="assessment.scan_mode !== 'discovery'" class="flex items-center gap-3">
           <span :class="ratingBgClass(assessment.overall_rating)" class="px-3 py-1 rounded font-bold text-sm">
             {{ ratingLabel(assessment.overall_rating) }}
           </span>
@@ -55,8 +56,8 @@
         </div>
       </div>
 
-      <!-- Score Bars -->
-      <div class="grid grid-cols-5 gap-3">
+      <!-- Score Bars (hidden in discovery mode) -->
+      <div v-if="assessment.scan_mode !== 'discovery'" class="grid grid-cols-5 gap-3">
         <div v-for="(info, key) in scoreDims" :key="key" class="text-center">
           <div class="text-xs text-slate-500 mb-1">{{ info.label }}</div>
           <div class="h-2 bg-slate-200 rounded-full overflow-hidden mb-1">
@@ -70,8 +71,8 @@
         </div>
       </div>
 
-      <!-- Scoring Details Toggle -->
-      <div v-if="assessment" class="mt-3">
+      <!-- Scoring Details Toggle (hidden in discovery mode) -->
+      <div v-if="assessment && assessment.scan_mode !== 'discovery'" class="mt-3">
         <button @click="toggleScoringDetails"
                 class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
           <span>{{ showScoringDetails ? '▲' : '▼' }}</span>
@@ -236,6 +237,9 @@
                 <p v-if="scanProfiles.find(p=>p.name===auth.profile)?.description" class="text-xs text-slate-500 mt-1 bg-slate-50 rounded px-2 py-1">
                   {{ scanProfiles.find(p=>p.name===auth.profile).description }}
                 </p>
+                <p v-if="scanProfiles.find(p=>p.name===auth.profile)?.is_discovery" class="text-xs text-purple-700 bg-purple-50 rounded px-2 py-1 mt-1">
+                  🔍 <strong>Discovery-Profil:</strong> Kein Regelwerk, kein Scoring – nur Geräteverhalten dokumentieren.
+                </p>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
@@ -296,7 +300,11 @@
           <!-- Scan done -->
           <div v-if="assessment.status === 'scan_complete' || assessment.status === 'exported'">
             <div class="bg-green-50 border border-green-200 rounded p-4 mb-4 text-green-800 text-sm">
-              ✅ Scan complete. {{ scanResults.length }} ports found, {{ findings.length }} findings generated.
+              <span v-if="assessment.scan_mode === 'discovery'">
+                ✅ Discovery-Scan abgeschlossen. {{ scanResults.length }} Port(s) erkannt.
+                <span class="block text-purple-700 mt-1">🔍 Discovery-Modus: Bitte jetzt im Tab <strong>Manuelle Fragen</strong> das Geräteverhalten dokumentieren.</span>
+              </span>
+              <span v-else>✅ Scan complete. {{ scanResults.length }} ports found, {{ findings.length }} findings generated.</span>
             </div>
             <!-- Scan initiator info -->
             <div v-if="scanInitiator" class="bg-slate-50 border border-slate-200 rounded p-3 text-xs text-slate-600 mb-4">
@@ -499,7 +507,12 @@
       <div v-show="activeTab === 'manual'" class="w-full">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
-          <p class="text-slate-500 text-sm mb-4">Answer the following questions for the security assessment of this device.</p>
+          <div v-if="assessment.scan_mode === 'discovery'" class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4 text-purple-800 text-sm">
+            <p class="font-semibold">🔍 Discovery-Modus</p>
+            <p class="mt-1">Bitte dokumentieren Sie das Verhalten des Geräts während und nach dem Scan.
+            Diese Informationen werden im Discovery-Report ausgewertet.</p>
+          </div>
+          <p v-else class="text-slate-500 text-sm mb-4">Answer the following questions for the security assessment of this device.</p>
           <div v-for="(questions, cat) in manualQuestions" :key="cat" class="mb-6"
                :class="cat === 'scan_effects' ? 'border border-amber-300 rounded-lg p-4 bg-amber-50' : ''">
             <h3 class="font-semibold capitalize mb-3 border-b pb-1"

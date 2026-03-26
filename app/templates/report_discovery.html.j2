@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>PiBroadGuard Discovery Report – {{ device.manufacturer }} {{ device.model }}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 1100px; margin: 0 auto; padding: 2rem; color: #1e293b; }
+  h1 { color: #0f172a; border-bottom: 3px solid #8b5cf6; padding-bottom: 0.5rem; }
+  h2 { color: #6d28d9; margin-top: 2rem; }
+  h3 { color: #1e293b; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th { background: #6d28d9; color: white; padding: 0.5rem; text-align: left; }
+  td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: bold; font-size: 0.8rem; }
+  .discovery { background: #ede9fe; color: #5b21b6; }
+  .ok { background: #dcfce7; color: #166534; }
+  .warning { background: #fef9c3; color: #854d0e; }
+  .critical { background: #fecaca; color: #991b1b; }
+  .port-open { background: #fee2e2; color: #991b1b; }
+  .port-filtered { background: #fef9c3; color: #854d0e; }
+  .port-closed { background: #f1f5f9; color: #64748b; }
+  .meta { color: #64748b; font-size: 0.9rem; }
+  .effect-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin: 0.75rem 0; }
+  .effect-header { font-weight: bold; margin-bottom: 0.3rem; }
+  .answer-yes { color: #dc2626; font-weight: bold; }
+  .answer-no { color: #16a34a; }
+  .answer-partial { color: #d97706; font-weight: bold; }
+  .answer-unknown { color: #6b7280; }
+  .summary-box { background: #faf5ff; border: 2px solid #8b5cf6; border-radius: 8px; padding: 1rem 1.5rem; margin: 1rem 0; }
+  .nmap-output { font-family: 'Courier New', Courier, monospace; font-size: 0.75rem; background: #0f172a; color: #94a3b8; padding: 1rem; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; page-break-inside: auto; }
+  @media print { .no-print { display: none; } }
+  h1, h2 { page-break-after: avoid; }
+  h3 { page-break-after: avoid; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  thead { display: table-header-group; }
+  .effect-card { page-break-inside: avoid; }
+  @page { margin: 1.5cm 2cm; }
+</style>
+</head>
+<body>
+
+<h1>PiBroadGuard – Discovery Scan Report</h1>
+
+<p><span class="badge discovery">🔍 Discovery-Modus</span></p>
+<p class="meta">
+  Dieser Report dokumentiert einen reinen Discovery-Scan ohne Sicherheitsbewertung.
+  Der Fokus liegt auf den erkannten Diensten und dem Verhalten des Geräts während des Scans.
+</p>
+
+<table>
+  <tr><th>Gerät</th><td>{{ device.manufacturer }} {{ device.model }}</td></tr>
+  <tr><th>Assessment-ID</th><td>#{{ assessment.id }}</td></tr>
+  <tr><th>IP-Adresse</th><td>{{ device.ip_address }}</td></tr>
+  {% if device.hostname %}<tr><th>Hostname</th><td>{{ device.hostname }}</td></tr>{% endif %}
+  <tr><th>Datum</th><td>{{ assessment.created_at | date }}</td></tr>
+  <tr><th>Scan-Profil</th><td>{{ scan_profile_label }}</td></tr>
+  {% if authorization %}
+  <tr><th>Autorisiert durch</th><td>{{ authorization.authorized_by_name }} ({{ authorization.authorized_by_role }})</td></tr>
+  {% endif %}
+  <tr><th>Reviewer</th><td>{{ assessment.reviewer or "—" }}</td></tr>
+</table>
+
+{% if assessment.summary %}
+<div class="summary-box">
+  <strong>Zusammenfassung:</strong><br>
+  {{ assessment.summary }}
+</div>
+{% endif %}
+
+<h2>Gerätestammdaten</h2>
+<table>
+  <tr><th>Hersteller</th><td>{{ device.manufacturer }}</td></tr>
+  <tr><th>Modell</th><td>{{ device.model }}</td></tr>
+  <tr><th>Gerätetyp</th><td>{{ device.device_type }}</td></tr>
+  {% if device.serial_number %}<tr><th>Seriennummer</th><td>{{ device.serial_number }}</td></tr>{% endif %}
+  {% if device.firmware_version %}<tr><th>Firmware</th><td>{{ device.firmware_version }}</td></tr>{% endif %}
+  {% if device.location %}<tr><th>Standort</th><td>{{ device.location }}</td></tr>{% endif %}
+  {% if device.network_segment %}<tr><th>Netzwerksegment</th><td>{{ device.network_segment }}</td></tr>{% endif %}
+  {% if device.production_criticality %}<tr><th>Betriebskritikalität</th><td>{{ device.production_criticality }}</td></tr>{% endif %}
+  {% if device.mac_address %}<tr><th>MAC-Adresse</th><td>{{ device.mac_address }}{% if device.mac_vendor %} ({{ device.mac_vendor }}){% endif %}</td></tr>{% endif %}
+  {% if device.rdns_hostname %}<tr><th>rDNS</th><td>{{ device.rdns_hostname }}</td></tr>{% endif %}
+</table>
+
+<h2>Scan-Resultate</h2>
+{% if scan_results %}
+<p class="meta">{{ scan_results | length }} offene/gefilterte Port(s) erkannt.</p>
+<table>
+  <thead>
+    <tr><th>Port</th><th>Protokoll</th><th>State</th><th>Dienst</th><th>Product / Version</th><th>Extra Info</th></tr>
+  </thead>
+  <tbody>
+    {% for sr in scan_results %}
+    <tr>
+      <td><strong>{{ sr.port }}</strong></td>
+      <td>{{ sr.protocol }}</td>
+      <td><span class="badge port-{{ sr.state }}">{{ sr.state }}</span></td>
+      <td>{{ sr.service_name or "—" }}</td>
+      <td>{{ sr.service_product or "" }}{% if sr.service_version %} {{ sr.service_version }}{% endif %}</td>
+      <td class="meta">{{ sr.extra_info or "" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="meta">Keine offenen Ports erkannt oder Scan konnte nicht durchgeführt werden.</p>
+{% endif %}
+
+<h2>Geräteverhalten während des Scans</h2>
+<p class="meta">
+  Diese Angaben wurden manuell nach dem Scan erfasst.
+  Sie dokumentieren, ob das Gerät auf den Discovery-Scan reagiert hat.
+</p>
+
+{% set effect_labels = {
+  "scan_device_reboot": "Neustart / Nichterreichbarkeit",
+  "scan_service_disruption": "Betriebsunterbrechung (Signalausfall, Aussetzer)",
+  "scan_av_alert": "Alarm durch Monitoring-/AV-System",
+  "scan_performance_degradation": "Leistungsdegradation",
+  "scan_config_change": "Unbeabsichtigte Konfigurationsänderung",
+  "scan_side_effects_notes": "Weitere Beobachtungen (Freitext)",
+} %}
+
+{% set answer_labels = {
+  "yes": "Ja",
+  "no": "Nein",
+  "partial": "Teilweise",
+  "unknown": "Unbekannt",
+} %}
+
+{% if scan_effects %}
+{% for effect in scan_effects %}
+<div class="effect-card">
+  <div class="effect-header">{{ effect_labels.get(effect.question_key, effect.question_key) }}</div>
+  <div>
+    Antwort:
+    {% if effect.answer_value == "yes" %}
+      <span class="answer-yes">⚠ Ja</span>
+    {% elif effect.answer_value == "no" %}
+      <span class="answer-no">✓ Nein</span>
+    {% elif effect.answer_value == "partial" %}
+      <span class="answer-partial">~ Teilweise</span>
+    {% else %}
+      <span class="answer-unknown">{{ effect.answer_value or "—" }}</span>
+    {% endif %}
+  </div>
+  {% if effect.comment %}
+  <div class="meta" style="margin-top:0.3rem">Kommentar: {{ effect.comment }}</div>
+  {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p class="meta">Keine Scan-Effekt-Daten erfasst.</p>
+{% endif %}
+
+{% if assessment.decision_notes %}
+<h2>Bemerkungen</h2>
+<p>{{ assessment.decision_notes }}</p>
+{% endif %}
+
+<h2>Methodik</h2>
+<p class="meta">
+  Scan-Tool: Nmap{% if nmap_version %} {{ nmap_version }}{% endif %} ·
+  Profil: {{ scan_profile_label }}
+  {% if nmap_command %} · Befehl: <code>{{ nmap_command }}</code>{% endif %}
+  {% if authorization %} · Autorisiert durch: {{ authorization.authorized_by_name }}, {{ authorization.authorized_by_date }}{% endif %}
+</p>
+<p class="meta">
+  Dieser Discovery-Scan ist keine vollständige Sicherheitsbewertung. Für eine umfassende
+  Analyse empfiehlt sich ein Assessment mit Regelwerk-Auswertung und CVE-Lookup.
+</p>
+
+{% if nmap_raw_output %}
+<h2>Anhang: Nmap-Rohdaten (XML)</h2>
+<p class="meta">Scan-Profil: <strong>{{ scan_profile_label }}</strong>{% if nmap_command %} · Befehl: <code>{{ nmap_command }}</code>{% endif %}</p>
+<pre class="nmap-output">{{ nmap_raw_output | e }}</pre>
+{% endif %}
+
+</body>
+</html>

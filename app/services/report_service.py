@@ -122,6 +122,15 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
             nmap_raw_output = raw
             break
 
+    # Collect scan_effects manual findings for discovery report
+    scan_effects = [mf for mf in manual_findings if mf.category == "scan_effects"]
+
+    # Authorization date string for discovery report
+    authorization = auth
+    if auth:
+        auth_date = getattr(auth, "authorization_date", None)
+        auth.__dict__.setdefault("authorized_by_date", _format_date(auth_date))
+
     return {
         "device": device,
         "assessment": assessment,
@@ -130,6 +139,8 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
         "manual_findings": manual_findings,
         "vendor_info": vendor_info,
         "auth": auth,
+        "authorization": authorization,
+        "scan_effects": scan_effects,
         "action_items": [],
         "nmap_version": _extract_nmap_version_from_results(scan_results),
         "nmap_command": nmap_command,
@@ -149,7 +160,9 @@ def generate_markdown(db, assessment: Assessment) -> str:
 
 def generate_html(db, assessment: Assessment) -> str:
     env = _build_env()
-    template = env.get_template("report.html.j2")
+    scan_mode = getattr(assessment, "scan_mode", None) or "assessment"
+    template_name = "report_discovery.html.j2" if scan_mode == "discovery" else "report.html.j2"
+    template = env.get_template(template_name)
     ctx = _build_context(db, assessment)
     return template.render(**ctx)
 

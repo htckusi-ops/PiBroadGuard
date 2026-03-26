@@ -21,6 +21,7 @@ class AssessmentRead(BaseModel):
     device_id: int
     status: str
     scan_profile: Optional[str] = None
+    scan_mode: Optional[str] = "assessment"
     overall_rating: Optional[str] = None
     technical_score: int
     operational_score: int
