@@ -1,16 +1,15 @@
 FROM python:3.11-slim
 
+# nmap + capabilities + WeasyPrint system libs (pango/harfbuzz for HTML→PDF)
 RUN apt-get update && apt-get install -y \
     nmap \
     libcap2-bin \
-    # WeasyPrint system dependencies
     libpango-1.0-0 \
     libpangoft2-1.0-0 \
     libharfbuzz0b \
-    libcairo2 \
-    libgdk-pixbuf2.0-0 \
-    shared-mime-info \
+    fontconfig \
     fonts-liberation \
+    shared-mime-info \
     && setcap cap_net_raw+ep /usr/bin/nmap \
     && rm -rf /var/lib/apt/lists/*
 
