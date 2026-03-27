@@ -1,6 +1,6 @@
 # CONCEPT.md – PiBroadGuard
 ## Fachliches Konzept und Hintergrund
-**Version:** 1.8 | März 2026
+**Version:** 1.12 | März 2026
 
 Dieses Dokument erklärt den fachlichen Kontext, die Zielgruppe und die
 Leitprinzipien von PiBroadGuard. Es ergänzt die technische Spezifikation
@@ -108,6 +108,15 @@ Summary.
 3. CVE/KEV-Anreicherung, manuelle Fragen, Report-Generierung.
 ```
 
+**Schnelle Geräteerkundung (Device Probe):**
+```
+1. Gerät ist neu im Netz oder Verhalten unbekannt.
+2. Broadcast Engineer startet einen Probe direkt auf der Geräteseite.
+3. Probe läuft ausserhalb der Assessment-Queue – kein Regelwerk, kein Scoring.
+4. Offene Ports werden angezeigt; Beobachtungen (Freitext) können notiert werden.
+5. Bei auffälligem Ergebnis: vollständiges Assessment starten.
+```
+
 ---
 
 ## 5. Leitprinzipien (für Designentscheidungen)
@@ -135,6 +144,13 @@ Scans, erste Klassifikationen und periodische Wiederholungs-Scans werden automat
 Kontextbewertung, Hersteller-Informationen und Freigabeentscheide bleiben beim Menschen.
 Das Tool unterstützt – es ersetzt kein Fachwissen. Geplante Scans erfordern trotzdem eine
 vorab dokumentierte Betriebsfreigabe (Name, Rolle des Autorisierenden).
+
+### 5.8 Discovery vor Assessment
+Unbekannte Geräte werden zuerst mit einem leichtgewichtigen Discovery-Scan erkundet,
+bevor ein vollständiges Assessment mit Regelwerk und Scoring durchgeführt wird.
+Discovery-Scans erzeugen keine Findings und beeinflussen kein bestehendes Assessment.
+Sie dokumentieren auch Scan-Seiteneffekte (Reboots, Signalstörungen), die auf die
+Empfindlichkeit des Geräts hinweisen.
 
 ### 5.5 Hersteller- und Lifecycle-Aspekte gehören zur Sicherheitsbewertung
 Ein technisch unauffälliges Gerät kann langfristig ungeeignet sein, wenn
@@ -250,9 +266,10 @@ Später optional:
 | Integration | Zweck |
 |-------------|-------|
 | **phpIPAM** | Geräte-Import aus bestehender IP-Adressverwaltung |
-| **NVD API v2** | CVE-Details und Lösungshinweise |
-| **CISA KEV** | Aktiv ausgenutzte Schwachstellen (lokaler Cache) |
+| **NVD API v2** | CVE-Details, CVSS-Scores und Lösungshinweise |
+| **CISA KEV** | Aktiv ausgenutzte Schwachstellen (lokaler Cache, tägl. Sync) |
 | **NVD CPE API** | Präzisere Produkt-zu-CVE-Zuordnung |
+| **FIRST EPSS API** | Exploit-Wahrscheinlichkeit pro CVE (0–100%, kein API-Key) |
 
 Alle Integrationen sind optional und graceful degradiert: Wenn eine externe Quelle
 nicht erreichbar ist, arbeitet PiBroadGuard mit lokalem Cache oder ohne die
@@ -260,4 +277,4 @@ betreffende Information.
 
 ---
 
-*CONCEPT.md – PiBroadGuard v1.8 | März 2026 | Markus Gerber · markus.gerber@npn.ch*
+*CONCEPT.md – PiBroadGuard v1.12 | März 2026 | Markus Gerber · markus.gerber@npn.ch*
