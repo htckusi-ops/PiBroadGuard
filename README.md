@@ -528,4 +528,187 @@ findings.cve_id  ─ ─ ─ (lookup) ─ ─ ─ kev_cache.cve_id
 
 ---
 
+## CVE/NVD/KEV-Verarbeitung
+
+### Übersicht: Drei externe Datenquellen
+
+| Quelle | URL | Zugriff | Offline-fähig |
+|--------|-----|---------|---------------|
+| **NIST NVD API v2** | `services.nvd.nist.gov/rest/json/cves/2.0` | REST, optional API-Key | Nein (Cache 7 Tage) |
+| **CISA KEV Feed** | `cisa.gov/.../known_exploited_vulnerabilities.json` | JSON-Download | Ja (lokaler Cache) |
+| **FIRST.org EPSS** | `api.first.org/data/v1/epss` | REST, kein Key nötig | Nein (Fallback: leer) |
+
+### Schritt 1: Wie werden Scan-Resultate abgeglichen?
+
+Das Matching basiert auf dem **Produktnamen**, den Nmap aus dem Dienst-Banner erkennt:
+
+```
+Nmap scan_result:
+  port=443, service_product="OpenSSL", service_version="3.0.2"
+         ↓
+  cve_service.lookup_cves(
+      vendor  = "OpenSSL",   ← gleich wie product (kein separater Hersteller)
+      product = "OpenSSL",
+      version = "3.0.2"
+  )
+```
+
+> **Wichtig – Keyword-Matching, kein CPE:**
+> Die NVD-Suche verwendet `keywordSearch=OpenSSL OpenSSL` – d.h. eine Freitextsuche.
+> Es wird **kein** CPE-Matching (Common Platform Enumeration) verwendet.
+> Das bedeutet: Bei generischen Produktnamen (z.B. "Apache", "nginx") können
+> zu viele oder falsche Treffer entstehen. Die Ergebnisse sind als Hinweise zu
+> verstehen und müssen vom Reviewer beurteilt werden.
+
+### Schritt 2: Cache-Logik
+
+```
+lookup_cves() aufgerufen
+        ↓
+cve_cache-Tabelle prüfen:
+  WHERE vendor = X AND product = Y
+    AND fetched_at > (jetzt - TTL_Tage)
+        ↓
+  Cache-Hit?  ──→ Ja:  Cached-Einträge zurückgeben (kein API-Call)
+                  Nein: NVD API aufrufen
+                        ↓
+                   Ergebnisse in cve_cache speichern (db.merge)
+                   ↓
+                   Zurückgeben
+```
+
+TTL konfigurierbar via `PIBG_CVE_CACHE_TTL_DAYS` (Standard: 7 Tage).
+
+### Schritt 3: NVD-API-Antwort → Felder
+
+```json
+NVD-Response (vereinfacht):
+{
+  "vulnerabilities": [{
+    "cve": {
+      "id": "CVE-2022-0778",
+      "descriptions": [{"lang": "en", "value": "The BN_mod_sqrt() function..."}],
+      "metrics": {
+        "cvssMetricV31": [{"cvssData": {"baseScore": 7.5}}]
+      },
+      "evaluatorSolution": "Upgrade to OpenSSL 3.0.2 or later.",
+      "references": [{"url": "https://...", "tags": ["Vendor Advisory"]}],
+      "weaknesses": [{"description": [{"value": "CWE-835"}]}]
+    }
+  }]
+}
+```
+
+Extrahierte Felder und Verwendung:
+
+| NVD-Feld | Gespeichert in | Angezeigt als |
+|----------|----------------|---------------|
+| `cve.id` | `findings.cve_id`, `cve_cache.cve_id` | CVE-Badge mit NVD-Link |
+| `cvssMetricV31.baseScore` | `cve_cache.cvss_score`, `findings.cvss_score` | CVSS-Badge (farbkodiert) |
+| `descriptions[lang=en]` | `cve_cache.description`, `findings.description` | Finding-Beschreibung |
+| `evaluatorSolution` | `findings.nvd_solution` | „NVD-Lösung:" in Empfehlung |
+| `references[Vendor Advisory].url` | `findings.vendor_advisory_url` | „🔗 Hersteller-Advisory" |
+| `weaknesses[0].value` | `findings.cwe_id` | CWE-Badge mit MITRE-Link |
+| `published` | `cve_cache.published_date` | Publikationsdatum (Info) |
+
+### Schritt 4: CVSS → Severity-Mapping
+
+```python
+CVSS >= 9.0  →  critical   (Findings-Karte: dunkelrot)
+CVSS >= 7.0  →  high       (Findings-Karte: orange)
+CVSS >= 4.0  →  medium     (Findings-Karte: gelb)
+CVSS  < 4.0  →  low        (Findings-Karte: grün)
+CVSS  = 0.0  →  Finding wird nicht erstellt (kein Score = kein Treffer)
+```
+
+Bei `severity >= high` (CVSS ≥ 7.0) wird `compensating_control_required = True` gesetzt.
+
+### Schritt 5: KEV-Abgleich
+
+Nach dem NVD-Lookup wird jede gefundene CVE-ID gegen den lokalen KEV-Cache geprüft:
+
+```
+cve_id = "CVE-2021-44228"
+        ↓
+kev_cache WHERE cve_id = "CVE-2021-44228"
+        ↓
+  Treffer?  →  Ja:  findings.kev_listed = True
+                    findings.kev_required_action = "Apply updates per vendor instructions."
+                    → Rotes ⚠️-KEV-Badge im Finding
+                    → „CISA KEV – Required Action:" in Empfehlung
+
+             →  Nein: kein KEV-Badge
+```
+
+KEV-Cache wird täglich synchronisiert (manuell über Settings oder automatisch beim Start wenn online).
+
+### Schritt 6: EPSS (Exploit Prediction Scoring System)
+
+Zusätzlich zu CVSS bietet PiBroadGuard den **EPSS-Score** von FIRST.org an:
+
+- Gibt die **Wahrscheinlichkeit** an (0–1), dass eine CVE innerhalb von 30 Tagen aktiv ausgenutzt wird
+- Kostenlos, kein API-Key nötig
+- Wird **nicht** automatisch beim Scan abgerufen, sondern nur auf expliziten API-Aufruf
+- Graceful Fallback (leeres Dict) bei Offline-Betrieb
+
+### Zusammenfassung: CVE-Finding Erstellungsprozess
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  scan_results: service_product="OpenSSL", service_version="3.0.2"  │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  cve_cache prüfen   │
+                    │  (TTL: 7 Tage)      │
+                    └──────────┬──────────┘
+               Cache-Hit ◄─────┴─────► Cache-Miss
+                    │                       │
+                    │              ┌────────▼────────┐
+                    │              │  NVD API v2     │
+                    │              │  keywordSearch= │
+                    │              │  "OpenSSL       │
+                    │              │   OpenSSL"      │
+                    │              │  max. 10 CVEs   │
+                    │              └────────┬────────┘
+                    │                       │
+                    └──────────┬────────────┘
+                               │ CVE-Liste
+                               ▼
+                    ┌──────────────────────┐
+                    │  Pro CVE:            │
+                    │  • CVSS → Severity   │
+                    │  • KEV-Cache prüfen  │
+                    │  • Deduplizieren     │
+                    │    (seen_cves Set)   │
+                    └──────────┬───────────┘
+                               │
+                    ┌──────────▼───────────┐
+                    │  Finding upsert:     │
+                    │  rule_key =          │
+                    │  "cve_cve_2022_0778" │
+                    │  title = "CVE-... – │
+                    │    OpenSSL (CVSS 7.5)"│
+                    │  evidence = "Port    │
+                    │    443/tcp: OpenSSL  │
+                    │    3.0.2"            │
+                    │  kev_listed = False  │
+                    │  nvd_solution = "..."│
+                    │  cwe_id = "CWE-835"  │
+                    └──────────────────────┘
+```
+
+### Einschränkungen und Hinweise
+
+| Thema | Details |
+|-------|---------|
+| **Kein CPE-Matching** | Suche ist Keyword-basiert → False-Positives bei generischen Namen möglich |
+| **Keine Version-Filterung** | Alle CVEs zum Produkt werden zurückgegeben, unabhängig ob die Version betroffen ist |
+| **Nur NVD v3.1/v3.0** | CVSS v4.0-Scores werden noch nicht ausgewertet (NVD-Feld vorhanden aber nicht implementiert) |
+| **Rate Limits** | Ohne API-Key: 5 Req/30s · Mit Key: 50 Req/30s (Key kostenlos: nvd.nist.gov/developers) |
+| **Offline-Betrieb** | CVE-Findings werden nicht erstellt; bestehende Cache-Daten bleiben erhalten |
+| **CVE-Findings im Report** | Erscheinen im Finding-Tab zusammen mit regelwerk-basierten Findings; unterscheidbar am `rule_key`-Präfix `cve_` |
+
+---
+
 *PiBroadGuard v1.8 – Device Security Assessment Platform | März 2026 | Markus Gerber · markus.gerber@npn.ch*
