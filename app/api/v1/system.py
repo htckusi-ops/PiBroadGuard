@@ -429,6 +429,8 @@ def create_scan_profile(
         existing.nmap_flags = _json.dumps(flags) if isinstance(flags, list) else flags
         existing.timeout_seconds = payload.get("timeout_seconds", existing.timeout_seconds)
         existing.active = True
+        if "is_discovery" in payload:
+            existing.is_discovery = bool(payload["is_discovery"])
         db.commit()
         db.refresh(existing)
         return _serialize_scan_profile(existing)
@@ -441,6 +443,7 @@ def create_scan_profile(
         timeout_seconds=payload.get("timeout_seconds", 300),
         built_in=False,
         active=True,
+        is_discovery=bool(payload.get("is_discovery", False)),
     )
     db.add(sp)
     db.commit()
@@ -465,6 +468,8 @@ def update_scan_profile(
     for k in ("label", "description", "timeout_seconds", "active"):
         if k in payload:
             setattr(sp, k, payload[k])
+    if "is_discovery" in payload:
+        sp.is_discovery = bool(payload["is_discovery"])
     if not sp.built_in and "nmap_flags" in payload:
         raw = payload["nmap_flags"]
         if isinstance(raw, list):
@@ -505,6 +510,7 @@ def _serialize_scan_profile(sp) -> dict:
         "timeout_seconds": sp.timeout_seconds,
         "built_in": sp.built_in,
         "active": sp.active,
+        "is_discovery": bool(getattr(sp, "is_discovery", False)),
     }
 
 

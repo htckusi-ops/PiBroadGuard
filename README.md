@@ -295,4 +295,420 @@ Scans nur mit expliziter Betriebsfreigabe durchführen (NIST SP 800-115). Das To
 
 ---
 
+## Datenbankstruktur
+
+PiBroadGuard verwendet **SQLite** (via SQLAlchemy 2.x). Die Datenbank liegt standardmässig unter `./data/pibroadguard.db`. Migrationen werden mit Alembic verwaltet und beim App-Start automatisch eingespielt.
+
+### Übersicht aller Tabellen
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  STAMMDATEN                                                                  │
+│                                                                             │
+│  devices ─────────────────────────┐                                         │
+│  │ id, manufacturer, model        │                                         │
+│  │ device_type, ip_address        │──── device_classes (Gerätetyp-Klassen)  │
+│  │ hostname, firmware_version     │                                         │
+│  │ location, network_segment      │──── device_types (konfigurierbar)       │
+│  │ production_criticality         │                                         │
+│  │ mac_address, rdns_hostname     │──── probe_results (schnelle Checks)     │
+│  │ phpipam_id, device_class_id    │                                         │
+│  └────────────────────────────────┘                                         │
+│                    │ 1:n                                                     │
+│  ASSESSMENT-KERN   ▼                                                         │
+│                                                                             │
+│  assessments ─────────────────────┐                                         │
+│  │ id, device_id (FK)             │                                         │
+│  │ status, scan_profile           │                                         │
+│  │ scan_mode (assessment/         │                                         │
+│  │   discovery)                   │                                         │
+│  │ overall_rating                 │                                         │
+│  │ technical/operational/         │                                         │
+│  │   compensation/lifecycle/      │                                         │
+│  │   vendor_score                 │                                         │
+│  │ reviewer, summary              │                                         │
+│  │ decision, reassessment_due     │                                         │
+│  └──────────────┬─────────────────┘                                         │
+│                 │ 1:n / 1:1                                                  │
+│     ┌───────────┼────────────┬──────────────┬───────────────┐               │
+│     ▼           ▼            ▼              ▼               ▼               │
+│  scan_results  findings  manual_findings  scan_auth.  vendor_info           │
+│  scan_authori- action_    audit_log       import_log                        │
+│  zations       items                                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  EXTERNE DATENQUELLEN (Caches)                                               │
+│                                                                             │
+│  cve_cache          kev_cache           system_settings                     │
+│  (NVD API, 7d TTL)  (CISA KEV, täglich) (Key-Value, persistent)            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AUTOMATISIERUNG                                                             │
+│                                                                             │
+│  scheduled_scans ──► devices (device_id FK)                                 │
+│  scan_profiles   (konfigurierbare Scan-Profile inkl. is_discovery-Flag)    │
+│  apscheduler_jobs (APScheduler-intern, nicht via Alembic)                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Tabellen im Detail
+
+| Tabelle | Zweck | Wichtige Felder |
+|---------|-------|-----------------|
+| `devices` | Gerät-Stammdaten | `ip_address` (Pflicht), `device_type`, `production_criticality`, `mac_address`, `rdns_hostname`, `phpipam_id` |
+| `device_classes` | Geräteklassen (z.B. Broadcast, IT) | `name`, `label_de/en`, `risk_weight` |
+| `device_types` | Gerätetypen (konfigurierbar) | `name`, `label_de/en`, `sort_order` |
+| `assessments` | Sicherheitsbewertung | `scan_mode` (assessment/discovery), `overall_rating`, 5× Score, `decision` |
+| `scan_results` | Nmap-Ergebnisse pro Port | `port`, `protocol`, `service_product`, `service_version`, `raw_nmap_output` |
+| `findings` | Bewertete Schwachstellen | `rule_key`, `severity`, `cve_id`, `cvss_score`, `kev_listed`, `status`, `compensating_control_description` |
+| `manual_findings` | Manuelle Antworten | `category` (auth/patch/hardening/monitoring/operational/vendor/scan_effects), `question_key`, `answer_value` |
+| `scan_authorizations` | Scan-Freigabe (NIST 800-115) | `authorized_by_name/role`, `authorization_date`, `scan_profile`, `target_ip` |
+| `vendor_information` | Hersteller-Sicherheitsinfos | `support_end_date`, `psirt_available`, `hardening_guide` |
+| `action_items` | POA&M-Massnahmen | `priority` (immediate/short_term/long_term), `responsible_team`, `due_date` |
+| `audit_log` | Änderungsprotokoll | `user`, `action`, `field_name`, `old_value`, `new_value` |
+| `cve_cache` | NVD-API-Cache | `cve_id`, `cvss_score`, `description`, `fetched_at` (TTL: konfigurierbar) |
+| `kev_cache` | CISA-KEV-Cache | `cve_id`, `required_action`, `known_ransomware`, `date_added_to_kev` |
+| `scan_profiles` | Nmap-Profile (YAML-Flags) | `nmap_flags` (JSON), `timeout_seconds`, `built_in`, `is_discovery` |
+| `scheduled_scans` | Geplante Scans | `trigger_type` (once/interval/cron), `interval_unit/value`, `start_hour/minute` |
+| `probe_results` | Schnelle Geräte-Probes | `ports_json`, `reachable`, `observations_json`, `raw_xml` |
+| `system_settings` | Laufzeit-Konfiguration | Key-Value: `connectivity_mode`, `last_backup_at`, `encryption_enabled` |
+| `import_log` | USB/Datei-Import-Protokoll | `package_id`, `source_host`, `package_checksum`, `status` |
+
+### Tabellenbeziehungen (vereinfacht)
+
+```
+devices (1) ──── (n) assessments (1) ──── (n) scan_results
+                                     (1) ──── (n) findings
+                                     (1) ──── (n) manual_findings
+                                     (1) ──── (1) scan_authorization
+                                     (1) ──── (1) vendor_information
+                                     (1) ──── (n) action_items
+                                     (1) ──── (n) audit_log
+
+devices (1) ──── (n) probe_results
+devices (1) ──── (n) scheduled_scans
+
+findings.cve_id  ─ ─ ─ (lookup) ─ ─ ─ cve_cache.cve_id
+findings.cve_id  ─ ─ ─ (lookup) ─ ─ ─ kev_cache.cve_id
+```
+
+---
+
+## Datenfluss
+
+### Überblick: Woher kommen welche Daten?
+
+```
+┌──────────────────┐   ┌──────────────────┐   ┌───────────────────────┐
+│  MANUELLE EINGABE│   │  NMAP-SCAN       │   │  EXTERNE QUELLEN      │
+│                  │   │                  │   │                       │
+│ • Gerät erfassen │   │ Nmap-Prozess     │   │ NVD API (NIST)        │
+│   (Formular)     │   │ startet per      │   │ → CVE-IDs, CVSS       │
+│ • Manuelle Fragen│   │ subprocess       │   │   Beschreibungen      │
+│   beantworten    │   │ → XML-Output     │   │                       │
+│ • Vendor-Infos   │   │   parsen         │   │ CISA KEV Feed         │
+│   ergänzen       │   │ → Ports, Dienste │   │ → Aktiv ausgenutzte   │
+│ • Findings       │   │   Versionen      │   │   Schwachstellen      │
+│   bewerten       │   │   MAC-Adresse    │   │                       │
+│ • Massnahmen     │   │                  │   │ phpIPAM (optional)    │
+│   definieren     │   │                  │   │ → Geräteimport        │
+└────────┬─────────┘   └────────┬─────────┘   └──────────┬────────────┘
+         │                      │                         │
+         ▼                      ▼                         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     VERARBEITUNGSSCHICHT                              │
+│                                                                      │
+│  Rule Engine               CVE-Abgleich              Scoring         │
+│  (YAML-Regelwerk)          (nur bei Assessments,     (5 Dimensionen, │
+│  → Ports-offen-Regeln      nicht bei Discovery)      gewichtet)      │
+│  → Manual-Antwort-Regeln   → Produkt+Version         → Overall       │
+│  → Findings erstellen        aus scan_results          Rating        │
+│                            → NVD-Lookup              → Schwellenwert-│
+│                            → CVSS → Severity           Überschreib.  │
+│                            → KEV-Check                               │
+└────────────────────────────────────┬─────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     SQLITE-DATENBANK                                 │
+│                                                                      │
+│  devices → assessments → scan_results                                │
+│                       → findings (rule-based + CVE-based)            │
+│                       → manual_findings                              │
+│                       → scan_authorization                           │
+│                       → vendor_information                           │
+│                                                                      │
+│  cve_cache / kev_cache (externe Daten, gecacht)                     │
+│  scheduled_scans / scan_profiles (Automatisierung)                  │
+└────────────────────────────────────┬─────────────────────────────────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    ▼                ▼                ▼
+             ┌──────────┐    ┌──────────────┐  ┌──────────────┐
+             │ FRONTEND │    │ REPORT-ENGINE│  │ EXPORT       │
+             │          │    │              │  │              │
+             │ Vue 3    │    │ Jinja2       │  │ .bdsa-Paket  │
+             │ Dashboard│    │ HTML-Report  │  │ (ZIP + SHA256)│
+             │ Assessment│   │ MD-Report    │  │ Optional:    │
+             │ Findings │    │ JSON-Report  │  │ AES-256-GCM  │
+             │ Tab      │    │ PDF (WeasyP.)│  │ USB-Export   │
+             └──────────┘    └──────────────┘  └──────────────┘
+```
+
+### Detaillierter Datenfluss: Von Scan bis Report
+
+```
+1. GERÄT ERFASSEN
+   Formular / phpIPAM-Import
+   → devices-Tabelle
+   → rDNS-Lookup (async) → devices.rdns_hostname
+
+2. ASSESSMENT STARTEN
+   POST /devices/{id}/assessments
+   → assessments-Tabelle (status=draft)
+   → Manuelle Fragen vom letzten Assessment vorausgefüllt
+
+3. SCAN AUTORISIEREN
+   Formular (Name, Rolle, Zeitfenster)
+   → scan_authorizations-Tabelle (Pflicht vor Scan)
+
+4. NMAP-SCAN
+   Nmap-Prozess (subprocess, XML-Output)
+   → XML parsen: Ports, Dienste, Versionen, MAC
+   → scan_results-Tabelle (inkl. raw_nmap_output für Audit)
+   → assessments.scan_mode = "discovery" | "assessment"
+
+5a. REGELWERK (nur Assessment-Modus)
+    YAML-Regeln (port_open, manual_answer, service_detected)
+    → findings-Tabelle (rule_key, severity, evidence, recommendation)
+
+5b. CVE-LOOKUP (nur Assessment-Modus, nur online)
+    service_product + service_version aus scan_results
+    → cve_cache prüfen (TTL: 7 Tage)
+    → Bei Cache-Miss: NVD API anfragen
+    → CVSS-Score → Severity-Mapping
+    → KEV-Daten prüfen (lokaler Cache)
+    → findings-Tabelle (rule_key: cve_CVE-..., cve_id, cvss_score, kev_listed)
+
+5c. SCORING (nur Assessment-Modus)
+    Alle Findings (Severity + Status + Kompensation)
+    → 5 Dimensionen berechnen
+    → Überschreibungsregeln prüfen
+    → assessments.*_score, assessments.overall_rating aktualisieren
+
+6. MANUELLE FRAGEN
+   Broadcast Engineer beantwortet Fragenkatalog
+   → manual_findings-Tabelle (category, question_key, answer_value)
+   → Bei Assessment: alle Kategorien (auth/patch/hardening/…)
+   → Bei Discovery: nur scan_effects (Geräteverhalten während Scan)
+   → POST /recalculate aktualisiert Scoring mit Manual-Antworten
+
+7. REPORT-GENERIERUNG
+   Jinja2-Templates lesen aus DB:
+   → device, assessment, scan_results, findings
+   → manual_findings, vendor_information, scan_authorization
+   → Bei Assessment: report.html.j2 (Scores, Findings, Methodik)
+   → Bei Discovery: report_discovery.html.j2 (Ports, Geräteverhalten)
+   → Ausgabe: HTML / Markdown / JSON / PDF
+```
+
+### Datenquellen und ihre Verwendung
+
+| Quelle | Daten | Verwendet für |
+|--------|-------|---------------|
+| **Formular-Eingabe** | Gerätestammdaten, Vendor-Infos | Identifikation, Lifecycle-Score, Report-Stammdaten |
+| **Nmap-Scan** | Offene Ports, Dienste, Versionen, MAC, XML-Rohdaten | Regelwerk-Auswertung, CVE-Abgleich, Audit-Anhang im Report |
+| **YAML-Regelwerk** | Regeln (port_open, manual_answer) | Technische Findings, broadcast-spezifische Empfehlungen |
+| **NIST NVD API** | CVE-IDs, CVSS-Scores, Beschreibungen, Patches | CVE-Findings, Severity, NVD-Lösungsvorschläge im Report |
+| **CISA KEV Feed** | Aktiv ausgenutzte CVEs, Required Action | KEV-Badge im Finding, erhöhte Severity, Dringlichkeits-Hinweis |
+| **Manuelle Fragen** | 30+ strukturierte Fragen (6 Kategorien) | Operational/Lifecycle/Vendor-Score, Report-Fragebogen |
+| **phpIPAM** | Hostlisten mit IP/Hostname/Subnetz | Massenimport von Geräten ohne manuelle Erfassung |
+
+---
+
+## CVE/NVD/KEV-Verarbeitung
+
+### Übersicht: Drei externe Datenquellen
+
+| Quelle | URL | Zugriff | Offline-fähig |
+|--------|-----|---------|---------------|
+| **NIST NVD API v2** | `services.nvd.nist.gov/rest/json/cves/2.0` | REST, optional API-Key | Nein (Cache 7 Tage) |
+| **CISA KEV Feed** | `cisa.gov/.../known_exploited_vulnerabilities.json` | JSON-Download | Ja (lokaler Cache) |
+| **FIRST.org EPSS** | `api.first.org/data/v1/epss` | REST, kein Key nötig | Nein (Fallback: leer) |
+
+### Schritt 1: Wie werden Scan-Resultate abgeglichen?
+
+Das Matching basiert auf dem **Produktnamen**, den Nmap aus dem Dienst-Banner erkennt:
+
+```
+Nmap scan_result:
+  port=443, service_product="OpenSSL", service_version="3.0.2"
+         ↓
+  cve_service.lookup_cves(
+      vendor  = "OpenSSL",   ← gleich wie product (kein separater Hersteller)
+      product = "OpenSSL",
+      version = "3.0.2"
+  )
+```
+
+> **Wichtig – Keyword-Matching, kein CPE:**
+> Die NVD-Suche verwendet `keywordSearch=OpenSSL OpenSSL` – d.h. eine Freitextsuche.
+> Es wird **kein** CPE-Matching (Common Platform Enumeration) verwendet.
+> Das bedeutet: Bei generischen Produktnamen (z.B. "Apache", "nginx") können
+> zu viele oder falsche Treffer entstehen. Die Ergebnisse sind als Hinweise zu
+> verstehen und müssen vom Reviewer beurteilt werden.
+
+### Schritt 2: Cache-Logik
+
+```
+lookup_cves() aufgerufen
+        ↓
+cve_cache-Tabelle prüfen:
+  WHERE vendor = X AND product = Y
+    AND fetched_at > (jetzt - TTL_Tage)
+        ↓
+  Cache-Hit?  ──→ Ja:  Cached-Einträge zurückgeben (kein API-Call)
+                  Nein: NVD API aufrufen
+                        ↓
+                   Ergebnisse in cve_cache speichern (db.merge)
+                   ↓
+                   Zurückgeben
+```
+
+TTL konfigurierbar via `PIBG_CVE_CACHE_TTL_DAYS` (Standard: 7 Tage).
+
+### Schritt 3: NVD-API-Antwort → Felder
+
+```json
+NVD-Response (vereinfacht):
+{
+  "vulnerabilities": [{
+    "cve": {
+      "id": "CVE-2022-0778",
+      "descriptions": [{"lang": "en", "value": "The BN_mod_sqrt() function..."}],
+      "metrics": {
+        "cvssMetricV31": [{"cvssData": {"baseScore": 7.5}}]
+      },
+      "evaluatorSolution": "Upgrade to OpenSSL 3.0.2 or later.",
+      "references": [{"url": "https://...", "tags": ["Vendor Advisory"]}],
+      "weaknesses": [{"description": [{"value": "CWE-835"}]}]
+    }
+  }]
+}
+```
+
+Extrahierte Felder und Verwendung:
+
+| NVD-Feld | Gespeichert in | Angezeigt als |
+|----------|----------------|---------------|
+| `cve.id` | `findings.cve_id`, `cve_cache.cve_id` | CVE-Badge mit NVD-Link |
+| `cvssMetricV31.baseScore` | `cve_cache.cvss_score`, `findings.cvss_score` | CVSS-Badge (farbkodiert) |
+| `descriptions[lang=en]` | `cve_cache.description`, `findings.description` | Finding-Beschreibung |
+| `evaluatorSolution` | `findings.nvd_solution` | „NVD-Lösung:" in Empfehlung |
+| `references[Vendor Advisory].url` | `findings.vendor_advisory_url` | „🔗 Hersteller-Advisory" |
+| `weaknesses[0].value` | `findings.cwe_id` | CWE-Badge mit MITRE-Link |
+| `published` | `cve_cache.published_date` | Publikationsdatum (Info) |
+
+### Schritt 4: CVSS → Severity-Mapping
+
+```python
+CVSS >= 9.0  →  critical   (Findings-Karte: dunkelrot)
+CVSS >= 7.0  →  high       (Findings-Karte: orange)
+CVSS >= 4.0  →  medium     (Findings-Karte: gelb)
+CVSS  < 4.0  →  low        (Findings-Karte: grün)
+CVSS  = 0.0  →  Finding wird nicht erstellt (kein Score = kein Treffer)
+```
+
+Bei `severity >= high` (CVSS ≥ 7.0) wird `compensating_control_required = True` gesetzt.
+
+### Schritt 5: KEV-Abgleich
+
+Nach dem NVD-Lookup wird jede gefundene CVE-ID gegen den lokalen KEV-Cache geprüft:
+
+```
+cve_id = "CVE-2021-44228"
+        ↓
+kev_cache WHERE cve_id = "CVE-2021-44228"
+        ↓
+  Treffer?  →  Ja:  findings.kev_listed = True
+                    findings.kev_required_action = "Apply updates per vendor instructions."
+                    → Rotes ⚠️-KEV-Badge im Finding
+                    → „CISA KEV – Required Action:" in Empfehlung
+
+             →  Nein: kein KEV-Badge
+```
+
+KEV-Cache wird täglich synchronisiert (manuell über Settings oder automatisch beim Start wenn online).
+
+### Schritt 6: EPSS (Exploit Prediction Scoring System)
+
+Zusätzlich zu CVSS bietet PiBroadGuard den **EPSS-Score** von FIRST.org an:
+
+- Gibt die **Wahrscheinlichkeit** an (0–1), dass eine CVE innerhalb von 30 Tagen aktiv ausgenutzt wird
+- Kostenlos, kein API-Key nötig
+- Wird **nicht** automatisch beim Scan abgerufen, sondern nur auf expliziten API-Aufruf
+- Graceful Fallback (leeres Dict) bei Offline-Betrieb
+
+### Zusammenfassung: CVE-Finding Erstellungsprozess
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  scan_results: service_product="OpenSSL", service_version="3.0.2"  │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  cve_cache prüfen   │
+                    │  (TTL: 7 Tage)      │
+                    └──────────┬──────────┘
+               Cache-Hit ◄─────┴─────► Cache-Miss
+                    │                       │
+                    │              ┌────────▼────────┐
+                    │              │  NVD API v2     │
+                    │              │  keywordSearch= │
+                    │              │  "OpenSSL       │
+                    │              │   OpenSSL"      │
+                    │              │  max. 10 CVEs   │
+                    │              └────────┬────────┘
+                    │                       │
+                    └──────────┬────────────┘
+                               │ CVE-Liste
+                               ▼
+                    ┌──────────────────────┐
+                    │  Pro CVE:            │
+                    │  • CVSS → Severity   │
+                    │  • KEV-Cache prüfen  │
+                    │  • Deduplizieren     │
+                    │    (seen_cves Set)   │
+                    └──────────┬───────────┘
+                               │
+                    ┌──────────▼───────────┐
+                    │  Finding upsert:     │
+                    │  rule_key =          │
+                    │  "cve_cve_2022_0778" │
+                    │  title = "CVE-... – │
+                    │    OpenSSL (CVSS 7.5)"│
+                    │  evidence = "Port    │
+                    │    443/tcp: OpenSSL  │
+                    │    3.0.2"            │
+                    │  kev_listed = False  │
+                    │  nvd_solution = "..."│
+                    │  cwe_id = "CWE-835"  │
+                    └──────────────────────┘
+```
+
+### Einschränkungen und Hinweise
+
+| Thema | Details |
+|-------|---------|
+| **Kein CPE-Matching** | Suche ist Keyword-basiert → False-Positives bei generischen Namen möglich |
+| **Keine Version-Filterung** | Alle CVEs zum Produkt werden zurückgegeben, unabhängig ob die Version betroffen ist |
+| **Nur NVD v3.1/v3.0** | CVSS v4.0-Scores werden noch nicht ausgewertet (NVD-Feld vorhanden aber nicht implementiert) |
+| **Rate Limits** | Ohne API-Key: 5 Req/30s · Mit Key: 50 Req/30s (Key kostenlos: nvd.nist.gov/developers) |
+| **Offline-Betrieb** | CVE-Findings werden nicht erstellt; bestehende Cache-Daten bleiben erhalten |
+| **CVE-Findings im Report** | Erscheinen im Finding-Tab zusammen mit regelwerk-basierten Findings; unterscheidbar am `rule_key`-Präfix `cve_` |
+
+---
+
 *PiBroadGuard v1.8 – Device Security Assessment Platform | März 2026 | Markus Gerber · markus.gerber@npn.ch*

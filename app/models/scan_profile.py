@@ -16,4 +16,5 @@ class ScanProfile(Base):
     timeout_seconds = Column(Integer, default=300)
     built_in = Column(Boolean, default=False)              # True = cannot delete flags
     active = Column(Boolean, default=True)
+    is_discovery = Column(Boolean, default=False)          # True = discovery scan, skip scoring/CVE
     created_at = Column(DateTime, default=datetime.utcnow)

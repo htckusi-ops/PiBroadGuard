@@ -32,6 +32,7 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
         # Load profile flags from DB (supports custom profiles), fall back to built-in
         flags_override = None
         timeout_override = None
+        is_discovery = False
         try:
             from app.models.scan_profile import ScanProfile
             import json as _json
@@ -41,6 +42,7 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
             if sp:
                 flags_override = _json.loads(sp.nmap_flags)
                 timeout_override = sp.timeout_seconds
+                is_discovery = bool(getattr(sp, "is_discovery", False))
         except Exception:
             pass
 
@@ -74,6 +76,29 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
             )
             db.add(sr)
         db.commit()
+
+        # Set scan_mode on assessment
+        assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
+        if assessment:
+            assessment.scan_mode = "discovery" if is_discovery else "assessment"
+            db.commit()
+
+        if is_discovery:
+            # Discovery scan: skip rule engine, CVE lookup, and scoring
+            assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
+            if assessment:
+                assessment.status = "scan_complete"
+                db.commit()
+            port_count = len(result.get("results", []))
+            _scan_status[assessment_id] = {
+                "status": "complete",
+                "message": f"Discovery-Scan abgeschlossen. {port_count} offene Ports erkannt.",
+                "port_count": port_count,
+                "elapsed_seconds": result.get("elapsed_seconds"),
+                "nmap_version": result.get("nmap_version"),
+            }
+            logger.info(f"Discovery scan {assessment_id} complete: {port_count} ports")
+            return
 
         # Apply rules
         rules = rule_engine.load_rules()

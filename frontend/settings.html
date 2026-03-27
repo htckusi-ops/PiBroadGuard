@@ -319,6 +319,7 @@
               <td class="py-2">
                 <span v-if="sp.built_in" class="bg-slate-100 text-slate-600 text-xs px-1.5 py-0.5 rounded">built-in</span>
                 <span v-else class="bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded">custom</span>
+                <span v-if="sp.is_discovery" class="ml-1 bg-purple-100 text-purple-700 text-xs px-1.5 py-0.5 rounded">🔍 discovery</span>
               </td>
               <td class="py-2 flex items-center gap-2">
                 <button @click="startEditSp(sp)" class="text-xs text-blue-600 hover:text-blue-800">✏ Edit</button>
@@ -345,6 +346,10 @@
                 <div v-if="!sp.built_in" class="mb-2">
                   <label class="text-xs text-slate-500 mb-0.5 block">Nmap-Flags (eine pro Zeile) – ohne «nmap» und «&lt;target&gt;»</label>
                   <textarea v-model="editSpData.flags_str" rows="3" class="w-full border border-slate-300 rounded px-2 py-1 text-xs font-mono"></textarea>
+                </div>
+                <div class="mb-2 flex items-center gap-2">
+                  <input type="checkbox" :id="'edit-disc-' + sp.id" v-model="editSpData.is_discovery" class="rounded">
+                  <label :for="'edit-disc-' + sp.id" class="text-xs text-slate-600">🔍 Discovery-Profil (überspringt Regelwerk, CVE-Lookup und Scoring)</label>
                 </div>
                 <div class="flex gap-2">
                   <button @click="saveSp" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs">Speichern</button>
@@ -392,14 +397,18 @@
           <label class="text-xs text-slate-500 mb-0.5 block">Nmap-Flags (eine pro Zeile)</label>
           <textarea v-model="newSp.flags_str" rows="3" placeholder="-sn&#10;-PE&#10;-PS21,22,80,443&#10;-T2&#10;--max-retries&#10;2" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono"></textarea>
         </div>
-        <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-3 flex-wrap mb-2">
           <div>
             <label class="text-xs text-slate-500 mb-0.5 block">Timeout (Sekunden) – max. Scan-Laufzeit</label>
             <input type="number" v-model.number="newSp.timeout_seconds" min="30" max="7200" class="border border-slate-300 rounded px-3 py-2 text-sm w-36" placeholder="300">
           </div>
-          <div class="pt-4">
-            <button @click="addSp" :disabled="!newSp.name || !newSp.label || !newSp.flags_str" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded text-sm">+ Profil hinzufügen</button>
-          </div>
+        </div>
+        <div class="mb-3 flex items-center gap-2">
+          <input type="checkbox" id="new-sp-discovery" v-model="newSp.is_discovery" class="rounded">
+          <label for="new-sp-discovery" class="text-sm text-slate-700">🔍 Discovery-Profil <span class="text-xs text-slate-400">(überspringt Regelwerk, CVE-Lookup und Scoring – nur Geräteverhalten dokumentieren)</span></label>
+        </div>
+        <div>
+          <button @click="addSp" :disabled="!newSp.name || !newSp.label || !newSp.flags_str" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded text-sm">+ Profil hinzufügen</button>
         </div>
         <p v-if="spMsg" :class="spError ? 'text-red-600' : 'text-green-600'" class="text-xs mt-2">{{ spMsg }}</p>
       </div>
@@ -690,7 +699,7 @@ createApp({
 
     // ── Scan Profiles ─────────────────────────────────────────────────────────
     const scanProfiles = ref([]);
-    const newSp = ref({ name: '', label: '', description: '', flags_str: '', timeout_seconds: 300 });
+    const newSp = ref({ name: '', label: '', description: '', flags_str: '', timeout_seconds: 300, is_discovery: false });
     const spMsg = ref('');
     const spError = ref(false);
     const editSpId = ref(null);
@@ -719,11 +728,11 @@ createApp({
       }
       const resp = await fetch('/api/v1/scan-profiles', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newSp.value.name, label: newSp.value.label, description: newSp.value.description, nmap_flags: flags, timeout_seconds: newSp.value.timeout_seconds }),
+        body: JSON.stringify({ name: newSp.value.name, label: newSp.value.label, description: newSp.value.description, nmap_flags: flags, timeout_seconds: newSp.value.timeout_seconds, is_discovery: newSp.value.is_discovery }),
       });
       if (resp.ok) {
         spMsg.value = (spMsg.value ? spMsg.value + ' – ' : '') + 'Profil gespeichert.';
-        newSp.value = { name: '', label: '', description: '', flags_str: '', timeout_seconds: 300 };
+        newSp.value = { name: '', label: '', description: '', flags_str: '', timeout_seconds: 300, is_discovery: false };
         await loadScanProfiles();
       } else {
         const e = await resp.json(); spMsg.value = e.detail || 'Fehler'; spError.value = true;
@@ -736,6 +745,7 @@ createApp({
         description: sp.description || '',
         flags_str: (sp.nmap_flags || []).join('\n'),
         timeout_seconds: sp.timeout_seconds,
+        is_discovery: sp.is_discovery || false,
       };
     }
     function cancelEditSp() { editSpId.value = null; }
@@ -744,7 +754,7 @@ createApp({
       const flags = cleaned.split('\n').filter(Boolean);
       const resp = await fetch(`/api/v1/scan-profiles/${editSpId.value}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: editSpData.value.label, description: editSpData.value.description, nmap_flags: flags, timeout_seconds: editSpData.value.timeout_seconds }),
+        body: JSON.stringify({ label: editSpData.value.label, description: editSpData.value.description, nmap_flags: flags, timeout_seconds: editSpData.value.timeout_seconds, is_discovery: editSpData.value.is_discovery }),
       });
       if (resp.ok) { editSpId.value = null; await loadScanProfiles(); }
       else { const e = await resp.json(); alert(e.detail || 'Fehler'); }

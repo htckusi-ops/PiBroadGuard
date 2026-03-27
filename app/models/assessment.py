@@ -11,6 +11,7 @@ class Assessment(Base):
     device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
     status = Column(String, default="draft")
     scan_profile = Column(String)
+    scan_mode = Column(String, default="assessment")       # "assessment" | "discovery"
     overall_rating = Column(String)
     technical_score = Column(Integer, default=100)
     operational_score = Column(Integer, default=100)

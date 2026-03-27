@@ -1,10 +1,17 @@
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y nmap && rm -rf /var/lib/apt/lists/*
-
-# setcap for nmap raw sockets
-RUN apt-get update && apt-get install -y libcap2-bin && rm -rf /var/lib/apt/lists/* && \
-    setcap cap_net_raw+ep /usr/bin/nmap
+# nmap + capabilities + WeasyPrint system libs (pango/harfbuzz for HTML→PDF)
+RUN apt-get update && apt-get install -y \
+    nmap \
+    libcap2-bin \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz0b \
+    fontconfig \
+    fonts-liberation \
+    shared-mime-info \
+    && setcap cap_net_raw+ep /usr/bin/nmap \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
