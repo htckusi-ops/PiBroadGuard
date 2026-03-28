@@ -4302,3 +4302,71 @@ farbcodierten Badges dargestellt:
 ---
 
 *Update v1.12 | März 2026*
+
+---
+
+# Roadmap / Geplante Erweiterungen
+
+Die folgenden Erweiterungen sind für zukünftige Versionen geplant.
+Detaillierte Aufgabenlisten und Prioritäten sind in `TODO.md` dokumentiert.
+
+## Hybrides Audit-Modell (Zielarchitektur)
+
+PiBroadGuard wird nach einem vierschichtigen Modell weiterentwickelt:
+
+| Modul | Inhalt |
+|-------|--------|
+| **A – Discovery** | Nmap + NMOS IS-04 Query + rDNS + MAC OUI |
+| **B – Broadcast Compliance** | EBU R143/R148/R160 S1, AMWA BCP-003, SMPTE ST 2059, JT-NM TR-1001-1 |
+| **C – Vulnerability Enrichment** | NVD (CPE-basiert), CISA KEV, CISA ICS Advisories, EPSS, CSAF 2.0 |
+| **D – Externe Scanner** | Greenbone GMP, Tenable API, Rapid7 InsightVM (optional) |
+| **E – Broadcast Risk Layer** | PTP/Timing-Kritikalität, Real-Time-Media-Segmentierung |
+
+## Neue Broadcast-Standards als Referenz
+
+Ergänzung zu den bestehenden Standards (IEC 62443, NIST SP 800-82/-115):
+
+| Standard | Relevanz für PiBroadGuard |
+|----------|---------------------------|
+| **EBU R143** | Hardening-Katalog: Accounts, Protokolle, Logging, Härtung, Defaults |
+| **EBU R148** | Mindesttests für Netzwerksicherheit an Media Equipment |
+| **EBU R160 S1** | Leitfaden Basis- und vertiefte Schwachstellenprüfung an Broadcast-Geräten |
+| **AMWA BCP-003-01/02** | TLS und Authorization für NMOS APIs (OAuth2/JWT, IS-10) |
+| **AMWA IS-04/05/10** | NMOS Discovery, Connection Management, Authorization API |
+| **JT-NM TR-1001-1** | Erwartetes Verhalten von ST-2110-Media-Nodes |
+| **SMPTE ST 2110** | Professional Media over IP (Referenzrahmen) |
+| **SMPTE ST 2059** | PTP-Synchronisation in Broadcast-Netzwerken |
+
+## Neue Datenquellen (geplant)
+
+| Quelle | Priorität | Zweck |
+|--------|-----------|-------|
+| NVD CPE API v2 | Prio 1 | Präzisere CVE-Suche via strukturierten Produktnamen |
+| NVD `hasKev`/`isVulnerable` Filter | Prio 1 | Gezieltere NVD-Abfragen |
+| CISA ICS Advisories (RSS) | Prio 1 | OT/Appliance-Advisories für Broadcast-ähnliche Geräte |
+| CSAF 2.0 Vendor Advisories | Prio 2 | Maschinenlesbare Herstellerhinweise (Siemens, Bosch, Cisco…) |
+| AMWA NMOS IS-04 Query API | Prio 2 | Passives Geräte-Inventar ohne Portscan |
+| Greenbone / Tenable / Rapid7 | Prio 3 | Externe Scanner-Konsolidierung |
+
+## Neue Regelwerk-Kategorien (geplant)
+
+| Kategorie | Fragenkatalog | Standard |
+|-----------|---------------|---------|
+| `nmos` | IS-04 vorhanden, IS-10 Auth, TLS/BCP-003, Registry-Adresse | AMWA BCP-003, IS-10 |
+| `ptp_timing` | PTP vorhanden, GM-Rolle möglich, Domain gesperrt, Netz isoliert | SMPTE ST 2059, JT-NM TR-1001-1 |
+| `network_arch` | Management/Media getrennt, VLAN erzwungen, Multicast kontrolliert | EBU R143, IEC 62443-3-2 |
+
+## Neue Port-Regeln (geplant)
+
+| rule_key | Port | Severity | Standard |
+|----------|------|----------|---------|
+| `ptp_event_open` | UDP 319 | medium | SMPTE ST 2059 |
+| `ptp_general_open` | UDP 320 | medium | SMPTE ST 2059 |
+| `nmos_registry_http` | TCP 8080 | medium | AMWA BCP-003 |
+| `ssdp_open` | UDP 1900 | low | EBU R143 §4.2 |
+| `mdns_open` | UDP 5353 | info | JT-NM TR-1001-1 |
+| `bacnet_open` | UDP 47808 | high | IEC 62443 |
+
+---
+
+*Roadmap – Stand März 2026 | Details: TODO.md*

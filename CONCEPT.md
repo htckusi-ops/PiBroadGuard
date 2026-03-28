@@ -207,6 +207,20 @@ Lifecycle-Score unter 20 → maximal Gelb.
 
 PiBroadGuard orientiert sich an folgenden internationalen Standards:
 
+**Broadcast-/Realtime-spezifisch:**
+
+| Standard | Relevanz |
+|----------|----------|
+| **EBU R143** | Sicherheitsanforderungen an Broadcast-Geräte: Accounts, Protokolle, Logging, Härtung (Hardening-Katalog) |
+| **EBU R148** | Mindesttests für Netzwerksicherheit an vernetztem Media Equipment |
+| **EBU R160 S1** | Leitfaden Basis- und vertiefte Schwachstellenprüfung an Broadcast-Geräten |
+| **AMWA BCP-003-01/02** | TLS und Authorization (OAuth2/JWT via IS-10) für NMOS APIs |
+| **JT-NM TR-1001-1** | Erwartetes Verhalten von ST-2110-Media-Nodes im Netzwerk |
+| **SMPTE ST 2110** | Professional Media over IP (Referenzrahmen) |
+| **SMPTE ST 2059** | PTP-basierte Synchronisation im Broadcast (Timing-Risiken) |
+
+**IT-Security / OT-Methodik:**
+
 | Standard | Relevanz |
 |----------|----------|
 | **IEC 62443-3-2** | Risk Assessment Methodik für OT/ICS-Systeme |
@@ -219,6 +233,11 @@ PiBroadGuard orientiert sich an folgenden internationalen Standards:
 
 Diese Standards werden im generierten Report referenziert, um die Bewertung
 zu legitimieren und für externe Stellen nachvollziehbar zu machen.
+
+**Wichtiger Hinweis:** EBU, AMWA und JT-NM liefern Anforderungen, Testprofile und
+Verhaltensregeln für IP-Media-Systeme – aber **keine zentrale Vulnerability-API** für
+Broadcast-Geräte. Broadcast-spezifische Prüfregeln müssen deshalb als eigenes
+Regelwerk modelliert werden (nicht als fertiger Feed konsumierbar).
 
 ---
 
