@@ -236,6 +236,33 @@ def get_all_settings(db: Session = Depends(get_db), user: str = Depends(verify_c
     return {r.key: r.value for r in rows}
 
 
+@router.get("/system/api-keys")
+def get_api_key_status(user: str = Depends(verify_credentials)):
+    """
+    Returns the configuration status of external API keys – never reveals the actual values.
+    Used by the Settings UI to show which keys are set and what rate limits apply.
+    """
+    nvd_key_set = bool(settings.pibg_nvd_api_key and settings.pibg_nvd_api_key.strip())
+    phpipam_token_set = bool(
+        getattr(settings, "pibg_phpipam_token", None) and
+        str(getattr(settings, "pibg_phpipam_token", "")).strip()
+    )
+    return {
+        "nvd_api_key": {
+            "configured": nvd_key_set,
+            "env_var": "PIBG_NVD_API_KEY",
+            "rate_limit_without_key": "5 requests / 30 seconds",
+            "rate_limit_with_key": "50 requests / 30 seconds",
+            "register_url": "https://nvd.nist.gov/developers/request-an-api-key",
+            "note": "Kostenlos registrierbar. Erhöht NVD-Rate-Limit von 5 auf 50 Req/30s – relevant bei grossen Gerätelisten.",
+        },
+        "phpipam_token": {
+            "configured": phpipam_token_set,
+            "env_var": "PIBG_PHPIPAM_TOKEN",
+        },
+    }
+
+
 @router.get("/system/logs")
 def get_logs(lines: int = 100, user: str = Depends(verify_credentials)):
     import os

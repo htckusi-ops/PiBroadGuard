@@ -94,6 +94,60 @@
       <p v-if="kevMsg" :class="kevError ? 'text-red-600' : 'text-green-600'" class="text-sm mt-2">{{ kevMsg }}</p>
     </div>
 
+    <!-- API Keys -->
+    <div class="bg-white rounded-lg shadow-sm p-5">
+      <h2 class="font-bold text-slate-800 mb-1">🔑 External API Keys</h2>
+      <p class="text-xs text-slate-500 mb-4">API keys are configured via environment variables in the <code class="bg-slate-100 px-1 rounded">.env</code> file. The app must be restarted after changes. Values are never shown here.</p>
+
+      <div v-if="apiKeys" class="space-y-4">
+
+        <!-- NVD API Key -->
+        <div class="border border-slate-200 rounded-lg p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-medium text-sm text-slate-800">NIST NVD API Key</span>
+            <span :class="apiKeys.nvd_api_key?.configured ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'"
+                  class="text-xs font-semibold px-2 py-0.5 rounded">
+              {{ apiKeys.nvd_api_key?.configured ? '✅ Configured' : '⚠️ Not set' }}
+            </span>
+          </div>
+          <div class="text-xs text-slate-600 space-y-1">
+            <div><span class="font-mono bg-slate-100 px-1 rounded">{{ apiKeys.nvd_api_key?.env_var }}</span></div>
+            <div v-if="!apiKeys.nvd_api_key?.configured" class="text-amber-700">
+              Without key: <strong>{{ apiKeys.nvd_api_key?.rate_limit_without_key }}</strong>
+              — may cause throttling when scanning multiple devices.
+            </div>
+            <div v-else class="text-green-700">
+              With key: <strong>{{ apiKeys.nvd_api_key?.rate_limit_with_key }}</strong>
+            </div>
+            <div class="text-slate-500">{{ apiKeys.nvd_api_key?.note }}</div>
+            <div v-if="!apiKeys.nvd_api_key?.configured" class="mt-1">
+              👉 <a :href="apiKeys.nvd_api_key?.register_url" target="_blank" rel="noopener"
+                class="text-blue-600 hover:underline">Register free key at nvd.nist.gov</a>
+              &nbsp;→ add to <code class="bg-slate-100 px-1 rounded">.env</code>:
+              <code class="bg-slate-100 px-1 rounded">PIBG_NVD_API_KEY=your-key-here</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- phpIPAM Token -->
+        <div class="border border-slate-200 rounded-lg p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-medium text-sm text-slate-800">phpIPAM API Token</span>
+            <span :class="apiKeys.phpipam_token?.configured ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'"
+                  class="text-xs font-semibold px-2 py-0.5 rounded">
+              {{ apiKeys.phpipam_token?.configured ? '✅ Configured' : '— Not configured' }}
+            </span>
+          </div>
+          <div class="text-xs text-slate-500">
+            <span class="font-mono bg-slate-100 px-1 rounded">{{ apiKeys.phpipam_token?.env_var }}</span>
+            — optional, required only if you use phpIPAM device import.
+          </div>
+        </div>
+
+      </div>
+      <div v-else class="text-sm text-slate-400">Loading…</div>
+    </div>
+
     <!-- Backup -->
     <div class="bg-white rounded-lg shadow-sm p-5">
       <h2 class="font-bold text-slate-800 mb-4">&#128451; {{ t('settings_backup', 'Database Backup') }}</h2>
@@ -558,6 +612,7 @@ createApp({
     const conn = ref({ effective_mode: 'unknown', mode_setting: 'auto', override_active: false, nvd_reachable: false });
     const connMode = ref('auto');
     const connSaved = ref(false);
+    const apiKeys = ref(null);
     const kevSyncing = ref(false);
     const kevMsg = ref('');
     const kevError = ref(false);
@@ -591,6 +646,10 @@ createApp({
     async function loadConn() {
       const resp = await fetch('/api/v1/system/connectivity');
       if (resp.ok) { conn.value = await resp.json(); connMode.value = conn.value.mode_setting; }
+    }
+    async function loadApiKeys() {
+      const resp = await fetch('/api/v1/system/api-keys');
+      if (resp.ok) { apiKeys.value = await resp.json(); }
     }
     async function saveConnMode() {
       const resp = await fetch('/api/v1/system/connectivity/mode', {
@@ -816,7 +875,7 @@ createApp({
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
       // Use allSettled so one failing loader doesn't crash the whole page
-      await Promise.allSettled([loadConn(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam(), loadNetConfig()]);
+      await Promise.allSettled([loadConn(), loadApiKeys(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam(), loadNetConfig()]);
     });
 
     // ── Network Config ─────────────────────────────────────────
@@ -867,7 +926,7 @@ createApp({
       finally { netEdit.value.applying = false; }
     }
 
-    return { conn, connMode, connSaved, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, restoreMsg, restoreError, deleteBackupMsg, deleteBackupError, doRestore, doDeleteBackup, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, editSpId, editSpData, startEditSp, cancelEditSp, saveSp, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
+    return { conn, connMode, connSaved, apiKeys, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, restoreMsg, restoreError, deleteBackupMsg, deleteBackupError, doRestore, doDeleteBackup, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, editSpId, editSpData, startEditSp, cancelEditSp, saveSp, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>
