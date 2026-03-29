@@ -9,7 +9,7 @@ from app.core.security import verify_credentials
 from app.models.assessment import Assessment
 from app.models.device import Device
 from app.schemas.device import DeviceCreate, DeviceRead, DeviceUpdate
-from app.services import dns_service
+from app.services import dns_service, nmos_service
 
 logger = logging.getLogger("pibroadguard.api")
 router = APIRouter(tags=["devices"])
@@ -120,6 +120,72 @@ def list_reassessment_due(
             "days_overdue": (date.today() - assessment.reassessment_due).days if assessment.reassessment_due else None,
         })
     return result
+
+
+@router.post("/devices/{device_id}/nmos-check")
+async def nmos_security_check(
+    device_id: int,
+    registry_url: str = "",
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """
+    Run passive NMOS IS-04 security checks against a device's IP address.
+
+    Checks performed (production-safe, no mDNS, no state changes):
+    1. TLS check – is the NMOS IS-04 API served over HTTPS (BCP-003-01)?
+    2. Auth check – does the IS-04 API require authentication (IS-10 / BCP-003-02)?
+    3. Service discovery – which NMOS API endpoints are reachable?
+
+    Optional: if registry_url is provided, also queries the NMOS IS-04 Registry
+    for this device's nodes/devices/senders/receivers.
+    """
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(404, "Gerät nicht gefunden")
+
+    host = device.ip_address
+    tls_result, auth_result, services = await _run_nmos_checks(host)
+
+    registry_data = None
+    if registry_url:
+        disc = await nmos_service.query_nmos_registry(registry_url)
+        registry_data = {
+            "nodes": disc.nodes,
+            "devices": disc.devices,
+            "senders": disc.senders,
+            "receivers": disc.receivers,
+            "error": disc.error,
+        }
+
+    def _fmt(r: nmos_service.NmosSecurityResult) -> dict:
+        return {
+            "check": r.check,
+            "result": r.result,
+            "detail": r.detail,
+            "recommendation": r.recommendation,
+            "severity": r.severity,
+        }
+
+    return {
+        "device_id": device_id,
+        "host": host,
+        "tls_check": _fmt(tls_result),
+        "auth_check": _fmt(auth_result),
+        "discovered_services": [
+            {"host": s.host, "port": s.port, "api_type": s.api_type,
+             "api_version": s.api_version, "url": s.url}
+            for s in services
+        ],
+        "registry_data": registry_data,
+    }
+
+
+async def _run_nmos_checks(host: str):
+    tls = await nmos_service.check_nmos_tls(host)
+    auth = await nmos_service.check_nmos_auth_required(host)
+    services = await nmos_service.discover_nmos_services(host)
+    return tls, auth, services
 
 
 @router.get("/dns/reverse")

@@ -49,6 +49,26 @@ QUESTION_CATALOG = {
         {"key": "hardening_guide_available", "question": "Gibt es ein Hardening-Guide?"},
         {"key": "security_roadmap", "question": "Gibt es eine nachvollziehbare Security-Roadmap?"},
     ],
+    # NMOS / IP-Broadcast-Dienste (AMWA BCP-003, IS-04/05/10)
+    "nmos": [
+        {"key": "nmos_is04_present", "question": "Spricht das Gerät NMOS IS-04 (Discovery/Registration)?"},
+        {"key": "nmos_is10_auth", "question": "Ist NMOS IS-10 Authorization aktiviert?"},
+        {"key": "nmos_tls_enabled", "question": "Sind NMOS-Verbindungen via TLS/HTTPS gesichert (AMWA BCP-003)?"},
+        {"key": "nmos_registry_known", "question": "Ist die verwendete NMOS-Registry bekannt und vertrauenswürdig?"},
+    ],
+    # PTP / Timing (SMPTE ST 2059, JT-NM TR-1001-1)
+    "ptp_timing": [
+        {"key": "ptp_present", "question": "Verwendet das Gerät PTP/IEEE 1588 oder SMPTE ST 2059?"},
+        {"key": "ptp_can_be_grandmaster", "question": "Kann das Gerät als PTP Grandmaster auftreten (Rogue-GM-Risiko)?"},
+        {"key": "ptp_domain_locked", "question": "Ist die PTP-Domain fixiert und vor unbefugten Grandmastern geschützt?"},
+        {"key": "ptp_network_isolated", "question": "Ist PTP-Traffic auf ein dediziertes Timing-VLAN beschränkt?"},
+    ],
+    # Netzwerk-Architektur (EBU R143, IEC 62443-3-2)
+    "network_arch": [
+        {"key": "mgmt_media_separated", "question": "Sind Management- und Media-/Produktionsnetz physisch oder per VLAN getrennt?"},
+        {"key": "mgmt_vlan_enforced", "question": "Ist der Management-Zugang per VLAN/ACL auf autorisierte Hosts beschränkt?"},
+        {"key": "media_multicast_controlled", "question": "Ist Multicast-Traffic kontrolliert (IGMP-Snooping, IGMPv3)?"},
+    ],
     # Shown only when a discovery/extended/R7 profile was used
     "scan_effects": [
         {"key": "scan_device_reboot", "question": "Hat das Gerät während oder nach dem Scan neu gestartet oder war es nicht mehr erreichbar?"},

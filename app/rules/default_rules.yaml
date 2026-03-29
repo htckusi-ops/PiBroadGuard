@@ -266,3 +266,54 @@
   recommendation: "mDNS-Traffic auf Management-VLAN beschränken; sicherstellen dass Media-VLAN keine Discovery-Broadcasts erhält."
   ask_compensation: false
   affects_score: technical
+
+- rule_key: wsd_open
+  title: "WS-Discovery aktiv (TCP 5357)"
+  description: "WS-Discovery (Web Services Dynamic Discovery) gibt Gerät- und Dienstinformationen preis und ist ein typisches Windows/IT-Protokoll auf Broadcast-Geräten."
+  condition:
+    type: port_open
+    port: 5357
+  severity: low
+  broadcast_context: "WSD auf Broadcast-Geräten ungewöhnlich – deutet auf Windows-basierte Geräte oder unnötige Dienste hin (EBU R143 §4.2)"
+  recommendation: "Deaktivieren falls kein betriebsnotwendiger Einsatz; überprüfen ob WSD durch Firewall-Regel einschränkbar."
+  ask_compensation: false
+  affects_score: technical
+
+- rule_key: bacnet_open
+  title: "BACnet aktiv (UDP 47808)"
+  description: "BACnet ist ein Gebäudeautomations-Protokoll ohne Authentifizierung. Auf Broadcast-Geräten ist BACnet äusserst ungewöhnlich und deutet auf Fehlkonfiguration oder unerwartete Dienste hin."
+  condition:
+    type: port_open
+    port: 47808
+    protocol: udp
+  severity: high
+  broadcast_context: "BACnet auf Broadcast-Equipment ist ein starker Indikator für fehlkonfigurierte oder kompromittierte Geräte (IEC 62443)"
+  recommendation: "Sofort deaktivieren. Prüfen ob das Gerät in einem geteilten Netz betrieben wird. BACnet-Dienste bieten keine Authentifizierung und ermöglichen direkte Gerätekontrolle."
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: ptp_grandmaster_risk
+  title: "Gerät kann als PTP Grandmaster auftreten"
+  description: "Ein Gerät, das als PTP Grandmaster auftreten kann ohne entsprechende Schutzmassnahmen, stellt ein kritisches Timing-Risiko dar (Rogue Grandmaster Attack)."
+  condition:
+    type: manual_answer
+    question_key: ptp_can_be_grandmaster
+    answer: "yes"
+  severity: high
+  broadcast_context: "Ein Rogue PTP Grandmaster kann die Synchronisation des gesamten Studios zerstören – Bild-/Ton-Ausfall in der Live-Produktion. Kritischer als in klassischer IT-Umgebung."
+  recommendation: "PTP-Domain-Nummer fixieren; Best-Master-Clock-Algorithmus (BMCA) sichern; PTP auf dediziertes VLAN isolieren; unerwünschte Grandmaster-Ankündigungen via Switch-ACL blockieren. Referenz: SMPTE ST 2059, JT-NM TR-1001-1."
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: mgmt_media_not_separated
+  title: "Management- und Media-Netz nicht getrennt"
+  description: "Management-Zugang und Media-Daten laufen über dasselbe Netzwerk-Interface oder VLAN. Ein Angreifer mit Zugriff auf das Media-Netz kann direkt Geräte administrieren."
+  condition:
+    type: manual_answer
+    question_key: mgmt_media_separated
+    answer: "no"
+  severity: high
+  broadcast_context: "In Broadcast-Produktionsumgebungen ist die Trennung von Media-Traffic und Management-Traffic fundamentale Anforderung (EBU R143, IEC 62443-3-2 Zonenmodell)"
+  recommendation: "Management-Interface in separates VLAN/Segment verlegen; ACL für Management-Zugriff auf autorisierte Hosts beschränken. Langfristig: Out-of-Band Management anstreben."
+  ask_compensation: true
+  affects_score: operational

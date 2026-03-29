@@ -18,7 +18,7 @@ from app.schemas.system import (
     BackupCreate, BackupInfo,
     ConnectivityModeUpdate, ConnectivityStatus,
 )
-from app.services import backup_service, connectivity_service, remediation_service
+from app.services import backup_service, connectivity_service, ics_service, remediation_service
 
 logger = logging.getLogger("pibroadguard.api")
 router = APIRouter(tags=["system"])
@@ -89,6 +89,51 @@ async def kev_sync(db: Session = Depends(get_db), user: str = Depends(verify_cre
         return {"synced": count}
     except RuntimeError as e:
         raise HTTPException(502, str(e))
+
+
+@router.post("/system/ics-sync")
+async def ics_sync(db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
+    """Sync CISA ICS advisory feed into local cache."""
+    mode = _get_setting(db, "connectivity_mode", "auto")
+    if not connectivity_service.is_online(mode):
+        raise HTTPException(503, "System ist im Offline-Modus – ICS-Sync nicht möglich")
+    try:
+        result = await ics_service.sync_ics_advisories(db)
+        return result
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@router.get("/system/ics-advisories")
+def list_ics_advisories(
+    vendor: str = "",
+    product: str = "",
+    cve_id: str = "",
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    """Search cached ICS advisories by vendor, product or CVE ID."""
+    advisories = ics_service.search_advisories(db, vendor=vendor, product=product, cve_id=cve_id)
+    age = ics_service.get_cache_age(db)
+    return {
+        "results": [
+            {
+                "advisory_id": a.advisory_id,
+                "title": a.title,
+                "vendor": a.vendor,
+                "product": a.product,
+                "cve_ids": json.loads(a.cve_ids) if a.cve_ids else [],
+                "cvss_score": a.cvss_score,
+                "advisory_url": a.advisory_url,
+                "published_date": str(a.published_date) if a.published_date else None,
+            }
+            for a in advisories
+        ],
+        "cache_age_hours": round(
+            (datetime.now(timezone.utc) - (age.replace(tzinfo=timezone.utc) if age and age.tzinfo is None else age or datetime.min.replace(tzinfo=timezone.utc))).total_seconds() / 3600,
+            1
+        ) if age else None,
+    }
 
 
 @router.post("/system/backup")
