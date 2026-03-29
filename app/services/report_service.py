@@ -20,6 +20,81 @@ logger = logging.getLogger("pibroadguard.report")
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 
+def _nmap_xml_to_text(xml: str) -> str:
+    """
+    Convert Nmap XML output to a compact, human-readable text format suitable
+    for printing. Similar in style to 'nmap -oG' (grepable) output.
+    Falls back to the raw XML if parsing fails.
+    """
+    lines: list[str] = []
+    try:
+        root = _ET.fromstring(xml)
+        ver = root.get("version", "")
+        start = root.get("startstr", "")
+        args = root.get("args", "")
+        lines.append(f"Nmap {ver}  –  {start}")
+        if args:
+            lines.append(f"Befehl: {args}")
+        lines.append("")
+
+        for host in root.findall("host"):
+            addr_v4 = host.find("address[@addrtype='ipv4']")
+            if addr_v4 is None:
+                addr_v4 = host.find("address")
+            ip = addr_v4.get("addr", "?") if addr_v4 is not None else "?"
+
+            status = host.find("status")
+            state = status.get("state", "?") if status is not None else "?"
+            lines.append(f"Host: {ip}  Status: {state}")
+
+            for hn in host.findall(".//hostname"):
+                lines.append(f"  Hostname: {hn.get('name', '')}")
+
+            mac_elem = host.find("address[@addrtype='mac']")
+            if mac_elem is not None:
+                vendor = mac_elem.get("vendor", "")
+                lines.append(f"  MAC: {mac_elem.get('addr', '')}  Vendor: {vendor}")
+
+            ports_elem = host.find("ports")
+            if ports_elem is not None:
+                open_ports = []
+                for port in ports_elem.findall("port"):
+                    proto = port.get("protocol", "")
+                    portid = port.get("portid", "")
+                    st_elem = port.find("state")
+                    pstate = st_elem.get("state", "?") if st_elem is not None else "?"
+                    if pstate not in ("open", "open|filtered"):
+                        continue
+                    svc = port.find("service")
+                    if svc is not None:
+                        name = svc.get("name", "")
+                        product = svc.get("product", "")
+                        version = svc.get("version", "")
+                        extra = svc.get("extrainfo", "")
+                        svc_str = " ".join(p for p in [name, product, version, f"({extra})" if extra else ""] if p).strip()
+                    else:
+                        svc_str = ""
+                    open_ports.append(f"  {portid}/{proto:<4}  {pstate:<14}  {svc_str}")
+
+                if open_ports:
+                    lines.append(f"  {'PORT':<10}  {'STATE':<14}  SERVICE / VERSION")
+                    lines.extend(open_ports)
+                else:
+                    lines.append("  (keine offenen Ports erkannt)")
+            lines.append("")
+
+        stats = root.find("runstats/finished")
+        if stats is not None:
+            elapsed = stats.get("elapsed", "?")
+            hosts_up = root.find("runstats/hosts")
+            up = hosts_up.get("up", "?") if hosts_up is not None else "?"
+            lines.append(f"Scan abgeschlossen in {elapsed}s  –  {up} Host(s) erreichbar")
+    except _ET.ParseError:
+        return xml  # fallback: return raw XML unchanged
+
+    return "\n".join(lines)
+
+
 def _rating_label(rating: str) -> str:
     return {
         "green": "🟢 Geeignet",
@@ -114,12 +189,13 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Collect raw nmap output – use the first result that has it
+    # Collect raw nmap output – use the first result that has it.
+    # Convert XML to human-readable text for the report appendix.
     nmap_raw_output = None
     for sr in scan_results:
         raw = getattr(sr, "raw_nmap_output", None)
         if raw:
-            nmap_raw_output = raw
+            nmap_raw_output = _nmap_xml_to_text(raw)
             break
 
     # Collect scan_effects manual findings for discovery report

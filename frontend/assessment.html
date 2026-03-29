@@ -608,6 +608,18 @@
           </div>
         </div>
 
+        <!-- CVE/KEV Enrichment Info -->
+        <div v-if="findings.length > 0" class="mb-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-xs text-slate-600 leading-relaxed">
+          <span class="font-semibold text-slate-700">Wie werden Findings angereichert?</span>
+          <span class="ml-1">
+            <strong>(1) Regelwerk</strong> – Nmap-Ports/Services werden gegen YAML-Regeln geprüft → automatische Findings.
+            <strong>(2) CVE-Lookup</strong> – erkannte Produkt- und Versionsdaten werden gegen <a href="https://nvd.nist.gov" target="_blank" class="text-blue-600 hover:underline">NIST NVD API v2</a> abgefragt.
+            <strong>(3) KEV-Abgleich</strong> – CVEs werden mit dem <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" class="text-blue-600 hover:underline">CISA KEV-Katalog</a> verglichen (⚠️ aktiv ausgenutzt?).
+            <strong>(4) EPSS</strong> – Exploit-Wahrscheinlichkeit via <a href="https://www.first.org/epss" target="_blank" class="text-blue-600 hover:underline">FIRST EPSS</a> (0–100%, 30-Tage-Prognose).
+            Anreicherung nur im Online-Modus. CVE-Cache-Alter wird bei jedem Badge angezeigt.
+          </span>
+        </div>
+
         <!-- Rule-triggered Findings -->
         <div v-if="findings.length > 0 || scanResults.length > 0" class="mb-3 flex items-center gap-2">
           <h3 class="font-semibold text-slate-700">⚠️ {{ t('findings_title', 'Security Findings') }}</h3>
