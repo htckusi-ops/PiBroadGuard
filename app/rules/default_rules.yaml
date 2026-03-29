@@ -200,3 +200,69 @@
   recommendation: "Netzwerkbasierte Zugangskontrolle als Kompensation; Jump-Host verwenden"
   ask_compensation: true
   affects_score: technical
+
+# ─── NMOS / IP-Broadcast-Dienste ──────────────────────────────────────────────
+
+- rule_key: nmos_http_open
+  title: "NMOS IS-04 Registry ohne TLS (Port 8080)"
+  description: "Eine NMOS IS-04 Registry auf Port 8080 (HTTP) ist unverschlüsselt erreichbar. Nodes registrieren sich und tauschen Konfigurationsdaten ohne Vertraulichkeitsschutz aus."
+  condition:
+    type: port_open
+    port: 8080
+  severity: medium
+  broadcast_context: "Häufig in Legacy-NMOS-Setups ohne BCP-003-01 TLS – direkte Verbindung von Nodes zur Registry unverschlüsselt"
+  recommendation: "NMOS Registry auf HTTPS (Port 8443) migrieren; BCP-003-01 TLS implementieren. Tiefergehende TLS-Qualitätsprüfung (Cipher Suites, Zertifikat-Chain) erfordert das AMWA nmos-testing Tool (BCP-003-01 Test Suite) in einer isolierten Testumgebung."
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: ptp_event_open
+  title: "PTP Event Port offen (UDP 319)"
+  description: "PTP/IEEE 1588 Event-Messages (Sync, Delay_Req) sind von aussen erreichbar. Ein Angreifer im gleichen Segment kann Timing-Angriffe durchführen (Rogue Grandmaster)."
+  condition:
+    type: port_open
+    port: 319
+    protocol: udp
+  severity: medium
+  broadcast_context: "ST 2059/SMPTE: PTP-Timing ist kritisch für Live-Produktion. Ein Rogue-Grandmaster kann Bild-/Ton-Synchronisation im gesamten Studio zerstören."
+  recommendation: "PTP-Traffic auf dediziertes Timing-VLAN beschränken; IGMP-Snooping aktivieren; PTP-Domain validieren. Prüfen ob Gerät als Grandmaster auftreten kann (manuell via 'Manuelle Fragen → PTP/Timing')."
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: ptp_general_open
+  title: "PTP General Port offen (UDP 320)"
+  description: "PTP/IEEE 1588 General-Messages (Announce, Follow_Up) sind von aussen erreichbar. Ermöglicht Grandmaster-Manipulation und Timing-Unterbrechung."
+  condition:
+    type: port_open
+    port: 320
+    protocol: udp
+  severity: medium
+  broadcast_context: "ST 2059: Announce-Messages bestimmen den Grandmaster. Unautorisierte Announce-Messages können das gesamte Timing-Netz destabilisieren."
+  recommendation: "PTP auf isoliertes Timing-VLAN beschränken; Boundary-Clock-Rollen dokumentieren und absichern."
+  ask_compensation: true
+  affects_score: technical
+
+- rule_key: ssdp_open
+  title: "SSDP/UPnP aktiv (UDP 1900)"
+  description: "SSDP (Simple Service Discovery Protocol) sendet Device-Discovery-Broadcasts und gibt Geräteinformationen preis. UPnP-Dienste können unerwartete Ports öffnen."
+  condition:
+    type: port_open
+    port: 1900
+    protocol: udp
+  severity: low
+  broadcast_context: "Auf Broadcast-Geräten meist nicht betriebsnotwendig – erhöht Angriffsfläche und gibt Infrastrukturinformationen preis (EBU R143 §4.2)"
+  recommendation: "SSDP/UPnP deaktivieren falls nicht für Geräte-Discovery benötigt. Discovery via NMOS IS-04 bevorzugen."
+  ask_compensation: false
+  affects_score: technical
+
+- rule_key: mdns_open
+  title: "mDNS/DNS-SD aktiv (UDP 5353)"
+  description: "mDNS (Multicast DNS) und DNS-SD (DNS Service Discovery) geben Gerät- und Dienstinformationen im lokalen Segment bekannt."
+  condition:
+    type: port_open
+    port: 5353
+    protocol: udp
+  severity: info
+  broadcast_context: "mDNS wird von NMOS IS-04 und einigen NMOS-Registries genutzt (JT-NM TR-1001-1). Prüfen ob Discovery auf Management-VLAN beschränkt ist."
+  recommendation: "mDNS-Traffic auf Management-VLAN beschränken; sicherstellen dass Media-VLAN keine Discovery-Broadcasts erhält."
+  ask_compensation: false
+  affects_score: technical
