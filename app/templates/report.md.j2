@@ -29,9 +29,18 @@
 |----------|----------|
 | IEC 62443-3-2 | Security Risk Assessment für OT/ICS-Systeme (Risikobewertung, Zonen) |
 | IEC 62443-4-2 | Component Security Requirements (Gerätebewertung) |
+| IEC 62443-4-1 | Secure Product Development Lifecycle (SDL/PSIRT-Bewertung) |
 | NIST SP 800-82r3 | Guide to OT Security (OT-Risikomanagement) |
 | NIST SP 800-115 | Technical Guide to Security Testing (Scan-Methodik) |
 | NIST SP 800-30r1 | Risk Assessment Methodology (Impact × Likelihood) |
+| EBU R143 | Security Requirements für vernetzte Broadcast-Geräte (Hardening-Katalog) |
+| EBU R148 | Mindesttests für Netzwerk-Sicherheit von Media Equipment |
+| EBU R160 S1 | Leitfaden für Basis- und vertiefte Schwachstellenprüfung an Broadcast-Geräten |
+| AMWA BCP-003-01 | TLS für NMOS APIs (Certificate Provisioning) |
+| AMWA BCP-003-02 | Authorization für NMOS APIs (OAuth2/JWT via IS-10) |
+| SMPTE ST 2110 | Professional Media over IP (Referenzrahmen) |
+| SMPTE ST 2059 | Synchronisation und PTP in Broadcast-Netzwerken |
+| JT-NM TR-1001-1 | Erwartetes Verhalten von ST-2110-Media-Nodes |
 
 **Scan-Tool:** Nmap {{ nmap_version }}, Profil: {{ scan_profile_label }}
 {% if scan_profile_description %}
@@ -43,7 +52,7 @@
 {% if auth %}
 **Scan-Autorisierung:** {{ auth.authorized_by_name }} ({{ auth.authorized_by_role }}), erteilt am {{ auth.authorization_date | date }}
 {% endif %}
-**CVE-Datenquellen:** NIST NVD API v2, CISA KEV Catalog
+**CVE-Datenquellen:** NIST NVD API v2, CISA KEV Catalog, CISA ICS Advisories, FIRST EPSS
 **Bewertungsdatum:** {{ assessment.created_at | date }}
 
 ---

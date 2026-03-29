@@ -1,6 +1,6 @@
 # CONCEPT.md – PiBroadGuard
 ## Fachliches Konzept und Hintergrund
-**Version:** 1.8 | März 2026
+**Version:** 1.12 | März 2026
 
 Dieses Dokument erklärt den fachlichen Kontext, die Zielgruppe und die
 Leitprinzipien von PiBroadGuard. Es ergänzt die technische Spezifikation
@@ -108,6 +108,15 @@ Summary.
 3. CVE/KEV-Anreicherung, manuelle Fragen, Report-Generierung.
 ```
 
+**Schnelle Geräteerkundung (Device Probe):**
+```
+1. Gerät ist neu im Netz oder Verhalten unbekannt.
+2. Broadcast Engineer startet einen Probe direkt auf der Geräteseite.
+3. Probe läuft ausserhalb der Assessment-Queue – kein Regelwerk, kein Scoring.
+4. Offene Ports werden angezeigt; Beobachtungen (Freitext) können notiert werden.
+5. Bei auffälligem Ergebnis: vollständiges Assessment starten.
+```
+
 ---
 
 ## 5. Leitprinzipien (für Designentscheidungen)
@@ -135,6 +144,13 @@ Scans, erste Klassifikationen und periodische Wiederholungs-Scans werden automat
 Kontextbewertung, Hersteller-Informationen und Freigabeentscheide bleiben beim Menschen.
 Das Tool unterstützt – es ersetzt kein Fachwissen. Geplante Scans erfordern trotzdem eine
 vorab dokumentierte Betriebsfreigabe (Name, Rolle des Autorisierenden).
+
+### 5.8 Discovery vor Assessment
+Unbekannte Geräte werden zuerst mit einem leichtgewichtigen Discovery-Scan erkundet,
+bevor ein vollständiges Assessment mit Regelwerk und Scoring durchgeführt wird.
+Discovery-Scans erzeugen keine Findings und beeinflussen kein bestehendes Assessment.
+Sie dokumentieren auch Scan-Seiteneffekte (Reboots, Signalstörungen), die auf die
+Empfindlichkeit des Geräts hinweisen.
 
 ### 5.5 Hersteller- und Lifecycle-Aspekte gehören zur Sicherheitsbewertung
 Ein technisch unauffälliges Gerät kann langfristig ungeeignet sein, wenn
@@ -191,6 +207,20 @@ Lifecycle-Score unter 20 → maximal Gelb.
 
 PiBroadGuard orientiert sich an folgenden internationalen Standards:
 
+**Broadcast-/Realtime-spezifisch:**
+
+| Standard | Relevanz |
+|----------|----------|
+| **EBU R143** | Sicherheitsanforderungen an Broadcast-Geräte: Accounts, Protokolle, Logging, Härtung (Hardening-Katalog) |
+| **EBU R148** | Mindesttests für Netzwerksicherheit an vernetztem Media Equipment |
+| **EBU R160 S1** | Leitfaden Basis- und vertiefte Schwachstellenprüfung an Broadcast-Geräten |
+| **AMWA BCP-003-01/02** | TLS und Authorization (OAuth2/JWT via IS-10) für NMOS APIs |
+| **JT-NM TR-1001-1** | Erwartetes Verhalten von ST-2110-Media-Nodes im Netzwerk |
+| **SMPTE ST 2110** | Professional Media over IP (Referenzrahmen) |
+| **SMPTE ST 2059** | PTP-basierte Synchronisation im Broadcast (Timing-Risiken) |
+
+**IT-Security / OT-Methodik:**
+
 | Standard | Relevanz |
 |----------|----------|
 | **IEC 62443-3-2** | Risk Assessment Methodik für OT/ICS-Systeme |
@@ -203,6 +233,11 @@ PiBroadGuard orientiert sich an folgenden internationalen Standards:
 
 Diese Standards werden im generierten Report referenziert, um die Bewertung
 zu legitimieren und für externe Stellen nachvollziehbar zu machen.
+
+**Wichtiger Hinweis:** EBU, AMWA und JT-NM liefern Anforderungen, Testprofile und
+Verhaltensregeln für IP-Media-Systeme – aber **keine zentrale Vulnerability-API** für
+Broadcast-Geräte. Broadcast-spezifische Prüfregeln müssen deshalb als eigenes
+Regelwerk modelliert werden (nicht als fertiger Feed konsumierbar).
 
 ---
 
@@ -250,9 +285,10 @@ Später optional:
 | Integration | Zweck |
 |-------------|-------|
 | **phpIPAM** | Geräte-Import aus bestehender IP-Adressverwaltung |
-| **NVD API v2** | CVE-Details und Lösungshinweise |
-| **CISA KEV** | Aktiv ausgenutzte Schwachstellen (lokaler Cache) |
+| **NVD API v2** | CVE-Details, CVSS-Scores und Lösungshinweise |
+| **CISA KEV** | Aktiv ausgenutzte Schwachstellen (lokaler Cache, tägl. Sync) |
 | **NVD CPE API** | Präzisere Produkt-zu-CVE-Zuordnung |
+| **FIRST EPSS API** | Exploit-Wahrscheinlichkeit pro CVE (0–100%, kein API-Key) |
 
 Alle Integrationen sind optional und graceful degradiert: Wenn eine externe Quelle
 nicht erreichbar ist, arbeitet PiBroadGuard mit lokalem Cache oder ohne die
@@ -260,4 +296,4 @@ betreffende Information.
 
 ---
 
-*CONCEPT.md – PiBroadGuard v1.8 | März 2026 | Markus Gerber · markus.gerber@npn.ch*
+*CONCEPT.md – PiBroadGuard v1.12 | März 2026 | Markus Gerber · markus.gerber@npn.ch*

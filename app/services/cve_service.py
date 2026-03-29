@@ -11,6 +11,7 @@ from app.models.cve_cache import CveCache
 logger = logging.getLogger("pibroadguard.cve")
 
 NVD_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+NVD_CPE_BASE = "https://services.nvd.nist.gov/rest/json/cpes/2.0"
 # EPSS – Exploit Prediction Scoring System by FIRST.org
 # Free, no API key required. Returns exploitation probability (0–1) per CVE.
 # Spec: https://www.first.org/epss/api
@@ -22,7 +23,15 @@ async def lookup_cves(
     vendor: str,
     product: str,
     version: str = "",
+    cpe_name: Optional[str] = None,
+    has_kev: bool = False,
 ) -> List[dict]:
+    """
+    Look up CVEs for a given vendor/product.
+
+    If cpe_name is provided, uses CPE-based NVD query (more precise).
+    If has_kev=True, filters for CVEs that are in the CISA KEV catalog.
+    """
     cache_cutoff = datetime.now(timezone.utc) - timedelta(days=settings.pibg_cve_cache_ttl_days)
     cached = (
         db.query(CveCache)
@@ -36,24 +45,65 @@ async def lookup_cves(
     if cached:
         return [_to_dict(c) for c in cached]
 
-    results = await _fetch_from_nvd(vendor, product)
+    results = await _fetch_from_nvd(vendor, product, cpe_name=cpe_name, has_kev=has_kev)
     for r in results:
         db.merge(CveCache(**r, vendor=vendor, product=product, version=version))
     db.commit()
     return results
 
 
-async def _fetch_from_nvd(vendor: str, product: str) -> List[dict]:
-    keyword = f"{vendor} {product}"
+async def resolve_cpe(vendor: str, product: str) -> Optional[str]:
+    """
+    Query NVD CPE API to find a structured CPE name for a given vendor+product.
+    Returns the first matching CPE name (e.g. 'cpe:2.3:h:lawo:mc2-56:*:*:*:*:*:*:*:*')
+    or None if not found.
+    """
     headers = {}
     if settings.pibg_nvd_api_key:
         headers["apiKey"] = settings.pibg_nvd_api_key
+    keyword = f"{vendor} {product}"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                NVD_CPE_BASE,
+                params={"keywordSearch": keyword, "resultsPerPage": 5},
+                headers=headers,
+            )
+        resp.raise_for_status()
+        data = resp.json()
+        products = data.get("products", [])
+        if products:
+            return products[0].get("cpe", {}).get("cpeName")
+    except Exception as e:
+        logger.warning(f"CPE lookup failed for {vendor}/{product}: {e}")
+    return None
+
+
+async def _fetch_from_nvd(
+    vendor: str,
+    product: str,
+    cpe_name: Optional[str] = None,
+    has_kev: bool = False,
+) -> List[dict]:
+    headers = {}
+    if settings.pibg_nvd_api_key:
+        headers["apiKey"] = settings.pibg_nvd_api_key
+
+    # Build query params – CPE-based search is more precise than keyword search
+    params: dict = {"resultsPerPage": 10}
+    if cpe_name:
+        params["cpeName"] = cpe_name
+        params["isVulnerable"] = ""  # only confirmed-vulnerable CVEs for this CPE
+    else:
+        params["keywordSearch"] = f"{vendor} {product}"
+    if has_kev:
+        params["hasKev"] = ""  # restrict to CISA KEV-listed CVEs
 
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(
                 NVD_BASE,
-                params={"keywordSearch": keyword, "resultsPerPage": 10},
+                params=params,
                 headers=headers,
             )
         resp.raise_for_status()

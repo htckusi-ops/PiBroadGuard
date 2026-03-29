@@ -3789,3 +3789,584 @@ Fehlgeschlagene Auth-Versuche werden weiterhin **jeden** Versuch auf WARNING gel
 ---
 
 *Update v1.9 | März 2026*
+
+---
+
+# BDSA_SPEC.md – Update v1.10
+## Device Probe + Discovery Scan Mode
+
+Ergänzung zu v1.0–v1.9 | Stand: März 2026
+
+---
+
+## ÄNDERUNG 1: Device Probe – Leichtgewichtiger Gerätescan
+
+### Hintergrund
+
+Ein **Device Probe** ist ein unabhängiger, leichtgewichtiger Nmap-Scan auf Geräte-Ebene –
+kein vollständiges Assessment. Er dient dazu, schnell zu prüfen, ob ein Gerät erreichbar ist
+und welche Ports offen sind, ohne den Assessment-Workflow zu durchlaufen.
+
+Probes laufen ausserhalb der Scan-Queue und haben keine Auswirkung auf bestehende Assessments.
+
+### Neue DB-Tabelle: `probe_results`
+
+```
+id                    INTEGER PK
+device_id             INTEGER FK -> devices.id
+scan_profile          TEXT              -- verwendetes Profil
+status                TEXT              -- running | complete | failed
+port_count            INTEGER           -- Anzahl offener Ports
+raw_nmap_output       TEXT              -- Nmap-XML
+scan_results_json     TEXT              -- JSON-Array geparster Ports
+observations          TEXT              -- Freitext-Notizen des Engineers
+duration_seconds      REAL
+nmap_version          TEXT
+exit_code             INTEGER
+started_at            DATETIME
+completed_at          DATETIME
+initiated_by          TEXT              -- BDSA-Username
+```
+
+### API-Endpunkte
+
+```
+POST   /api/v1/devices/{id}/probes              # Probe starten
+GET    /api/v1/devices/{id}/probes              # Alle Probes dieses Geräts
+GET    /api/v1/devices/{id}/probes/{probe_id}   # Einzelner Probe (inkl. Status-Polling)
+PUT    /api/v1/devices/{id}/probes/{probe_id}   # Observations aktualisieren
+```
+
+### Ausführungsmodell
+
+Probes laufen via `asyncio.create_task()` direkt – sie umgehen die Scan-Queue.
+Begründung: Probes sind explorative Aktionen und sollen nicht durch wartende
+Assessment-Scans blockiert werden.
+
+### UI: Probes-Sektion in `device_form.html`
+
+Unterhalb der Assessment-Historie wird eine neue Sektion **Gerätesonden (Probes)** angezeigt:
+
+- Profil-Dropdown + "Probe starten"-Button
+- Live-Polling alle 2 Sekunden während Probe läuft
+- Port-Tabelle (Port | Protokoll | Service | Produkt/Version | State)
+- Observations-Textfeld (freie Notizen, direkt speicherbar)
+- Paginierte Probe-Historie (10 Einträge pro Seite)
+- Badge: Anzahl offener Ports im Ergebnis
+
+**Abgrenzung zur Scan-Autorisierung:** Probes zeigen keinen Autorisierungs-Dialog –
+sie sind explizit als schnelle Erkundungsscans gedacht. Für reguläre Assessments
+bleibt die Autorisierungspflicht bestehen.
+
+---
+
+## ÄNDERUNG 2: Discovery Scan Mode
+
+### Hintergrund
+
+Ein **Discovery-Scan** ist ein Nmap-Scan, der bewusst **kein vollständiges Security-Assessment**
+durchführen soll. Er dient der Bestandsaufnahme (welche Ports sind offen?), ohne den vollen
+Regelwerk-Auswertungs- und Scoring-Prozess auszulösen.
+
+Das Gegenteil ist ein **Assessment-Scan**: Regelwerk, CVE-Lookup, Scoring, vollständige Findings.
+
+### Neues Feld: `is_discovery` auf `ScanProfile`
+
+```python
+# app/models/scan_profile.py
+is_discovery = Column(Boolean, default=False)
+```
+
+Wenn `is_discovery=True`, überspringt der Scan:
+- Regelwerk-Auswertung (keine auto-generierten Findings)
+- CVE-Lookup
+- Scoring-Berechnung
+
+### Neues Feld: `scan_mode` auf `Assessment`
+
+```python
+# app/models/assessment.py
+scan_mode = Column(String, default="assessment")  # "assessment" | "discovery"
+```
+
+Wird beim Scan-Start automatisch gesetzt:
+```python
+assessment.scan_mode = "discovery" if is_discovery else "assessment"
+```
+
+### Verhalten im Scan-Workflow (`scans.py`)
+
+```python
+if is_discovery:
+    assessment.status = "scan_complete"
+    assessment.scan_mode = "discovery"
+    db.commit()
+    # Früher Return – kein Regelwerk, kein CVE, kein Scoring
+    return
+# Normaler Workflow (Regelwerk, Scoring) folgt hier
+```
+
+### Report-Template: `report_discovery.html.j2`
+
+Separate Jinja2-Vorlage mit lila Akzentfarbe und "🔍 Discovery-Modus"-Badge.
+Enthält:
+- Gerätemetadaten-Tabelle
+- Port-Tabelle mit allen Scan-Resultaten
+- Scan-Seiteneffekte-Fragen (Antworten farbcodiert: Ja=rot, Nein=grün, Teilweise=amber)
+- Methodikhinweis
+- Anhang: Nmap-Raw-XML (escaped)
+
+`report_service.py` wählt das Template automatisch anhand von `assessment.scan_mode`:
+```python
+template_name = "report_discovery.html.j2" if scan_mode == "discovery" else "report.html.j2"
+```
+
+### UI-Anpassungen (`assessment.html`)
+
+Bei Discovery-Assessments:
+- Header-Badge: "🔍 Discovery-Modus – kein Scoring, kein Regelwerk"
+- Score-Balken und Gesamtbewertung: ausgeblendet
+- "Neu berechnen"-Button: ausgeblendet
+- Manuelle Fragen: nur `scan_effects`-Kategorie sichtbar
+- Autorisierungs-Modal: Hinweis wenn das gewählte Profil `is_discovery=true` hat
+
+`settings.html` zeigt Discovery-Profile mit lila "🔍 discovery"-Badge.
+Inline-Edit und "Profil hinzufügen"-Modal enthalten `is_discovery`-Checkbox.
+
+### Migration 011
+
+```python
+# migrations/versions/011_discovery_mode.py
+# Revision: 011, down_revision: 010
+# Fügt hinzu:
+# - scan_profiles.is_discovery (Boolean, server_default="0")
+# - assessments.scan_mode (String, server_default="assessment")
+```
+
+---
+
+## ÄNDERUNG 3: Gerätetyp → Scan-Profil-Vorschlag
+
+Neue API-Abfrage, die anhand des Gerätetyps ein geeignetes Scan-Profil empfiehlt:
+
+```
+GET /api/v1/system/scan-profile-suggestion?device_type=camera
+```
+
+**Response:**
+```json
+{
+  "device_type": "camera",
+  "suggested_profile": "passive",
+  "rationale": "Kameras sind oft eingeschränkt härtbar und empfindlich auf aggressive Scans.",
+  "standard_ref": "IEC 62443-3-2 / NIST SP 800-115 / BSI ICS"
+}
+```
+
+Die Empfehlung basiert auf einer internen Mapping-Tabelle in `system.py`.
+
+---
+
+## ZUSAMMENFASSUNG v1.10
+
+| Bereich | Änderung |
+|---------|----------|
+| DB | Neue Tabelle `probe_results` (Migration 010) |
+| DB | `scan_profiles.is_discovery` (Migration 011) |
+| DB | `assessments.scan_mode` (Migration 011) |
+| Service | Probe-Ausführung via `asyncio.create_task()` (kein Queue) |
+| API | `POST/GET /api/v1/devices/{id}/probes` |
+| API | `GET /api/v1/system/scan-profile-suggestion` |
+| Frontend | Probes-Sektion in `device_form.html` |
+| Frontend | Discovery-Mode-Anzeige in `assessment.html` und `settings.html` |
+| Template | Neues `report_discovery.html.j2` |
+
+---
+
+*Update v1.10 | März 2026*
+
+---
+
+# BDSA_SPEC.md – Update v1.11
+## PDF-Reports, Regelwerk-Verwaltung, Re-Assessment-Fälligkeit, Backup-Erweiterungen
+
+Ergänzung zu v1.0–v1.10 | Stand: März 2026
+
+---
+
+## ÄNDERUNG 1: PDF-Report-Generierung via WeasyPrint
+
+### Neue Report-Format-Option
+
+Neben Markdown, HTML und JSON gibt es neu **PDF-Export**:
+
+```
+GET /api/v1/assessments/{id}/report/pdf     # PDF-Report herunterladen
+```
+
+**Implementierung:** WeasyPrint (server-seitig, kein Browser benötigt)
+- Rendert den bestehenden HTML-Report via `weasyprint.HTML(string=html).write_pdf()`
+- CSS-Ergänzungen für Print: `page-break-inside: avoid`, `thead { display: table-header-group }`
+- Responsive-Klassen werden für PDF optimiert
+
+**Neue Abhängigkeit:**
+```
+weasyprint>=60.0
+```
+
+WeasyPrint benötigt zusätzliche System-Dependencies (Cairo, Pango, GLib):
+```dockerfile
+# Dockerfile-Ergänzung
+RUN apt-get install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+    libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
+```
+
+**Frontend:** PDF-Download-Button im Report-Tab von `assessment.html`.
+
+---
+
+## ÄNDERUNG 2: Regelwerk-Verwaltung im UI
+
+### Neue Seite: `rules.html`
+
+Vollständige CRUD-Verwaltung des YAML-Regelwerks über das Webinterface:
+
+**Features:**
+- Tabellarische Ansicht aller Regeln (rule_key, title, severity, affects_score)
+- Live-Filter nach Severity, Kategorie und Suchbegriff
+- Paginierung (25 pro Seite)
+- Inline-Bearbeitung: Zeile aufklappen → alle Felder editierbar
+- Zeilen-Reihenfolge: Verschieben nach oben/unten
+- Neue Regel hinzufügen (Formular unterhalb der Tabelle)
+- Regel löschen (mit Bestätigungsdialog)
+
+### Neue API-Endpunkte
+
+```
+GET    /api/v1/rules                    # Alle Regeln
+POST   /api/v1/rules                    # Neue Regel anlegen
+PUT    /api/v1/rules/{rule_key}         # Regel bearbeiten
+DELETE /api/v1/rules/{rule_key}         # Regel löschen
+POST   /api/v1/rules/{rule_key}/move    # Position verschieben (body: {"direction": "up"|"down"})
+```
+
+Änderungen am Regelwerk werden direkt in der SQLite-DB gespeichert (nicht mehr nur YAML).
+Die YAML-Datei dient weiterhin als Seed beim ersten Start.
+
+---
+
+## ÄNDERUNG 3: Re-Assessment-Fälligkeitsliste
+
+### Neue Seite: `reassessment-due.html`
+
+Standalone-Seite, die alle Geräte anzeigt, deren periodisches Re-Assessment ansteht oder überfällig ist.
+
+**Spalten:** Gerät | Letztes Assessment | Bewertung | Re-Assessment fällig | Tage bis/seit Fälligkeit | Aktionen
+
+**Aktionen:**
+- Direkt zu bestehendem Assessment navigieren
+- Neues Assessment starten
+
+**Filter:** Nur überfällige / Alle / Bald fällig (konfigurierbarer Horizont)
+
+### Neuer API-Endpunkt
+
+```
+GET /api/v1/devices/reassessment-due?days_ahead=30
+```
+
+Gibt alle Devices zurück, deren `reassessment_due`-Datum im angegebenen Horizont liegt
+oder bereits überschritten ist.
+
+### Dashboard-Integration (`index.html`)
+
+- Kachel: Anzahl überfälliger Re-Assessments (mit Link auf `reassessment-due.html`)
+- Kompaktes Widget: Nächste 5 fällige Geräte
+
+---
+
+## ÄNDERUNG 4: Backup-Erweiterungen (Löschen + Wiederherstellen)
+
+Ergänzung zu Abschnitt 1 aus Update v1.4:
+
+### Neuer Endpunkt: Backup löschen
+
+```
+DELETE /api/v1/system/backup/{filename}    # Einzelnes Backup löschen
+```
+
+### Neuer Endpunkt: Backup wiederherstellen
+
+```
+POST /api/v1/system/backup/restore/{filename}    # Backup als neue DB aktivieren
+```
+
+**Restore-Verhalten:**
+1. Backup-Datei verifizieren (existiert, lesbar)
+2. Aktuelle DB in temporäres Backup schreiben (`pibroadguard-prerestore-{ts}.db`)
+3. Backup-Datei als neue aktive DB einsetzen
+4. App-Neustart erforderlich (Hinweis im UI)
+
+**UI:** Auf der Settings-Seite erhält jede Backup-Zeile Buttons für [Herunterladen], [Wiederherstellen] und [Löschen].
+
+---
+
+## ÄNDERUNG 5: Duplikat-Findings bei Re-Scan verhindert
+
+Wenn ein Assessment erneut gescannt wird (z.B. periodisch oder nach Änderungen),
+werden Findings nicht dupliziert, sondern **upserted**:
+
+- **Bestehender Finding mit gleichem `rule_key`:** Status und Kompensation werden erhalten,
+  `evidence` und `title` werden aktualisiert.
+- **Neuer Finding ohne Entsprechung:** Wird neu angelegt.
+- **Alter Finding der nicht mehr zutrifft** (Port geschlossen): Status bleibt erhalten,
+  aber Finding wird als stale markiert (kein automatisches Löschen offener Findings).
+- **ScanResult-Zeilen:** Werden vor dem Re-Scan gelöscht und neu befüllt.
+
+---
+
+## ZUSAMMENFASSUNG v1.11
+
+| Bereich | Änderung |
+|---------|----------|
+| Report | PDF-Export via WeasyPrint (`GET /api/v1/assessments/{id}/report/pdf`) |
+| Frontend | Neue Seite `rules.html` – CRUD-Regelwerk-Verwaltung |
+| Frontend | Neue Seite `reassessment-due.html` – Fälligkeitsliste |
+| Frontend | Dashboard-Kachel + Widget für Re-Assessment-Fälligkeiten |
+| Frontend | Settings: Backup-Zeilen mit Löschen/Wiederherstellen-Buttons |
+| API | `GET/POST/PUT/DELETE/move /api/v1/rules` |
+| API | `GET /api/v1/devices/reassessment-due` |
+| API | `DELETE /api/v1/system/backup/{filename}` |
+| API | `POST /api/v1/system/backup/restore/{filename}` |
+| Backend | Upsert-Logik für Findings bei Re-Scan |
+| Dependency | `weasyprint>=60.0` + System-Libs |
+
+---
+
+*Update v1.11 | März 2026*
+
+---
+
+# BDSA_SPEC.md – Update v1.12
+## EPSS-Integration, Scan-Profil-Verbesserungen, Scan-Initiator, Scan-Seiteneffekte
+
+Ergänzung zu v1.0–v1.11 | Stand: März 2026
+
+---
+
+## ÄNDERUNG 1: EPSS-Integration (Exploit Prediction Scoring System)
+
+### Was ist EPSS?
+
+EPSS (Exploit Prediction Scoring System) von FIRST.org schätzt die Wahrscheinlichkeit,
+dass eine CVE innerhalb der nächsten 30 Tage aktiv ausgenutzt wird (0.0–1.0 Score + Perzentile).
+Die API ist kostenlos und benötigt keinen API-Key.
+
+**API-URL:** `https://api.first.org/data/1.0/epss?cve=CVE-XXXX-YYYY`
+
+### Implementierung in `cve_service.py`
+
+```python
+async def get_epss_scores(cve_ids: list[str]) -> dict[str, dict]:
+    """
+    Batch-Abfrage für bis zu 30 CVE-IDs gleichzeitig.
+    Gibt Dict {cve_id: {"epss": 0.123, "percentile": 0.987}} zurück.
+    Graceful Fallback: leeres Dict bei Netzwerkfehler.
+    """
+```
+
+### API-Integration
+
+Der bestehende CVE-Lookup-Endpunkt wird mit EPSS-Daten angereichert:
+
+```
+GET /api/v1/cve/lookup?vendor=...&product=...
+→ jede CVE enthält neu: "epss_score": 0.123, "epss_percentile": 0.987
+```
+
+Zusätzlicher direkter EPSS-Endpunkt:
+```
+GET /api/v1/cve/epss?cve=CVE-2021-44228,CVE-2023-12345
+```
+
+### UI-Darstellung
+
+Im CVE-Lookup-Dialog und in Finding-Karten:
+- EPSS-Score als Badge (z.B. "EPSS 12.3%")
+- Rot wenn Perzentile > 90 (hohes relatives Exploit-Risiko)
+
+---
+
+## ÄNDERUNG 2: Scan-Profil-Verbesserungen
+
+### SYN-Scan-Upgrade bei verfügbaren Capabilities
+
+`nmap_service.py` führt beim Start einen Capability-Check durch. Falls `CAP_NET_RAW`
+verfügbar ist, werden Profil-Flags automatisch von `-sT` (TCP-Connect) auf `-sS` (SYN Stealth)
+umgestellt. Das verbessert die Präzision und verringert sichtbare Verbindungsaufbauten.
+
+### Retries-Konfiguration pro Profil
+
+| Profil | Ergänzte Flags |
+|--------|----------------|
+| `passive` | `--max-retries 1` |
+| `standard` | `--max-retries 2` |
+| `extended` | `--max-retries 1 --defeat-icmp-ratelimit` |
+
+### `version_deep`-Profil überarbeitet
+
+Das ursprüngliche `version_deep`-Profil verwendete aggressive NSE-Scripts (`-sC`), die nach
+IEC 62443 und BSI ICS-Empfehlungen für produktive Broadcast-Geräte ungeeignet sind.
+Das überarbeitete Profil:
+- Entfernt `-sC` (NSE-Scripts deaktiviert)
+- Fokus auf reine Versionserkennung mit hoher Intensität (`--version-intensity 9`)
+- Behält UDP-Scan für Discovery-relevante Protokolle (SNMP, SSDP, mDNS)
+
+### Flag-Bereinigung beim Speichern
+
+Beim Anlegen oder Bearbeiten von Scan-Profilen werden automatisch bereinigt:
+- Führendes `nmap`-Token (`nmap -sV ...` → `-sV ...`)
+- Platzhalter `<target>` (wird entfernt)
+
+---
+
+## ÄNDERUNG 3: Scan-Initiator-Anzeige
+
+Nach Abschluss eines Scans lädt das Assessment-UI die zugehörige `ScanAuthorization`
+und zeigt an, wer den Scan ausgelöst hat:
+
+| Initiator | Anzeige |
+|-----------|---------|
+| Manueller Start | Benutzername (aus Basic Auth) |
+| Geplanter Scan | 🤖 + `authorized_by_name` aus Schedule |
+
+**Backend:** `initiated_by` wird in `ScanAuthorization.confirmed_by_user` gespeichert.
+Scheduled Scans setzen `"scheduler"` als `confirmed_by_user`.
+
+---
+
+## ÄNDERUNG 4: Scan-Seiteneffekte-Fragen (`scan_effects`-Kategorie)
+
+### Hintergrund
+
+Bei Broadcast-Geräten können selbst schonende Nmap-Scans Seiteneffekte auslösen
+(Reboots, Signalunterbrechungen, False-Positive-Alarme). Diese Beobachtungen sollen
+systematisch erfasst werden.
+
+### Neue Fragenkategorie in `QUESTION_CATALOG`
+
+```python
+"scan_effects": [
+    {"key": "effect_reboot",     "question": "Hat das Gerät während/nach dem Scan neu gestartet?"},
+    {"key": "effect_service",    "question": "Wurden Services unterbrochen oder gestört?"},
+    {"key": "effect_av_alert",   "question": "Wurde ein Alarm in einer AV/Monitoring-Konsole ausgelöst?"},
+    {"key": "effect_performance","question": "War eine messbare Leistungsbeeinträchtigung feststellbar?"},
+    {"key": "effect_config",     "question": "Hat der Scan eine Konfigurationsänderung am Gerät verursacht?"},
+    {"key": "effect_notes",      "question": "Weitere Beobachtungen (Freitext)"},
+]
+```
+
+### Sichtbarkeitsregeln
+
+| Bedingung | `scan_effects` sichtbar |
+|-----------|------------------------|
+| Discovery-Profil (`is_discovery=True`) | Immer – ist die primäre Fragengruppe |
+| Aggressives Profil (extended, version_deep) | Automatisch hervorgehoben (amber) |
+| Passive/Standard-Profil | Nur wenn bereits Antworten vorhanden |
+
+### Verwendung im Discovery-Report
+
+Im `report_discovery.html.j2`-Template werden die `scan_effects`-Antworten mit
+farbcodierten Badges dargestellt:
+- `yes` → roter Badge (potenziell problematisch)
+- `no` → grüner Badge (kein Effekt)
+- `partial` → gelber Badge
+
+---
+
+## ZUSAMMENFASSUNG v1.12
+
+| Bereich | Änderung |
+|---------|----------|
+| Service | EPSS-Lookup in `cve_service.get_epss_scores()` |
+| API | EPSS-Anreicherung in `GET /api/v1/cve/lookup` |
+| API | `GET /api/v1/cve/epss?cve=...` |
+| Backend | SYN-Scan-Upgrade bei CAP_NET_RAW (nmap_service.py) |
+| Backend | Retries-Flags pro Profil (passive, standard, extended) |
+| Backend | `version_deep`-Profil überarbeitet (kein `-sC`) |
+| Backend | Flag-Bereinigung beim Profil-Speichern |
+| Frontend | Scan-Initiator-Anzeige im Assessment-Tab |
+| Fragenkat. | Neue Kategorie `scan_effects` (6 Fragen) |
+| Template | `scan_effects`-Antworten im Discovery-Report mit Badges |
+
+---
+
+*Update v1.12 | März 2026*
+
+---
+
+# Roadmap / Geplante Erweiterungen
+
+Die folgenden Erweiterungen sind für zukünftige Versionen geplant.
+Detaillierte Aufgabenlisten und Prioritäten sind in `TODO.md` dokumentiert.
+
+## Hybrides Audit-Modell (Zielarchitektur)
+
+PiBroadGuard wird nach einem vierschichtigen Modell weiterentwickelt:
+
+| Modul | Inhalt |
+|-------|--------|
+| **A – Discovery** | Nmap + NMOS IS-04 Query + rDNS + MAC OUI |
+| **B – Broadcast Compliance** | EBU R143/R148/R160 S1, AMWA BCP-003, SMPTE ST 2059, JT-NM TR-1001-1 |
+| **C – Vulnerability Enrichment** | NVD (CPE-basiert), CISA KEV, CISA ICS Advisories, EPSS, CSAF 2.0 |
+| **D – Externe Scanner** | Greenbone GMP, Tenable API, Rapid7 InsightVM (optional) |
+| **E – Broadcast Risk Layer** | PTP/Timing-Kritikalität, Real-Time-Media-Segmentierung |
+
+## Neue Broadcast-Standards als Referenz
+
+Ergänzung zu den bestehenden Standards (IEC 62443, NIST SP 800-82/-115):
+
+| Standard | Relevanz für PiBroadGuard |
+|----------|---------------------------|
+| **EBU R143** | Hardening-Katalog: Accounts, Protokolle, Logging, Härtung, Defaults |
+| **EBU R148** | Mindesttests für Netzwerksicherheit an Media Equipment |
+| **EBU R160 S1** | Leitfaden Basis- und vertiefte Schwachstellenprüfung an Broadcast-Geräten |
+| **AMWA BCP-003-01/02** | TLS und Authorization für NMOS APIs (OAuth2/JWT, IS-10) |
+| **AMWA IS-04/05/10** | NMOS Discovery, Connection Management, Authorization API |
+| **JT-NM TR-1001-1** | Erwartetes Verhalten von ST-2110-Media-Nodes |
+| **SMPTE ST 2110** | Professional Media over IP (Referenzrahmen) |
+| **SMPTE ST 2059** | PTP-Synchronisation in Broadcast-Netzwerken |
+
+## Neue Datenquellen (geplant)
+
+| Quelle | Priorität | Zweck |
+|--------|-----------|-------|
+| NVD CPE API v2 | Prio 1 | Präzisere CVE-Suche via strukturierten Produktnamen |
+| NVD `hasKev`/`isVulnerable` Filter | Prio 1 | Gezieltere NVD-Abfragen |
+| CISA ICS Advisories (RSS) | Prio 1 | OT/Appliance-Advisories für Broadcast-ähnliche Geräte |
+| CSAF 2.0 Vendor Advisories | Prio 2 | Maschinenlesbare Herstellerhinweise (Siemens, Bosch, Cisco…) |
+| AMWA NMOS IS-04 Query API | Prio 2 | Passives Geräte-Inventar ohne Portscan |
+| Greenbone / Tenable / Rapid7 | Prio 3 | Externe Scanner-Konsolidierung |
+
+## Neue Regelwerk-Kategorien (geplant)
+
+| Kategorie | Fragenkatalog | Standard |
+|-----------|---------------|---------|
+| `nmos` | IS-04 vorhanden, IS-10 Auth, TLS/BCP-003, Registry-Adresse | AMWA BCP-003, IS-10 |
+| `ptp_timing` | PTP vorhanden, GM-Rolle möglich, Domain gesperrt, Netz isoliert | SMPTE ST 2059, JT-NM TR-1001-1 |
+| `network_arch` | Management/Media getrennt, VLAN erzwungen, Multicast kontrolliert | EBU R143, IEC 62443-3-2 |
+
+## Neue Port-Regeln (geplant)
+
+| rule_key | Port | Severity | Standard |
+|----------|------|----------|---------|
+| `ptp_event_open` | UDP 319 | medium | SMPTE ST 2059 |
+| `ptp_general_open` | UDP 320 | medium | SMPTE ST 2059 |
+| `nmos_registry_http` | TCP 8080 | medium | AMWA BCP-003 |
+| `ssdp_open` | UDP 1900 | low | EBU R143 §4.2 |
+| `mdns_open` | UDP 5353 | info | JT-NM TR-1001-1 |
+| `bacnet_open` | UDP 47808 | high | IEC 62443 |
+
+---
+
+*Roadmap – Stand März 2026 | Details: TODO.md*

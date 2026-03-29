@@ -127,17 +127,48 @@ def calculate_overall_rating(scores: Dict[str, int]) -> str:
     return "red"
 
 
+# ── Broadcast-specific risk overrides ────────────────────────────────────────
+# In broadcast environments certain risk factors carry higher weight than in
+# classical IT.  These rule keys / question_keys trigger additional overrides.
+# References: EBU R143, SMPTE ST 2059, JT-NM TR-1001-1, IEC 62443-3-2
+
+# Rule keys that trigger a critical override when status is not compensated/accepted
+BROADCAST_CRITICAL_RULE_KEYS = {
+    "ptp_grandmaster_risk",       # Rogue Grandmaster – destroys whole-studio timing
+}
+
+# Combinations: if both keys are present as open findings → critical override
+BROADCAST_COMBINATION_OVERRIDES = [
+    (
+        {"telnet_open", "mgmt_media_not_separated"},
+        "Telnet + ungekoppelte Management/Media-Netze → kritisches Risiko (EBU R143)",
+    ),
+    (
+        {"ftp_open", "mgmt_media_not_separated"},
+        "FTP + ungekoppelte Management/Media-Netze → kritisches Risiko (EBU R143)",
+    ),
+]
+
+# If lifecycle_score is below this and no_security_updates finding is open → extra penalty
+BROADCAST_LIFECYCLE_PENALTY_THRESHOLD = 30
+BROADCAST_LIFECYCLE_EXTRA_PENALTY = 10
+
+
 def apply_override_rules(rating: str, findings: List[Any], scores: Dict[str, int] = None) -> str:
     critical_uncompensated = 0
     critical_total = 0
+    open_rule_keys: set = set()
 
     for f in findings:
         sev = (f.get("severity") if isinstance(f, dict) else getattr(f, "severity", "")) or ""
         status = (f.get("status") if isinstance(f, dict) else getattr(f, "status", "open")) or "open"
+        rule_key = (f.get("rule_key") if isinstance(f, dict) else getattr(f, "rule_key", "")) or ""
         if sev == "critical":
             critical_total += 1
             if status not in ("compensated", "false_positive", "accepted"):
                 critical_uncompensated += 1
+        if status not in ("false_positive", "accepted", "compensated"):
+            open_rule_keys.add(rule_key)
 
     if critical_total >= 2:
         return "red"
@@ -147,6 +178,15 @@ def apply_override_rules(rating: str, findings: List[Any], scores: Dict[str, int
     # Lifecycle cap: lifecycle score < 20 → maximum yellow (cannot be green)
     if scores and scores.get("lifecycle", 100) < 20 and rating == "green":
         return "yellow"
+
+    # Broadcast override: PTP grandmaster risk as open finding → cap at orange
+    if open_rule_keys & BROADCAST_CRITICAL_RULE_KEYS and rating == "green":
+        return "orange"
+
+    # Broadcast combination overrides → force orange minimum
+    for combo_keys, _reason in BROADCAST_COMBINATION_OVERRIDES:
+        if combo_keys.issubset(open_rule_keys) and rating in ("green",):
+            return "orange"
 
     return rating
 
@@ -263,6 +303,13 @@ def recalculate_detailed(findings: List[Any], findings_dicts: List[Dict] = None)
             if status not in ("compensated", "false_positive", "accepted"):
                 critical_uncompensated += 1
 
+    open_rule_keys: set = set()
+    for f in use:
+        status = (f.get("status") if isinstance(f, dict) else getattr(f, "status", "open")) or "open"
+        rule_key = (f.get("rule_key") if isinstance(f, dict) else getattr(f, "rule_key", "")) or ""
+        if status not in ("false_positive", "accepted", "compensated"):
+            open_rule_keys.add(rule_key)
+
     if critical_total >= 2:
         final_rating = "red"
         override_reasons.append("2 oder mehr kritische Findings → automatisch Rot")
@@ -273,6 +320,19 @@ def recalculate_detailed(findings: List[Any], findings_dicts: List[Dict] = None)
     if raw_scores.get("lifecycle", 100) < 20 and final_rating == "green":
         final_rating = "yellow"
         override_reasons.append("Lifecycle-Score < 20 → maximal Gelb")
+
+    # Broadcast-specific overrides
+    if open_rule_keys & BROADCAST_CRITICAL_RULE_KEYS and final_rating == "green":
+        final_rating = "orange"
+        override_reasons.append(
+            "Broadcast-Override: PTP Grandmaster-Risiko offen → mindestens Orange "
+            "(SMPTE ST 2059, JT-NM TR-1001-1)"
+        )
+    for combo_keys, reason in BROADCAST_COMBINATION_OVERRIDES:
+        if combo_keys.issubset(open_rule_keys) and final_rating == "green":
+            final_rating = "orange"
+            override_reasons.append(f"Broadcast-Override: {reason}")
+            break
 
     decision_path = f"override: {override_reasons[0]}" if override_reasons else "weighted_average"
 

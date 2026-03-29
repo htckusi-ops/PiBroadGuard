@@ -71,16 +71,26 @@
 <h2>Angewandte Methodik und Standards</h2>
 <table>
   <tr><th>Standard</th><th>Relevanz</th></tr>
-  <tr><td>IEC 62443-3-2</td><td>Security Risk Assessment für OT/ICS-Systeme</td></tr>
-  <tr><td>IEC 62443-4-2</td><td>Component Security Requirements (Gerätebewertung)</td></tr>
-  <tr><td>NIST SP 800-82r3</td><td>Guide to OT Security</td></tr>
-  <tr><td>NIST SP 800-115</td><td>Technical Guide to Security Testing</td></tr>
-  <tr><td>NIST SP 800-30r1</td><td>Risk Assessment Methodology</td></tr>
+  <tr><td><strong>IEC 62443-3-2</strong></td><td>Security Risk Assessment für OT/ICS-Systeme (Risikobewertung, Zonen)</td></tr>
+  <tr><td><strong>IEC 62443-4-2</strong></td><td>Component Security Requirements (Gerätebewertung)</td></tr>
+  <tr><td><strong>IEC 62443-4-1</strong></td><td>Secure Product Development Lifecycle (SDL/PSIRT-Bewertung)</td></tr>
+  <tr><td><strong>NIST SP 800-82r3</strong></td><td>Guide to OT Security (OT-Risikomanagement)</td></tr>
+  <tr><td><strong>NIST SP 800-115</strong></td><td>Technical Guide to Security Testing (Scan-Methodik)</td></tr>
+  <tr><td><strong>NIST SP 800-30r1</strong></td><td>Risk Assessment Methodology (Impact × Likelihood)</td></tr>
+  <tr style="background:#f8f4ff"><td><strong>EBU R143</strong></td><td>Security Requirements für vernetzte Broadcast-Geräte (Hardening-Katalog)</td></tr>
+  <tr style="background:#f8f4ff"><td><strong>EBU R148</strong></td><td>Mindesttests für Netzwerk-Sicherheit von Media Equipment</td></tr>
+  <tr style="background:#f8f4ff"><td><strong>EBU R160 S1</strong></td><td>Leitfaden für Basis- und vertiefte Schwachstellenprüfung an Broadcast-Geräten</td></tr>
+  <tr style="background:#f8f4ff"><td><strong>AMWA BCP-003-01</strong></td><td>TLS für NMOS APIs (Certificate Provisioning)</td></tr>
+  <tr style="background:#f8f4ff"><td><strong>AMWA BCP-003-02</strong></td><td>Authorization für NMOS APIs (OAuth2/JWT via IS-10)</td></tr>
+  <tr style="background:#f8f4ff"><td><strong>SMPTE ST 2110</strong></td><td>Professional Media over IP (Referenzrahmen)</td></tr>
+  <tr style="background:#f8f4ff"><td><strong>SMPTE ST 2059</strong></td><td>Synchronisation und PTP in Broadcast-Netzwerken</td></tr>
+  <tr style="background:#f8f4ff"><td><strong>JT-NM TR-1001-1</strong></td><td>Erwartetes Verhalten von ST-2110-Media-Nodes</td></tr>
 </table>
 <p class="meta">
   Scan-Tool: Nmap {{ nmap_version }}, Profil: {{ scan_profile_label }}{% if scan_profile_description %} – {{ scan_profile_description }}{% endif %}<br>
   {% if nmap_command %}<code style="font-size:0.85rem">{{ nmap_command }}</code><br>{% endif %}
   {% if auth %}Scan-Autorisierung: {{ auth.authorized_by_name }} ({{ auth.authorized_by_role }}), erteilt am {{ auth.authorization_date | date }}<br>{% endif %}
+  CVE-Datenquellen: NIST NVD API v2, CISA KEV Catalog, CISA ICS Advisories, FIRST EPSS<br>
   Bewertungsdatum: {{ assessment.created_at | date }}
 </p>
 

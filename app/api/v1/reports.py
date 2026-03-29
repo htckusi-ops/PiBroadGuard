@@ -1,4 +1,6 @@
 import logging
+import re
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,27 @@ except Exception as _pdf_import_err:
 
 router = APIRouter(tags=["reports"])
 
+_SAFE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def _report_stem(assessment: Assessment) -> str:
+    """Build a descriptive filename stem without extension.
+
+    Format: pibroadguard-YYYYMMDD-{manufacturer}-{model}-a{id}
+    Example: pibroadguard-20260329-GrassValley-AMPPNode-a17
+    """
+    date_str = (assessment.created_at or datetime.now(timezone.utc)).strftime("%Y%m%d")
+    device = getattr(assessment, "device", None)
+    mfr = _SAFE.sub("", (getattr(device, "manufacturer", "") or "").replace(" ", ""))[:20]
+    model = _SAFE.sub("", (getattr(device, "model", "") or "").replace(" ", ""))[:20]
+    parts = ["pibroadguard", date_str]
+    if mfr:
+        parts.append(mfr)
+    if model:
+        parts.append(model)
+    parts.append(f"a{assessment.id}")
+    return "-".join(parts)
+
 
 @router.get("/assessments/{assessment_id}/report/md")
 def get_report_md(assessment_id: int, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
@@ -27,8 +50,9 @@ def get_report_md(assessment_id: int, db: Session = Depends(get_db), user: str =
     if not assessment:
         raise HTTPException(404, "Assessment nicht gefunden")
     content = report_service.generate_markdown(db, assessment)
+    filename = f"{_report_stem(assessment)}.md"
     return Response(content=content, media_type="text/markdown", headers={
-        "Content-Disposition": f'attachment; filename="report-{assessment_id}.md"'
+        "Content-Disposition": f'attachment; filename="{filename}"'
     })
 
 
@@ -47,8 +71,9 @@ def get_report_json(assessment_id: int, db: Session = Depends(get_db), user: str
     if not assessment:
         raise HTTPException(404, "Assessment nicht gefunden")
     content = report_service.generate_json(db, assessment)
+    filename = f"{_report_stem(assessment)}.json"
     return Response(content=content, media_type="application/json", headers={
-        "Content-Disposition": f'attachment; filename="report-{assessment_id}.json"'
+        "Content-Disposition": f'attachment; filename="{filename}"'
     })
 
 
@@ -65,8 +90,7 @@ def get_report_pdf(assessment_id: int, db: Session = Depends(get_db), user: str 
     except Exception as exc:
         logger.error(f"PDF generation failed for assessment {assessment_id}: {exc}")
         raise HTTPException(500, f"PDF-Generierung fehlgeschlagen: {exc}")
-    device = assessment.device if hasattr(assessment, "device") else None
-    filename = f"report-{assessment_id}.pdf"
+    filename = f"{_report_stem(assessment)}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
