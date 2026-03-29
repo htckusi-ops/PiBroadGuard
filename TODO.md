@@ -132,24 +132,87 @@ präziser über die NMOS Query API inventarisiert werden als via Nmap:
   Gerätedaten importieren
 - **Integration:** Ergebnisse werden in `scan_results` gespeichert mit `source=nmos`
 
-### 2.4 AMWA IS-10 Authorization Check
+### 2.4 NMOS Passive Security Checks (ohne nmos-testing)
 
-Für NMOS-Geräte prüfen, ob IS-10 Authorization korrekt implementiert ist:
-- TLS auf NMOS-Endpoints (BCP-003-01)
-- OAuth2/JWT Token-Validierung (IS-10)
-- Zertifikat-Ablauf / Self-signed Certificate Warnung
+Diese Checks sind **ohne** nmos-testing-Sidecar umsetzbar und produktionssicher:
+
+```python
+# services/nmos_service.py – passive Checks
+async def check_nmos_tls(host: str, port: int) -> NmosSecurityResult:
+    """
+    Prüft per HTTP-Request ob NMOS IS-04 Registry ohne TLS erreichbar ist.
+    Kein mDNS, kein Seiteneffekt.
+    """
+    # GET http://host:port/x-nmos/query/v1.3/nodes → wenn 200: HTTP (unsicher)
+    # GET https://host:port/x-nmos/query/v1.3/nodes → wenn 200: HTTPS (ok)
+
+async def check_nmos_auth_required(host: str, port: int) -> NmosSecurityResult:
+    """
+    Prüft ob IS-04 APIs ohne Bearer Token zugänglich sind (IS-10 fehlt).
+    GET /x-nmos/query/v1.3/nodes ohne Authorization-Header.
+    Erwartet 401 → IS-10 aktiv; 200 → kein Schutz.
+    """
+
+async def discover_nmos_services(host: str) -> list[NmosService]:
+    """
+    Fragt NMOS IS-04 Registry ab (falls bekannte Registry-URL in Settings).
+    Listet Nodes, Devices, Senders – kein Portscan nötig.
+    """
+```
+
+Findings aus diesen Checks werden als reguläre `rule_type: nmos_check` Findings gespeichert.
 
 ---
 
 ## Priorität 3 – Langfristig / Optional
 
-### 3.1 AMWA NMOS Testing Tool Integration
+### 3.1 AMWA NMOS Testing Tool Integration (nmos-testing Sidecar)
 
-Das offizielle NMOS-Testtool (amwa-tv/nmos-testing) bietet eine HTTP-API:
-- `GET /config` – Konfiguration abfragen
-- `POST /api` – Tests remote auslösen
+**Quelle:** `github.com/AMWA-TV/nmos-testing` | Apache 2.0 | Python/Flask
+**Docker:** `amwa/nmos-testing:latest` (amd64; auf ARM64/Pi: native Python-Installation nötig)
 
-Integration als optionaler "NMOS Security Test"-Button in der Assessment-View.
+**Was das Tool abdeckt (sicherheitsrelevant):**
+
+| Suite | Tests | Security-Relevanz |
+|-------|-------|-------------------|
+| BCP-003-01 | 9 Tests | TLS-Version, Ciphers, HSTS, Zertifikat-Chain, OCSP |
+| IS-10-01 | 10 Tests | OAuth2/JWT Token-Ausstellung, Scopes, Revocation (Auth Server) |
+| IS-04-01 | HTTPS-Modus | IS-04 Node/Registry nur via HTTPS erreichbar |
+
+**API-Aufruf (HTTP POST /api):**
+```python
+# services/nmos_service.py
+async def run_nmos_compliance_test(host: str, port: int, suite: str) -> dict:
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        r = await client.post("http://localhost:5000/api", json={
+            "suite": suite,      # "BCP-003-01", "IS-04-01", "IS-10-01"
+            "host": [host],
+            "port": [port],
+            "version": ["v1.3"]
+        })
+        return r.json()
+        # Statuswerte: PASS | FAIL | WARNING | DISABLED | UNCLEAR | OPTIONAL | MANUAL
+```
+
+**⚠️ Kritischer Vorbehalt – Produktionsnetz-Blocker:**
+Das Tool erstellt eigene **mDNS-Announcements** auf dem Netzwerk. Die AMWA-Dokumentation
+schreibt explizit vor: nur in **isolierten Testsegmenten** betreiben – **nie** gegen produktive
+Nodes oder Registries. Das ist ein fundamentaler Einschränkung für den Einsatz auf dem Pi
+im produktiven Broadcast-Netz.
+
+**Bekannte Lücken:**
+- IS-10 **Resource Server**-Tests (ob NMOS-APIs unauthentifizierte Requests ablehnen) sind
+  laut GitHub Issue #544 unvollständig – genau das wäre der praktisch wichtigste Security-Check
+- BCP-003-01 erfordert vorab installiertes Test-CA-Zertifikat auf dem Zielgerät → kein passiver Check
+- `ENABLE_HTTPS` nur per Neustart umschaltbar, nicht per API
+
+**Empfohlene Integration (Zwei-Stufen-Ansatz):**
+- **Stufe 1** (bereits umsetzbar): Nmap-Regeln für NMOS-Ports + manuelle Fragen (TLS aktiv? IS-10?)
+- **Stufe 2** (optionaler Sidecar): nmos-testing Docker-Container, opt-in pro Gerät,
+  mit expliziter Warnung "Nur in isolierter Testumgebung – nicht gegen Produktionsgeräte"
+
+**Assessment-UI:** Neuer Button "NMOS Compliance Scan" nur sichtbar wenn Gerät `device_type`
+relevant (encoder, decoder, matrix) und `pibg_nmos_testing_url` in Settings konfiguriert ist.
 
 ### 3.2 Externe Scanner-Integration (Modul D)
 
