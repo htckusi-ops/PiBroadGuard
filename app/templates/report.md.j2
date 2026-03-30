@@ -85,6 +85,8 @@
 
 ## Findings ({{ findings | length }} total)
 
+*Findings werden in zwei Schritten erzeugt: (1) **Regelwerk-Matching** – der Nmap-Scan-Output wird gegen das YAML-Regelwerk abgeglichen und ergibt automatische Befunde. (2) **Externe Anreicherung** – für erkannte Produkte und CVEs werden NIST NVD, CISA KEV, CISA ICS Advisories und FIRST EPSS abgefragt. Fehlende externe Daten (z.B. kein API-Key, kein Internetzugang) werden als Hinweis ausgewiesen.*
+
 {% for f in findings %}
 ### [{{ f.severity | upper }}] {{ f.title }}
 {% if f.cve_id %}
@@ -157,11 +159,13 @@ Keine Massnahmeneinträge vorhanden.
 {% if nmap_raw_output %}
 ---
 
-## Anhang: Nmap-Rohdaten (XML)
+## Anhang: Nmap-Scan-Output
 
 Scan-Profil: **{{ scan_profile_label }}**{% if nmap_command %} · Befehl: `{{ nmap_command }}`{% endif %}
 
-```xml
+*Nur offene Ports aufgeführt. Vollständiges Scan-XML liegt im System gespeichert (Audit-Log).*
+
+```
 {{ nmap_raw_output }}
 ```
 
