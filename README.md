@@ -94,6 +94,20 @@ Transport via USB (3-Schritt-Wizard). Optionale AES-256-GCM-Verschlüsselung mit
 
 ## Angewandte Standards
 
+**Broadcast-/Realtime-spezifisch:**
+
+| Standard | Relevanz |
+|----------|----------|
+| **EBU R143** | Hardening-Katalog für Broadcast-Geräte (Accounts, Protokolle, Logging) |
+| **EBU R148** | Mindesttests für Netzwerksicherheit an Media Equipment |
+| **EBU R160 S1** | Leitfaden Basis- und vertiefte Schwachstellenprüfung |
+| **AMWA BCP-003-01/02** | TLS und OAuth2/JWT-Authorization für NMOS APIs |
+| **SMPTE ST 2110** | Professional Media over IP (Referenzrahmen) |
+| **SMPTE ST 2059** | PTP-Synchronisation im Broadcast (Timing-Risiken) |
+| **JT-NM TR-1001-1** | Erwartetes Verhalten von ST-2110-Media-Nodes |
+
+**IT-Security / OT-Methodik:**
+
 | Standard | Relevanz |
 |----------|----------|
 | **IEC 62443-3-2** | Risk Assessment für OT/ICS |
@@ -230,7 +244,7 @@ GET             /api/v1/assessments/{id}/scan/stream     # SSE
 GET             /api/v1/assessments/{id}/scoring-details # Transparent scoring
 GET/POST        /api/v1/assessments/{id}/manual-findings
 GET             /api/v1/assessments/{id}/findings
-GET             /api/v1/assessments/{id}/report/{md|html|json}
+GET             /api/v1/assessments/{id}/report/{md|html|json|pdf}
 POST            /api/v1/assessments/{id}/export
 POST            /api/v1/import
 GET/POST        /api/v1/schedules
@@ -239,8 +253,17 @@ POST            /api/v1/schedules/{id}/pause|resume|run-now
 GET             /api/v1/scan-queue/status
 GET             /api/v1/device-types
 GET             /api/v1/device-classes
+GET             /api/v1/devices/reassessment-due         # Fälligkeitsliste
+GET/POST        /api/v1/devices/{id}/probes              # Device Probe (schnell, kein Assessment)
+POST            /api/v1/devices/{id}/nmos-check          # NMOS-Sicherheitscheck
+GET/POST/PUT/DELETE /api/v1/rules                        # Regelwerk-CRUD
 GET/POST        /api/v1/usb/devices|export|import
 GET/POST        /api/v1/system/settings|backup|logs|connectivity|kev-sync
+POST            /api/v1/system/ics-sync                  # CISA ICS Advisories synchronisieren
+GET             /api/v1/system/ics-advisories            # ICS-Advisory-Suche
+GET             /api/v1/system/api-keys                  # API-Key-Status und Rate-Limits
+GET             /api/v1/cve/epss                         # FIRST EPSS-Scores (Exploit-Wahrscheinlichkeit)
+POST            /api/v1/cve/csaf-import                  # CSAF 2.0 Advisory importieren
 GET             /health  /version  (kein Auth)
 ```
 
@@ -250,14 +273,16 @@ GET             /health  /version  (kein Auth)
 
 | Seite | Beschreibung |
 |-------|-------------|
-| `/app/index.html` | Dashboard: Geräteliste, Scan-Queue-Status, nächste Schedules |
-| `/app/device_form.html` | Gerät erfassen/bearbeiten, Assessment-Historie |
+| `/app/index.html` | Dashboard: Geräteliste, Scan-Queue-Status, nächste Schedules, Re-Assessment-Fälligkeiten |
+| `/app/device_form.html` | Gerät erfassen/bearbeiten, Assessment-Historie, Device Probes |
 | `/app/assessment.html` | Assessment-Tabs: Übersicht / Scan / Fragen / Findings / Report / Schedules |
-| `/app/schedules.html` | Alle Schedules: Übersicht, Erstellen, Pause/Resume |
+| `/app/schedules.html` | Alle geplanten Scans: Übersicht, Erstellen, Pause/Resume |
+| `/app/rules.html` | Regelwerk-Verwaltung: CRUD, Filter, Inline-Bearbeitung |
+| `/app/reassessment-due.html` | Re-Assessment-Fälligkeitsliste (überfällig / bald fällig) |
 | `/app/import.html` | Scan-Paket importieren (Datei oder USB) |
 | `/app/usb_export.html` | USB-Export-Wizard (3 Schritte, optional verschlüsselt) |
 | `/app/phpipam_import.html` | Geräte aus phpIPAM importieren |
-| `/app/settings.html` | System: Konnektivität, Verschlüsselung, Backup, Logfile-Viewer |
+| `/app/settings.html` | System: Konnektivität, API-Keys, Verschlüsselung, Backup, Netzwerk-Konfiguration, Logfile-Viewer |
 
 ---
 
@@ -340,8 +365,10 @@ PiBroadGuard verwendet **SQLite** (via SQLAlchemy 2.x). Die Datenbank liegt stan
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  EXTERNE DATENQUELLEN (Caches)                                               │
 │                                                                             │
-│  cve_cache          kev_cache           system_settings                     │
-│  (NVD API, 7d TTL)  (CISA KEV, täglich) (Key-Value, persistent)            │
+│  cve_cache          kev_cache           ics_advisory_cache                  │
+│  (NVD API, 7d TTL)  (CISA KEV, täglich) (CISA ICS Advisories, täglich)    │
+│                                                                             │
+│  system_settings  (Key-Value, persistent)                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -370,6 +397,7 @@ PiBroadGuard verwendet **SQLite** (via SQLAlchemy 2.x). Die Datenbank liegt stan
 | `audit_log` | Änderungsprotokoll | `user`, `action`, `field_name`, `old_value`, `new_value` |
 | `cve_cache` | NVD-API-Cache | `cve_id`, `cvss_score`, `description`, `fetched_at` (TTL: konfigurierbar) |
 | `kev_cache` | CISA-KEV-Cache | `cve_id`, `required_action`, `known_ransomware`, `date_added_to_kev` |
+| `ics_advisory_cache` | CISA ICS Advisories | `advisory_id`, `vendor`, `product`, `cve_ids` (JSON), `advisory_url`, `fetched_at` |
 | `scan_profiles` | Nmap-Profile (YAML-Flags) | `nmap_flags` (JSON), `timeout_seconds`, `built_in`, `is_discovery` |
 | `scheduled_scans` | Geplante Scans | `trigger_type` (once/interval/cron), `interval_unit/value`, `start_hour/minute` |
 | `probe_results` | Schnelle Geräte-Probes | `ports_json`, `reachable`, `observations_json`, `raw_xml` |
@@ -523,20 +551,28 @@ findings.cve_id  ─ ─ ─ (lookup) ─ ─ ─ kev_cache.cve_id
 | **YAML-Regelwerk** | Regeln (port_open, manual_answer) | Technische Findings, broadcast-spezifische Empfehlungen |
 | **NIST NVD API** | CVE-IDs, CVSS-Scores, Beschreibungen, Patches | CVE-Findings, Severity, NVD-Lösungsvorschläge im Report |
 | **CISA KEV Feed** | Aktiv ausgenutzte CVEs, Required Action | KEV-Badge im Finding, erhöhte Severity, Dringlichkeits-Hinweis |
-| **Manuelle Fragen** | 30+ strukturierte Fragen (6 Kategorien) | Operational/Lifecycle/Vendor-Score, Report-Fragebogen |
+| **CISA ICS Advisories** | OT/ICS-spezifische Herstelleradvisories | Advisory-Abgleich für Broadcast-ähnliche Geräte (Siemens, ABB etc.) |
+| **FIRST EPSS** | Exploit-Wahrscheinlichkeit pro CVE (0–100%) | EPSS-Badge im Finding; rot wenn Perzentile > 90 |
+| **CSAF 2.0** | Maschinenlesbare Herstelleradvisories | Import via URL oder Upload; extrahiert CVEs, Produkte, Remediations |
+| **AMWA NMOS IS-04/10** | Passiver NMOS-Dienst-Check auf Geräten | TLS-Check, Auth-Check (IS-10/BCP-003) via NMOS-Endpunkte |
+| **Manuelle Fragen** | 30+ strukturierte Fragen (7 Kategorien inkl. scan_effects) | Operational/Lifecycle/Vendor-Score, Report-Fragebogen |
 | **phpIPAM** | Hostlisten mit IP/Hostname/Subnetz | Massenimport von Geräten ohne manuelle Erfassung |
 
 ---
 
 ## CVE/NVD/KEV-Verarbeitung
 
-### Übersicht: Drei externe Datenquellen
+### Übersicht: Externe Datenquellen
 
 | Quelle | URL | Zugriff | Offline-fähig |
 |--------|-----|---------|---------------|
 | **NIST NVD API v2** | `services.nvd.nist.gov/rest/json/cves/2.0` | REST, optional API-Key | Nein (Cache 7 Tage) |
+| **NIST NVD CPE API** | `services.nvd.nist.gov/rest/json/cpes/2.0` | REST, optional API-Key | Nein |
 | **CISA KEV Feed** | `cisa.gov/.../known_exploited_vulnerabilities.json` | JSON-Download | Ja (lokaler Cache) |
-| **FIRST.org EPSS** | `api.first.org/data/v1/epss` | REST, kein Key nötig | Nein (Fallback: leer) |
+| **CISA ICS Advisories** | `cisa.gov/ics-advisories.xml` (RSS) | RSS-Feed | Ja (lokaler Cache) |
+| **FIRST.org EPSS** | `api.first.org/data/1.0/epss` | REST, kein Key nötig | Nein (Fallback: leer) |
+| **CSAF 2.0** | Vendor-URL oder Upload | JSON-Fetch oder Datei | Ja (Datei-Upload) |
+| **AMWA NMOS** | `http://{device}/x-nmos/...` | HTTP auf Gerät | Ja (lokal) |
 
 ### Schritt 1: Wie werden Scan-Resultate abgeglichen?
 
@@ -711,4 +747,4 @@ Zusätzlich zu CVSS bietet PiBroadGuard den **EPSS-Score** von FIRST.org an:
 
 ---
 
-*PiBroadGuard v1.8 – Device Security Assessment Platform | März 2026 | Markus Gerber · markus.gerber@npn.ch*
+*PiBroadGuard v1.12 – Device Security Assessment Platform | März 2026 | Markus Gerber · markus.gerber@npn.ch*

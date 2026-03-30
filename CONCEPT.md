@@ -280,19 +280,24 @@ Später optional:
 
 ---
 
-## 11. Integrationen (optional)
+## 11. Integrationen
 
-| Integration | Zweck |
-|-------------|-------|
-| **phpIPAM** | Geräte-Import aus bestehender IP-Adressverwaltung |
-| **NVD API v2** | CVE-Details, CVSS-Scores und Lösungshinweise |
-| **CISA KEV** | Aktiv ausgenutzte Schwachstellen (lokaler Cache, tägl. Sync) |
-| **NVD CPE API** | Präzisere Produkt-zu-CVE-Zuordnung |
-| **FIRST EPSS API** | Exploit-Wahrscheinlichkeit pro CVE (0–100%, kein API-Key) |
+| Integration | Zweck | Status |
+|-------------|-------|--------|
+| **phpIPAM** | Geräte-Import aus bestehender IP-Adressverwaltung | ✅ implementiert |
+| **NIST NVD API v2** | CVE-Details, CVSS-Scores, Lösungshinweise | ✅ implementiert |
+| **CISA KEV Feed** | Aktiv ausgenutzte Schwachstellen (lokaler Cache, tägl. Sync) | ✅ implementiert |
+| **CISA ICS Advisories** | OT/ICS-Advisories für Broadcast-ähnliche Geräte (RSS-Cache) | ✅ implementiert |
+| **NVD CPE API** | Präzisere Produkt-zu-CVE-Zuordnung via CPE-Namen | ✅ implementiert |
+| **FIRST EPSS API** | Exploit-Wahrscheinlichkeit pro CVE (0–100%, kein API-Key) | ✅ implementiert |
+| **CSAF 2.0** | Maschinenlesbare Herstelleradvisories (URL-Fetch oder Datei-Upload) | ✅ implementiert |
+| **AMWA NMOS IS-04/10** | Passiver TLS/Auth-Check auf NMOS-fähigen Geräten | ✅ implementiert |
+| **Greenbone / Tenable** | Externe Vulnerability-Scanner-Konsolidierung | 🔶 geplant (Prio 3) |
 
 Alle Integrationen sind optional und graceful degradiert: Wenn eine externe Quelle
 nicht erreichbar ist, arbeitet PiBroadGuard mit lokalem Cache oder ohne die
-betreffende Information.
+betreffende Information. Der Status aller konfigurierten API-Keys und Rate-Limits
+ist unter **Settings → External API Keys** einsehbar.
 
 ---
 
