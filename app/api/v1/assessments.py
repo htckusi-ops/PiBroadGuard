@@ -159,11 +159,10 @@ def get_manual_findings(assessment_id: int, db: Session = Depends(get_db), user:
     scan_mode = getattr(assessment, "scan_mode", None) or "assessment"
     if scan_mode != "discovery":
         # Legacy fallback: check profile name
+        # Only profiles that are explicitly discovery-only belong here.
+        # "extended" and "version_deep" are full assessment profiles – NOT discovery.
         _LEGACY_DISCOVERY_PROFILES = {
-            "extended", "version_deep",
             "r7_discovery_safe", "r7_light_discovery_ports",
-            "r7_standard_full_tcp", "r7_extended_tcp_udp",
-            "r7_vuln_check_light", "r7_broadcast_safe",
         }
         if (assessment.scan_profile or "").lower() in _LEGACY_DISCOVERY_PROFILES:
             scan_mode = "discovery"

@@ -304,6 +304,10 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
                     triggered = triggered_all
         except Exception as cve_err:
             logger.warning(f"CVE auto-lookup failed (non-fatal): {cve_err}")
+            try:
+                db.rollback()  # Reset session so subsequent scoring commit can succeed
+            except Exception:
+                pass
 
         # Recalculate scores
         scores = scoring_service.recalculate(triggered)
@@ -329,16 +333,26 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
 
     except Exception as e:
         logger.error(f"Scan {assessment_id} failed: {e}")
-        db_a = db.query(Assessment).filter(Assessment.id == assessment_id).first()
-        if db_a:
-            db_a.status = "draft"
-            db.commit()
+        try:
+            db.rollback()
+            db_a = db.query(Assessment).filter(Assessment.id == assessment_id).first()
+            if db_a:
+                db_a.status = "draft"
+                db.commit()
+        except Exception as db_err:
+            logger.error(f"Could not reset assessment status after scan failure: {db_err}")
         _scan_status[assessment_id] = {"status": "error", "message": str(e)}
         # Signal SSE clients of error
         q = scan_queues.get(assessment_id)
         if q:
             await q.put(f"data: FEHLER: {e}\n\ndata: __DONE__\n\n")
     finally:
+        # Safety net: if task exits with status still "running", mark as error
+        if _scan_status.get(assessment_id, {}).get("status") == "running":
+            _scan_status[assessment_id] = {
+                "status": "error",
+                "message": "Scan-Task unerwartet beendet (kein Terminal-Status gesetzt)",
+            }
         db.close()
 
 
