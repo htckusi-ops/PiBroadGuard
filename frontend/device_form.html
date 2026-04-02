@@ -186,6 +186,11 @@
             🔍 Device Probes
             <span v-if="probes.length" class="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{{ probes.length }}</span>
           </button>
+          <button @click="historyTab = 'nmos'"
+            :class="historyTab === 'nmos' ? 'border-b-2 border-teal-600 text-teal-700 font-semibold' : 'text-slate-500 hover:text-slate-700'"
+            class="px-4 py-2 text-sm -mb-px bg-transparent border-0 cursor-pointer">
+            📡 NMOS Check
+          </button>
         </div>
         <!-- Tab-specific action button -->
         <a v-if="historyTab === 'assessments'" :href="`/app/assessment.html?device_id=${deviceId}`"
@@ -403,6 +408,130 @@
         </div>
         <div v-else-if="!probeRunning && !activeProbe" class="text-slate-400 text-sm py-4 text-center">No probes yet. Start the first probe above.</div>
       </div>
+
+      <!-- NMOS Check tab -->
+      <div v-if="historyTab === 'nmos'" class="p-6">
+        <p class="text-xs text-slate-500 mb-4">
+          Passive NMOS IS-04 security checks (production-safe, no state changes).
+          Verifies TLS (BCP-003-01), authentication (IS-10/BCP-003-02) and detects reachable NMOS API endpoints.
+        </p>
+
+        <!-- Controls -->
+        <div class="flex items-end gap-3 mb-5 p-3 bg-slate-50 rounded border border-slate-200">
+          <div class="flex-1">
+            <label class="block text-xs font-medium text-slate-600 mb-1">NMOS Registry URL <span class="text-slate-400">(optional)</span></label>
+            <input v-model="nmosRegistryUrl" type="text" placeholder="http://registry.example.com:8010"
+              class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white" />
+          </div>
+          <button @click="runNmosCheck" :disabled="nmosRunning"
+            class="bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 text-white px-4 py-2 rounded text-sm font-medium whitespace-nowrap">
+            {{ nmosRunning ? '⟳ Checking...' : '▶ Run NMOS Check' }}
+          </button>
+        </div>
+
+        <!-- Results -->
+        <div v-if="nmosResult" class="space-y-4">
+          <!-- TLS check -->
+          <div class="rounded border p-4"
+               :class="nmosResult.tls_check.result === 'pass' ? 'bg-green-50 border-green-200' : nmosResult.tls_check.result === 'fail' ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-sm font-semibold">
+                <span v-if="nmosResult.tls_check.result === 'pass'">✅</span>
+                <span v-else-if="nmosResult.tls_check.result === 'fail'">❌</span>
+                <span v-else>⚠️</span>
+                TLS / HTTPS (AMWA BCP-003-01)
+              </span>
+              <span class="text-xs px-2 py-0.5 rounded font-mono uppercase"
+                :class="nmosResult.tls_check.severity === 'high' ? 'bg-red-100 text-red-700' : nmosResult.tls_check.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'">
+                {{ nmosResult.tls_check.severity }}
+              </span>
+            </div>
+            <p class="text-xs text-slate-700">{{ nmosResult.tls_check.detail }}</p>
+            <p v-if="nmosResult.tls_check.recommendation" class="text-xs text-slate-500 mt-1 italic">{{ nmosResult.tls_check.recommendation }}</p>
+          </div>
+
+          <!-- Auth check -->
+          <div class="rounded border p-4"
+               :class="nmosResult.auth_check.result === 'pass' ? 'bg-green-50 border-green-200' : nmosResult.auth_check.result === 'fail' ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-sm font-semibold">
+                <span v-if="nmosResult.auth_check.result === 'pass'">✅</span>
+                <span v-else-if="nmosResult.auth_check.result === 'fail'">❌</span>
+                <span v-else>⚠️</span>
+                Authentication (AMWA IS-10 / BCP-003-02)
+              </span>
+              <span class="text-xs px-2 py-0.5 rounded font-mono uppercase"
+                :class="nmosResult.auth_check.severity === 'high' ? 'bg-red-100 text-red-700' : nmosResult.auth_check.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'">
+                {{ nmosResult.auth_check.severity }}
+              </span>
+            </div>
+            <p class="text-xs text-slate-700">{{ nmosResult.auth_check.detail }}</p>
+            <p v-if="nmosResult.auth_check.recommendation" class="text-xs text-slate-500 mt-1 italic">{{ nmosResult.auth_check.recommendation }}</p>
+          </div>
+
+          <!-- Discovered services -->
+          <div>
+            <p class="text-sm font-semibold text-slate-700 mb-2">
+              Discovered NMOS APIs
+              <span class="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{{ nmosResult.discovered_services.length }}</span>
+            </p>
+            <div v-if="nmosResult.discovered_services.length" class="overflow-x-auto rounded border border-slate-200">
+              <table class="w-full text-xs">
+                <thead class="bg-slate-50">
+                  <tr class="border-b border-slate-200 text-slate-500 text-left">
+                    <th class="py-1.5 px-3 font-medium">API Type</th>
+                    <th class="py-1.5 px-3 font-medium">Version</th>
+                    <th class="py-1.5 px-3 font-medium">URL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="svc in nmosResult.discovered_services" :key="svc.url" class="border-b border-slate-50">
+                    <td class="py-1.5 px-3 font-mono font-semibold text-teal-700">{{ svc.api_type }}</td>
+                    <td class="py-1.5 px-3 text-slate-600">{{ svc.api_version || '—' }}</td>
+                    <td class="py-1.5 px-3">
+                      <a :href="svc.url" target="_blank" rel="noopener" class="text-blue-600 hover:underline font-mono">{{ svc.url }}</a>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-else class="text-xs text-slate-400 py-2">No NMOS API endpoints found.</p>
+          </div>
+
+          <!-- Registry data -->
+          <div v-if="nmosResult.registry_data">
+            <p class="text-sm font-semibold text-slate-700 mb-2">Registry Query Results</p>
+            <div v-if="nmosResult.registry_data.error" class="text-xs text-red-600 p-3 bg-red-50 rounded border border-red-200">
+              {{ nmosResult.registry_data.error }}
+            </div>
+            <div v-else class="grid grid-cols-4 gap-3 text-xs">
+              <div class="p-3 bg-slate-50 rounded border border-slate-200 text-center">
+                <div class="text-2xl font-bold text-slate-700">{{ nmosResult.registry_data.nodes?.length ?? '—' }}</div>
+                <div class="text-slate-500 mt-0.5">Nodes</div>
+              </div>
+              <div class="p-3 bg-slate-50 rounded border border-slate-200 text-center">
+                <div class="text-2xl font-bold text-slate-700">{{ nmosResult.registry_data.devices?.length ?? '—' }}</div>
+                <div class="text-slate-500 mt-0.5">Devices</div>
+              </div>
+              <div class="p-3 bg-slate-50 rounded border border-slate-200 text-center">
+                <div class="text-2xl font-bold text-slate-700">{{ nmosResult.registry_data.senders?.length ?? '—' }}</div>
+                <div class="text-slate-500 mt-0.5">Senders</div>
+              </div>
+              <div class="p-3 bg-slate-50 rounded border border-slate-200 text-center">
+                <div class="text-2xl font-bold text-slate-700">{{ nmosResult.registry_data.receivers?.length ?? '—' }}</div>
+                <div class="text-slate-500 mt-0.5">Receivers</div>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-xs text-slate-400">Host: {{ nmosResult.host }} · Checked: {{ nmosCheckedAt }}</p>
+        </div>
+
+        <div v-else-if="!nmosRunning" class="text-slate-400 text-sm py-4 text-center">
+          Run a check to inspect NMOS IS-04 security posture on this device.
+        </div>
+        <div v-if="nmosError" class="text-xs text-red-600 p-3 bg-red-50 rounded border border-red-200 mt-3">{{ nmosError }}</div>
+      </div>
     </div>
   </main>
 
@@ -436,6 +565,36 @@ createApp({
     const deviceTypes = ref([]);
     const deviceClasses = ref([]);
     const historyTab = ref('assessments');
+
+    // NMOS check state
+    const nmosRunning = ref(false);
+    const nmosResult = ref(null);
+    const nmosError = ref('');
+    const nmosRegistryUrl = ref('');
+    const nmosCheckedAt = ref('');
+
+    async function runNmosCheck() {
+      if (nmosRunning.value) return;
+      nmosRunning.value = true;
+      nmosResult.value = null;
+      nmosError.value = '';
+      try {
+        const url = `/api/v1/devices/${deviceId}/nmos-check` +
+          (nmosRegistryUrl.value ? `?registry_url=${encodeURIComponent(nmosRegistryUrl.value)}` : '');
+        const resp = await fetch(url, { method: 'POST' });
+        if (resp.ok) {
+          nmosResult.value = await resp.json();
+          nmosCheckedAt.value = new Date().toLocaleString();
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          nmosError.value = err.detail || 'NMOS check failed';
+        }
+      } catch (e) {
+        nmosError.value = e.message;
+      } finally {
+        nmosRunning.value = false;
+      }
+    }
 
     // Probes state
     const probes = ref([]);
@@ -682,6 +841,7 @@ createApp({
              historyTab,
              save, lookupRdns, deleteDevice, cloneAssessment, deleteAssessment,
              startProbe, openProbeDetail, saveObservations,
+             nmosRunning, nmosResult, nmosError, nmosRegistryUrl, nmosCheckedAt, runNmosCheck,
              fmtDate, ratingClass, statusClass,
              t, currentLang, switchLang };
   }

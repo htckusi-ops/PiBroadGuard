@@ -88,6 +88,13 @@
 {% if f.kev_listed %}
 > ⚠️ **AKTIV AUSGENUTZT – CISA KEV**
 {% endif %}
+{% if f.epss_score is not none %}
+**EPSS:** {{ "%.1f" | format((f.epss_score or 0) * 100) }}% Exploit-Wahrscheinlichkeit (Perzentile: {{ "%.0f" | format((f.epss_percentile or 0) * 100) }}%){% if f.epss_percentile >= 0.9 %} ⚠️ Top 10%{% endif %}
+
+{% endif %}
+{% if f.ics_advisory_ids %}
+> ⚙️ **CISA ICS Advisory vorhanden** – Gerät-Typ / Hersteller ist in CISA ICS Advisories gelistet.
+{% endif %}
 {% if f.cwe_id %}
 **CWE:** [{{ f.cwe_id }}](https://cwe.mitre.org/data/definitions/{{ f.cwe_id | replace("CWE-", "") }}.html)
 {% endif %}

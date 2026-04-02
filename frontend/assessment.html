@@ -646,6 +646,19 @@
             <a v-if="f.kev_listed" href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener"
                class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold hover:bg-red-200"
                title="Diese Schwachstelle wird aktiv ausgenutzt (CISA Known Exploited Vulnerabilities)">⚠️ {{ t('kev_active_exploit', 'CISA KEV') }}</a>
+            <!-- EPSS badge – exploitation probability from FIRST.org -->
+            <span v-if="f.epss_score != null" :class="{
+                'bg-red-600 text-white':    f.epss_percentile >= 0.9,
+                'bg-orange-500 text-white': f.epss_percentile >= 0.7 && f.epss_percentile < 0.9,
+                'bg-slate-200 text-slate-700': f.epss_percentile < 0.7
+              }" class="px-2 py-0.5 rounded text-xs font-mono"
+              :title="'EPSS: ' + (f.epss_score * 100).toFixed(2) + '% Wahrscheinlichkeit aktiver Ausbeutung (FIRST.org) · Perzentile: ' + Math.round(f.epss_percentile * 100) + '%'">
+              EPSS {{ (f.epss_score * 100).toFixed(1) }}%</span>
+            <!-- ICS Advisory badge – CISA ICS-CERT advisories -->
+            <span v-if="f.ics_advisory_ids && parseIcsIds(f.ics_advisory_ids).length > 0"
+               class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs font-bold"
+               :title="'CISA ICS Advisory vorhanden: ' + parseIcsIds(f.ics_advisory_ids).join(', ')">
+               ⚙️ ICS Advisory</span>
             <template v-if="f.remediation_sources">
               <template v-for="src in parseRemediationSources(f.remediation_sources)" :key="src.type">
                 <span v-if="src.type === 'yaml'" class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs" title="Lösungsvorschlag aus dem PiBroadGuard-Regelwerk">📋 {{ t('source_badge_yaml', 'Ruleset') }}</span>
@@ -1257,6 +1270,11 @@ createApp({
       try { return JSON.parse(raw); } catch { return []; }
     }
 
+    function parseIcsIds(raw) {
+      if (!raw) return [];
+      try { return JSON.parse(raw); } catch { return []; }
+    }
+
     function fmtDate(dt) {
       if (!dt) return '—';
       return new Date(dt).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -1270,7 +1288,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
   }
 }).mount('#app');
 </script>

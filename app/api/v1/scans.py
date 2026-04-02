@@ -147,11 +147,12 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
         db.commit()
 
         # Auto CVE lookup: for any service with a detected product+version
-        # create CVSS-based findings when online.
+        # create fully-enriched findings (NVD + KEV + CWE + EPSS + ICS advisories).
         cve_findings_added = 0
         try:
             from app.services import connectivity_service, cve_service
             from app.models.system_settings import SystemSettings
+            from app.models.kev_cache import KevCache
             mode_row = db.query(SystemSettings).filter(SystemSettings.key == "connectivity_mode").first()
             conn_mode = mode_row.value if mode_row else "auto"
             if connectivity_service.is_online(conn_mode):
@@ -162,6 +163,8 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
                 }
                 seen_cves: set = set()
                 new_cve_keys: set = set()
+                all_new_cve_ids: list = []
+
                 for sr_data in result.get("results", []):
                     product = sr_data.get("service_product", "").strip()
                     version = sr_data.get("service_version", "").strip()
@@ -178,6 +181,7 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
                         if cvss <= 0:
                             continue
                         seen_cves.add(cve_id)
+                        all_new_cve_ids.append(cve_id)
                         cve_rule_key = f"cve_{cve_id.lower().replace('-', '_')}"
                         new_cve_keys.add(cve_rule_key)
                         if cvss >= 9.0:
@@ -191,7 +195,39 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
                         ver_str = f" {version}" if version else ""
                         title = f"{cve_id} – {product}{ver_str} (CVSS {cvss:.1f})"
                         evidence = f"Port {sr_data['port']}/{sr_data['protocol']}: {product}{ver_str}"
-                        rec = cve.get("nvd_solution") or f"Update {product} auf eine gepatchte Version."
+                        nvd_solution = cve.get("nvd_solution")
+                        rec = nvd_solution or f"Update {product} auf eine gepatchte Version."
+                        cwe_id = cve.get("cwe_id")
+                        vendor_advisory_url = cve.get("vendor_advisory_url")
+
+                        # KEV check against local cache
+                        kev_row = db.query(KevCache).filter(KevCache.cve_id == cve_id).first()
+                        kev_listed = kev_row is not None
+                        kev_required_action = kev_row.required_action if kev_row else None
+                        if kev_listed and sev not in ("critical",):
+                            sev = "high"  # KEV forces minimum HIGH
+
+                        # CWE-based generic recommendation
+                        cwe_recommendation = None
+                        if cwe_id:
+                            from app.services.remediation_service import CWE_RECOMMENDATIONS
+                            cwe_recommendation = CWE_RECOMMENDATIONS.get(cwe_id)
+
+                        # ICS advisory check
+                        ics_advisory_ids_json = None
+                        try:
+                            from app.models.ics_advisory_cache import IcsAdvisoryCache
+                            import json as _json
+                            ics_matches = db.query(IcsAdvisoryCache).filter(
+                                IcsAdvisoryCache.vendor.ilike(f"%{product.split()[0]}%")
+                            ).all()
+                            matched_ids = [a.advisory_id for a in ics_matches
+                                           if cve_id in (a.cve_ids or "")]
+                            if matched_ids:
+                                ics_advisory_ids_json = _json.dumps(matched_ids)
+                        except Exception:
+                            pass
+
                         if cve_rule_key in existing_findings_now:
                             ef = existing_findings_now[cve_rule_key]
                             ef.title = title
@@ -199,6 +235,15 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
                             ef.description = cve.get("description", "")
                             ef.evidence = evidence
                             ef.recommendation = rec
+                            ef.cve_id = cve_id
+                            ef.cvss_score = str(cvss)
+                            ef.cwe_id = cwe_id
+                            ef.cwe_recommendation = cwe_recommendation
+                            ef.kev_listed = kev_listed
+                            ef.kev_required_action = kev_required_action
+                            ef.nvd_solution = nvd_solution
+                            ef.vendor_advisory_url = vendor_advisory_url
+                            ef.ics_advisory_ids = ics_advisory_ids_json
                         else:
                             db.add(Finding(
                                 assessment_id=assessment_id,
@@ -211,8 +256,35 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
                                 broadcast_context="CVE in erkannter Softwareversion auf Broadcast-Gerät – Patch-Status prüfen.",
                                 compensating_control_required=(cvss >= 7.0),
                                 status="open",
+                                cve_id=cve_id,
+                                cvss_score=str(cvss),
+                                cwe_id=cwe_id,
+                                cwe_recommendation=cwe_recommendation,
+                                kev_listed=kev_listed,
+                                kev_required_action=kev_required_action,
+                                nvd_solution=nvd_solution,
+                                vendor_advisory_url=vendor_advisory_url,
+                                ics_advisory_ids=ics_advisory_ids_json,
                             ))
                             cve_findings_added += 1
+
+                # Batch EPSS lookup for all newly discovered CVE IDs
+                if all_new_cve_ids:
+                    try:
+                        epss_map = await cve_service.get_epss_scores(all_new_cve_ids)
+                        if epss_map:
+                            db.flush()
+                            for fi in db.query(Finding).filter(
+                                Finding.assessment_id == assessment_id,
+                                Finding.rule_key.in_(new_cve_keys),
+                            ).all():
+                                cid = fi.cve_id
+                                if cid and cid in epss_map:
+                                    fi.epss_score = epss_map[cid].get("epss")
+                                    fi.epss_percentile = epss_map[cid].get("percentile")
+                    except Exception as epss_err:
+                        logger.warning(f"EPSS batch lookup failed (non-fatal): {epss_err}")
+
                 # Remove CVE findings that are no longer relevant (open only)
                 for key, f in existing_findings_now.items():
                     if key.startswith("cve_") and key not in new_cve_keys and f.status == "open":

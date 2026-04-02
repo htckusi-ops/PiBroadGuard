@@ -164,6 +164,18 @@
       " title="CVSS Base Score (NIST NVD)">CVSS {{ "%.1f" | format(f.cvss_score | float) }}</span>
     {% endif %}
     {% if f.kev_listed %}<span class="badge red" title="Diese Schwachstelle wird aktiv ausgenutzt – CISA Known Exploited Vulnerabilities">⚠️ CISA KEV</span>{% endif %}
+    {% if f.epss_score is not none %}
+    <span style="font-size:0.75rem;font-weight:bold;padding:2px 6px;border-radius:4px;font-family:monospace;
+      {% if f.epss_percentile >= 0.9 %}background:#dc2626;color:#fff;
+      {% elif f.epss_percentile >= 0.7 %}background:#f97316;color:#fff;
+      {% else %}background:#e2e8f0;color:#475569;{% endif %}"
+      title="FIRST EPSS – Exploit-Wahrscheinlichkeit {{ '%.2f' | format((f.epss_score or 0) * 100) }}%, Perzentile {{ '%.0f' | format((f.epss_percentile or 0) * 100) }}%">
+      EPSS {{ "%.1f" | format((f.epss_score or 0) * 100) }}%</span>
+    {% endif %}
+    {% if f.ics_advisory_ids %}
+    <span style="font-size:0.75rem;font-weight:bold;padding:2px 6px;border-radius:4px;background:#fef3c7;color:#92400e;"
+      title="CISA ICS Advisory vorhanden">⚙️ ICS Advisory</span>
+    {% endif %}
     {% if f.cwe_id %}
     <a href="https://cwe.mitre.org/data/definitions/{{ f.cwe_id | replace('CWE-', '') }}.html" target="_blank" rel="noopener"
        style="font-size:0.75rem;background:#ede9fe;color:#6d28d9;padding:2px 6px;border-radius:4px;text-decoration:none;">{{ f.cwe_id }}</a>
