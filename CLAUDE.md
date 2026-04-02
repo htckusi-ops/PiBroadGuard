@@ -4337,35 +4337,43 @@ Ergänzung zu den bestehenden Standards (IEC 62443, NIST SP 800-82/-115):
 | **SMPTE ST 2110** | Professional Media over IP (Referenzrahmen) |
 | **SMPTE ST 2059** | PTP-Synchronisation in Broadcast-Netzwerken |
 
-## Neue Datenquellen (geplant)
+## Implementierte Erweiterungen (ab v1.12)
 
-| Quelle | Priorität | Zweck |
-|--------|-----------|-------|
-| NVD CPE API v2 | Prio 1 | Präzisere CVE-Suche via strukturierten Produktnamen |
-| NVD `hasKev`/`isVulnerable` Filter | Prio 1 | Gezieltere NVD-Abfragen |
-| CISA ICS Advisories (RSS) | Prio 1 | OT/Appliance-Advisories für Broadcast-ähnliche Geräte |
-| CSAF 2.0 Vendor Advisories | Prio 2 | Maschinenlesbare Herstellerhinweise (Siemens, Bosch, Cisco…) |
-| AMWA NMOS IS-04 Query API | Prio 2 | Passives Geräte-Inventar ohne Portscan |
+Die folgenden Punkte sind umgesetzt und Teil der aktuellen Codebase:
+
+| Datenquelle / Feature | Status | Service / Datei |
+|----------------------|--------|-----------------|
+| NVD CPE API v2 (`resolve_cpe`) | ✅ Implementiert | `cve_service.py` |
+| NVD `hasKev`/`isVulnerable` Filter | ✅ Implementiert | `cve_service.py` |
+| CISA ICS Advisories (RSS-Cache) | ✅ Implementiert | `ics_service.py`, Migration 013 |
+| CSAF 2.0 Import (URL + Upload) | ✅ Implementiert | `csaf_service.py`, `api/v1/cve.py` |
+| AMWA NMOS IS-04/10 Checks | ✅ Implementiert | `nmos_service.py`, `api/v1/devices.py` |
+| FIRST EPSS (Batch-Lookup) | ✅ Implementiert | `cve_service.py`, `api/v1/cve.py` |
+| Broadcast-Regelwerk-Overrides | ✅ Implementiert | `scoring_service.py` |
+| PDF-Report (WeasyPrint) | ✅ Implementiert | `report_service.py`, `api/v1/reports.py` |
+| Regelwerk-CRUD im UI | ✅ Implementiert | `rules.html`, `api/v1/rules` |
+| Re-Assessment-Fälligkeitsliste | ✅ Implementiert | `reassessment-due.html` |
+| Device Probes | ✅ Implementiert | `probes.py`, Migration 010 |
+| Discovery-Scan-Modus | ✅ Implementiert | Migration 011, `report_discovery.html.j2` |
+| Nmap-Output als lesbarer Text | ✅ Implementiert | `report_service._nmap_xml_to_text()` |
+| API-Key-Status-Endpoint | ✅ Implementiert | `GET /api/v1/system/api-keys` |
+| Netzwerk-Konfiguration via UI | ✅ Implementiert | `GET/POST /api/v1/system/network-config` |
+
+## Noch offene / geplante Erweiterungen
+
+| Quelle / Feature | Priorität | Zweck |
+|-----------------|-----------|-------|
 | Greenbone / Tenable / Rapid7 | Prio 3 | Externe Scanner-Konsolidierung |
-
-## Neue Regelwerk-Kategorien (geplant)
-
-| Kategorie | Fragenkatalog | Standard |
-|-----------|---------------|---------|
-| `nmos` | IS-04 vorhanden, IS-10 Auth, TLS/BCP-003, Registry-Adresse | AMWA BCP-003, IS-10 |
-| `ptp_timing` | PTP vorhanden, GM-Rolle möglich, Domain gesperrt, Netz isoliert | SMPTE ST 2059, JT-NM TR-1001-1 |
-| `network_arch` | Management/Media getrennt, VLAN erzwungen, Multicast kontrolliert | EBU R143, IEC 62443-3-2 |
-
-## Neue Port-Regeln (geplant)
-
-| rule_key | Port | Severity | Standard |
-|----------|------|----------|---------|
-| `ptp_event_open` | UDP 319 | medium | SMPTE ST 2059 |
-| `ptp_general_open` | UDP 320 | medium | SMPTE ST 2059 |
-| `nmos_registry_http` | TCP 8080 | medium | AMWA BCP-003 |
-| `ssdp_open` | UDP 1900 | low | EBU R143 §4.2 |
-| `mdns_open` | UDP 5353 | info | JT-NM TR-1001-1 |
-| `bacnet_open` | UDP 47808 | high | IEC 62443 |
+| Neue Fragenkategorie `nmos` | Prio 2 | IS-04, IS-10 Auth, TLS/BCP-003-Fragen |
+| Neue Fragenkategorie `ptp_timing` | Prio 2 | PTP, GM-Rolle, Domain-Isolation |
+| Neue Fragenkategorie `network_arch` | Prio 2 | Management/Media-Trennung |
+| Port-Regel `ptp_event_open` (UDP 319) | Prio 2 | SMPTE ST 2059 |
+| Port-Regel `ptp_general_open` (UDP 320) | Prio 2 | SMPTE ST 2059 |
+| Port-Regel `nmos_registry_http` (TCP 8080) | Prio 2 | AMWA BCP-003 |
+| Port-Regel `ssdp_open` (UDP 1900) | Prio 3 | EBU R143 §4.2 |
+| Port-Regel `mdns_open` (UDP 5353) | Prio 3 | JT-NM TR-1001-1 |
+| CSAF 2.0 automatischer Vendor-Feed | Prio 3 | Periodischer Sync bekannter Hersteller |
+| CMDB/Jira/Wiki-Integration | Prio 4 | Externe Ticketsystem-Anbindung |
 
 ---
 

@@ -207,12 +207,49 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
         auth_date = getattr(auth, "authorization_date", None)
         auth.__dict__.setdefault("authorized_by_date", _format_date(auth_date))
 
+    # Build flat question-key → question-text lookup from QUESTION_CATALOG
+    try:
+        from app.services.rule_engine import QUESTION_CATALOG
+        question_labels: Dict[str, str] = {
+            q["key"]: q["question"]
+            for questions in QUESTION_CATALOG.values()
+            for q in questions
+        }
+        category_labels: Dict[str, str] = {
+            "auth": "Authentisierung",
+            "patch": "Updates / Lifecycle",
+            "hardening": "Härtung",
+            "monitoring": "Logging / Monitoring",
+            "operational": "Betriebskontext",
+            "vendor": "Herstellerreife",
+            "nmos": "NMOS / IP-Broadcast",
+            "ptp_timing": "PTP / Timing",
+            "network_arch": "Netzwerk-Architektur",
+            "scan_effects": "Scan-Seiteneffekte",
+        }
+        # Group manual_findings by category (excluding scan_effects, shown separately)
+        from collections import OrderedDict
+        cat_order = ["auth", "patch", "hardening", "monitoring", "operational", "vendor",
+                     "nmos", "ptp_timing", "network_arch"]
+        grouped_manual: "OrderedDict[str, list]" = OrderedDict()
+        for cat in cat_order:
+            entries = [mf for mf in manual_findings if mf.category == cat]
+            if entries:
+                grouped_manual[cat] = entries
+    except Exception:
+        question_labels = {}
+        category_labels = {}
+        grouped_manual = {}
+
     return {
         "device": device,
         "assessment": assessment,
         "scan_results": scan_results,
         "findings": findings_sorted,
         "manual_findings": manual_findings,
+        "grouped_manual": grouped_manual,
+        "question_labels": question_labels,
+        "category_labels": category_labels,
         "vendor_info": vendor_info,
         "auth": auth,
         "authorization": authorization,
