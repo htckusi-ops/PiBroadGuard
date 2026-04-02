@@ -28,6 +28,10 @@ class Finding(Base):
     vendor_advisory_url = Column(String)
     cwe_recommendation = Column(Text)
     remediation_sources = Column(Text)  # JSON array of source attribution
+    # EPSS and ICS enrichment fields (added migration 014)
+    epss_score = Column(Float, nullable=True)         # 0.0–1.0 exploitation probability
+    epss_percentile = Column(Float, nullable=True)    # 0.0–1.0 rank among all CVEs
+    ics_advisory_ids = Column(Text, nullable=True)    # JSON list of matched ICS advisory IDs
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     assessment = relationship("Assessment", back_populates="findings")

@@ -47,7 +47,13 @@ async def lookup_cves(
 
     results = await _fetch_from_nvd(vendor, product, cpe_name=cpe_name, has_kev=has_kev)
     for r in results:
-        db.merge(CveCache(**r, vendor=vendor, product=product, version=version))
+        # Only pass fields that exist on the CveCache model (safe subset)
+        cache_fields = {
+            k: v for k, v in r.items()
+            if k in {"cve_id", "cvss_score", "description", "published_date",
+                     "fetched_at", "nvd_solution", "vendor_advisory_url", "cwe_id"}
+        }
+        db.merge(CveCache(**cache_fields, vendor=vendor, product=product, version=version))
     db.commit()
     return results
 
@@ -157,6 +163,9 @@ def _to_dict(c: CveCache) -> dict:
         "description": c.description,
         "published_date": str(c.published_date) if c.published_date else None,
         "fetched_at": c.fetched_at.isoformat() if c.fetched_at else None,
+        "nvd_solution": getattr(c, "nvd_solution", None),
+        "vendor_advisory_url": getattr(c, "vendor_advisory_url", None),
+        "cwe_id": getattr(c, "cwe_id", None),
     }
 
 
