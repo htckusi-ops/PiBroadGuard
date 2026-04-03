@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     pibg_phpipam_token: str = ""
     
     # CORS
-    pibg_cors_origins: str = "http://localhost,http://127.0.0.1"
+    pibg_cors_origins: str = "*"
 
     @property
     def database_url(self) -> str:
