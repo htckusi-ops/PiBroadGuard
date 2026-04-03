@@ -555,7 +555,7 @@ findings.cve_id  ─ ─ ─ (lookup) ─ ─ ─ kev_cache.cve_id
 | **FIRST EPSS** | Exploit-Wahrscheinlichkeit pro CVE (0–100%) | EPSS-Badge im Finding; rot wenn Perzentile > 90 |
 | **CSAF 2.0** | Maschinenlesbare Herstelleradvisories | Import via URL oder Upload; extrahiert CVEs, Produkte, Remediations |
 | **AMWA NMOS IS-04/10** | Passiver NMOS-Dienst-Check auf Geräten | TLS-Check, Auth-Check (IS-10/BCP-003) via NMOS-Endpunkte |
-| **Manuelle Fragen** | 30+ strukturierte Fragen (7 Kategorien inkl. scan_effects) | Operational/Lifecycle/Vendor-Score, Report-Fragebogen |
+| **Manuelle Fragen** | 58 strukturierte Fragen (10 Kategorien: auth/patch/hardening/monitoring/operational/vendor/nmos/ptp_timing/network_arch/scan_effects) | Operational/Lifecycle/Vendor-Score, Report-Fragebogen |
 | **phpIPAM** | Hostlisten mit IP/Hostname/Subnetz | Massenimport von Geräten ohne manuelle Erfassung |
 
 ---
@@ -684,8 +684,9 @@ Zusätzlich zu CVSS bietet PiBroadGuard den **EPSS-Score** von FIRST.org an:
 
 - Gibt die **Wahrscheinlichkeit** an (0–1), dass eine CVE innerhalb von 30 Tagen aktiv ausgenutzt wird
 - Kostenlos, kein API-Key nötig
-- Wird **nicht** automatisch beim Scan abgerufen, sondern nur auf expliziten API-Aufruf
-- Graceful Fallback (leeres Dict) bei Offline-Betrieb
+- Wird **automatisch beim Scan-Abschluss** für alle neu gefundenen CVEs als Batch abgerufen (`get_epss_scores()`)
+- Ergebnis: `epss_score` + `epss_percentile` pro Finding; Badge im UI und Report (rot wenn Perzentile ≥ 90)
+- Graceful Fallback (kein Badge) bei Offline-Betrieb
 
 ### Zusammenfassung: CVE-Finding Erstellungsprozess
 
@@ -747,4 +748,4 @@ Zusätzlich zu CVSS bietet PiBroadGuard den **EPSS-Score** von FIRST.org an:
 
 ---
 
-*PiBroadGuard v1.12 – Device Security Assessment Platform | März 2026 | Markus Gerber · markus.gerber@npn.ch*
+*PiBroadGuard v1.12 – Device Security Assessment Platform | April 2026 | Markus Gerber · markus.gerber@npn.ch*

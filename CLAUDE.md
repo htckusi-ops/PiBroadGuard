@@ -3,8 +3,8 @@
 
 **Projektname:** PiBroadGuard – Broadcast Device Security Assessment
 **GitHub-Repository:** `pibroadguard`
-**Version:** 1.8 (konsolidiert)
-**Stand:** März 2026
+**Version:** 1.12 (konsolidiert)
+**Stand:** April 2026
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Inhaltsübersicht
 
-Die Spec besteht aus der Basis (v1.0) und 9 kumulativen Updates:
+Die Spec besteht aus der Basis (v1.0) und 12 kumulativen Updates:
 
 | Abschnitt | Inhalt |
 |-----------|--------|
@@ -38,6 +38,9 @@ Die Spec besteht aus der Basis (v1.0) und 9 kumulativen Updates:
 | **Update v1.7** | Scan-Queue Service (`asyncio.Queue` + Semaphore), Queue-Status-Widget im UI, Duplikat-Schutz (gleiche Device-ID nicht doppelt), 50-Job-History, Cancel-Support |
 | **Update v1.8** | Geplante Scans (APScheduler 3.x), Trigger-Typen: Einmalig/Intervall/Cron, Uhrzeit-Auswahl (HH:MM UTC) für Tages-/Wochen-/Monats-Intervalle, Schedules-Seite (`schedules.html`), nächste Schedules-Widget auf Dashboard |
 | **Update v1.9** | Netzwerk-Konfiguration über UI (IP/Gateway/DNS via nmcli), Paginierung in allen Listen, Port-Scan-Resultate in Findings-Tab, Befund-Speichern-Button, Logging-Fix, Auth-Log-Deduplication |
+| **Update v1.10** | Device Probe (leichtgewichtiger Gerätescan, `probe_results`-Tabelle, Probes-Tab in `device_form.html`), Discovery-Scan-Modus (`is_discovery`, `scan_mode`), `report_discovery.html.j2`, Gerätetyp→Scan-Profil-Vorschlag |
+| **Update v1.11** | PDF-Reports (WeasyPrint), Regelwerk-CRUD im UI (`rules.html`), Re-Assessment-Fälligkeitsliste (`reassessment-due.html`), Backup löschen/wiederherstellen, Upsert-Findings bei Re-Scan |
+| **Update v1.12** | EPSS-Integration (FIRST.org Batch-Lookup), CISA ICS Advisories (`ics_service.py`, Migration 013), CSAF 2.0 Vendor Advisory Import (`csaf_service.py`), NMOS IS-04/10 passive Security Checks (`nmos_service.py`, NMOS-Tab in `device_form.html`), Broadcast-Regelwerk-Overrides im Scoring, EPSS/ICS-Badges in Reports, `scan_effects`-Fragenkat. |
 
 **Bei Widersprüchen zwischen Abschnitten gilt immer das neuere Update.**
 
@@ -2816,12 +2819,17 @@ pibroadguard/
 │       └── report.html.j2
 │
 ├── frontend/
-│   ├── index.html             # Dashboard
-│   ├── device_form.html       # Gerät erfassen/bearbeiten
-│   ├── assessment.html        # Assessment (Tabs: Übersicht/Scan/Fragen/Findings/Report)
-│   ├── import.html            # Paket importieren (Datei + USB)
-│   ├── usb_export.html        # USB-Export-Wizard (3 Schritte)
-│   └── settings.html          # System-Settings (Auth/Connectivity/Crypto/Backup/Logs)
+│   ├── index.html               # Dashboard (Geräteliste, Queue-Widget, nächste Schedules)
+│   ├── device_form.html         # Gerät erfassen/bearbeiten (+Probes-Tab, NMOS-Tab)
+│   ├── assessment.html          # Assessment (Tabs: Übersicht/Scan/Fragen/Findings/Report/Schedules)
+│   ├── import.html              # Paket importieren (Datei + USB)
+│   ├── usb_export.html          # USB-Export-Wizard (3 Schritte)
+│   ├── settings.html            # System-Settings (Auth/Connectivity/Crypto/Backup/Logs/Netzwerk)
+│   ├── schedules.html           # Geplante Scans (alle Geräte)
+│   ├── rules.html               # Regelwerk-CRUD (YAML-Regeln verwalten)
+│   ├── reassessment-due.html    # Re-Assessment-Fälligkeitsliste
+│   ├── phpipam_import.html      # phpIPAM-Geräteimport
+│   └── i18n.js                  # Internationalisierung EN/DE
 │
 ├── migrations/
 │   └── versions/
