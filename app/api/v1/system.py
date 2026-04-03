@@ -158,9 +158,11 @@ def list_backups(db: Session = Depends(get_db), user: str = Depends(verify_crede
 
 @router.get("/system/backup/{filename}")
 def download_backup(filename: str, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
-    import os
-    path = os.path.join("./data/backups", filename)
-    if not os.path.isfile(path):
+    backup_dir = Path("./data/backups")
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(400, "Ungültiger Dateiname")
+    path = backup_dir / filename
+    if not path.exists() or not path.is_file():
         raise HTTPException(404, "Backup nicht gefunden")
     with open(path, "rb") as f:
         data = f.read()
