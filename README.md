@@ -195,6 +195,7 @@ sudo systemctl restart pibroadguard
 | `PIBG_LOG_LEVEL` | `INFO` | DEBUG / INFO / WARNING / ERROR |
 | `PIBG_MAX_PARALLEL_SCANS` | `1` | Gleichzeitige Scans (1 = sequenziell, empfohlen für Pi) |
 | `PIBG_SCHEDULER_TIMEZONE` | `Europe/Zurich` | Zeitzone für geplante Scans |
+| `PIBG_CORS_ORIGINS` | `*` | Erlaubte Browser-Origins (kommasepariert). Für Härtung z.B. auf `https://scanner.example.org` einschränken. |
 | `PIBG_PHPIPAM_URL` | — | phpIPAM-Basis-URL (optional) |
 | `PIBG_PHPIPAM_TOKEN` | — | phpIPAM API-Token (optional) |
 
