@@ -24,6 +24,27 @@
       </a>
     </div>
     <div class="flex items-center gap-4">
+      <div class="relative">
+        <button @click="taskCenterOpen = !taskCenterOpen"
+          :class="taskCenterBadgeClass"
+          class="text-xs px-2 py-1 rounded font-semibold border border-slate-600 hover:border-slate-400">
+          {{ taskCenterBadgeLabel }}
+        </button>
+        <div v-if="taskCenterOpen"
+             class="absolute right-0 mt-2 w-80 bg-white text-slate-700 rounded-lg shadow-xl border border-slate-200 p-3 z-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-sm">Task-Center</span>
+            <span class="text-[11px] text-slate-500">Live</span>
+          </div>
+          <div class="text-xs space-y-1">
+            <div class="flex justify-between"><span>Running</span><span class="font-semibold text-green-700">{{ taskRunningCount }}</span></div>
+            <div class="flex justify-between"><span>Queued</span><span class="font-semibold text-amber-600">{{ taskQueuedCount }}</span></div>
+            <div class="flex justify-between"><span>Total</span><span class="font-semibold">{{ taskTotalCount }}</span></div>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-500">{{ taskLastUpdatedLabel }}</div>
+          <a href="/app/index.html#queue-widget" @click="taskCenterOpen = false" class="mt-2 inline-block text-xs text-blue-600 hover:underline">Zur globalen Queue</a>
+        </div>
+      </div>
       <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
       <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ Schedules</a>
       <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
@@ -32,6 +53,10 @@
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('fr')" :class="currentLang === 'fr' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">FR</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('it')" :class="currentLang === 'it' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">IT</button>
       </div>
     </div>
   </header>
@@ -803,6 +828,10 @@ createApp({
     const newProfile = ref('passive');
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const taskCenterOpen = ref(false);
+    const taskQueueData = ref({ running: [], queued: [] });
+    const taskLastUpdated = ref(null);
+    let taskPollInterval = null;
 
     function t(key, fb) {
       return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
@@ -902,6 +931,23 @@ createApp({
     }));
 
     function ratingLabel(r) { return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r || '—'; }
+    const taskRunningCount = computed(() => (taskQueueData.value?.running || []).length);
+    const taskQueuedCount = computed(() => (taskQueueData.value?.queued || []).length);
+    const taskTotalCount = computed(() => taskRunningCount.value + taskQueuedCount.value);
+    const taskCenterBadgeLabel = computed(() => {
+      if (taskRunningCount.value > 0) return `🟢 ${taskRunningCount.value} running`;
+      if (taskQueuedCount.value > 0) return `🟡 ${taskQueuedCount.value} queued`;
+      return '⚪ No active tasks';
+    });
+    const taskCenterBadgeClass = computed(() => {
+      if (taskRunningCount.value > 0) return 'bg-green-900 text-green-100';
+      if (taskQueuedCount.value > 0) return 'bg-amber-900 text-amber-100';
+      return 'bg-slate-700 text-slate-200';
+    });
+    const taskLastUpdatedLabel = computed(() => {
+      if (!taskLastUpdated.value) return 'Noch kein Status geladen.';
+      return `Stand: ${new Date(taskLastUpdated.value).toLocaleTimeString()}`;
+    });
     function ratingBgClass(r) { return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800' }[r] || 'bg-slate-100 text-slate-600'; }
     function decisionLabel(d) { return { approved: 'Approved', approved_with_conditions: 'Approved with Conditions', deferred: 'Deferred', rejected: 'Rejected' }[d] || d || '—'; }
     function severityClass(s) { return { critical: 'bg-red-100 text-red-800', high: 'bg-orange-100 text-orange-800', medium: 'bg-yellow-100 text-yellow-800', low: 'bg-green-100 text-green-800', info: 'bg-blue-100 text-blue-800' }[s] || ''; }
@@ -1015,6 +1061,15 @@ createApp({
         const err = await resp.json();
         scanError.value = err.detail || 'Could not start scan';
       }
+    }
+
+    async function loadTaskQueue() {
+      try {
+        const r = await fetch('/api/v1/scan-queue/status');
+        if (!r.ok) return;
+        taskQueueData.value = await r.json();
+        taskLastUpdated.value = Date.now();
+      } catch (e) { /* ignore */ }
     }
 
     function startSSE() {
@@ -1135,11 +1190,14 @@ createApp({
       }
       // Load schedules for this device
       await loadSchedules();
+      await loadTaskQueue();
+      taskPollInterval = setInterval(loadTaskQueue, 5000);
     });
 
     onUnmounted(() => {
       if (pollInterval) clearInterval(pollInterval);
       if (queuePollInterval) clearInterval(queuePollInterval);
+      if (taskPollInterval) clearInterval(taskPollInterval);
       if (sseSource) { sseSource.close(); sseSource = null; }
     });
 
@@ -1288,7 +1346,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
   }
 }).mount('#app');
 </script>

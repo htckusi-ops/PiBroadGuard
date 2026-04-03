@@ -21,6 +21,29 @@
       <span :class="connectivityBadgeClass" class="text-xs px-2 py-1 rounded font-semibold cursor-pointer" @click="goSettings">
         {{ connectivityLabel }}
       </span>
+      <div class="relative">
+        <button @click="taskCenterOpen = !taskCenterOpen"
+          :class="taskCenterBadgeClass"
+          class="text-xs px-2 py-1 rounded font-semibold border border-slate-600 hover:border-slate-400">
+          {{ taskCenterBadgeLabel }}
+        </button>
+        <div v-if="taskCenterOpen"
+             class="absolute right-0 mt-2 w-80 bg-white text-slate-700 rounded-lg shadow-xl border border-slate-200 p-3 z-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-sm">Task-Center</span>
+            <span class="text-[11px] text-slate-500">Live</span>
+          </div>
+          <div class="text-xs space-y-1">
+            <div class="flex justify-between"><span>Running</span><span class="font-semibold text-green-700">{{ taskRunningCount }}</span></div>
+            <div class="flex justify-between"><span>Queued</span><span class="font-semibold text-amber-600">{{ taskQueuedCount }}</span></div>
+            <div class="flex justify-between"><span>Total</span><span class="font-semibold">{{ taskTotalCount }}</span></div>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-500">
+            {{ taskLastUpdatedLabel }}
+          </div>
+          <a href="#queue-widget" @click="taskCenterOpen = false" class="mt-2 inline-block text-xs text-blue-600 hover:underline">Zur Queue im Dashboard</a>
+        </div>
+      </div>
       <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ {{ t('nav_schedules', 'Schedules') }}</a>
       <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 {{ t('nav_rules', 'Ruleset') }}</a>
       <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ {{ t('nav_settings', 'Settings') }}</a>
@@ -28,6 +51,10 @@
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('fr')" :class="currentLang === 'fr' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">FR</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('it')" :class="currentLang === 'it' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">IT</button>
       </div>
     </div>
   </header>
@@ -68,7 +95,7 @@
     <!-- Queue + Next Scans Widgets -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
       <!-- Scan Queue Widget -->
-      <div v-if="queueData && (queueData.queued.length > 0 || queueData.running.length > 0)"
+      <div id="queue-widget" v-if="queueData && (queueData.queued.length > 0 || queueData.running.length > 0)"
            class="bg-white rounded-lg shadow-sm p-4">
         <div class="flex items-center justify-between mb-2">
           <span class="font-semibold text-slate-700 text-sm">🔄 Scan-Queue</span>
@@ -235,7 +262,7 @@
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 createApp({
   setup() {
@@ -250,9 +277,28 @@ createApp({
     const queueData = ref(null);
     const nextSchedules = ref([]);
     const dueSoon = ref([]);
+    const taskCenterOpen = ref(false);
+    const taskLastUpdated = ref(null);
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
     let queuePoll = null;
+    const taskRunningCount = computed(() => (queueData.value?.running || []).length);
+    const taskQueuedCount = computed(() => (queueData.value?.queued || []).length);
+    const taskTotalCount = computed(() => taskRunningCount.value + taskQueuedCount.value);
+    const taskCenterBadgeLabel = computed(() => {
+      if (taskRunningCount.value > 0) return `🟢 ${taskRunningCount.value} running`;
+      if (taskQueuedCount.value > 0) return `🟡 ${taskQueuedCount.value} queued`;
+      return '⚪ No active tasks';
+    });
+    const taskCenterBadgeClass = computed(() => {
+      if (taskRunningCount.value > 0) return 'bg-green-900 text-green-100';
+      if (taskQueuedCount.value > 0) return 'bg-amber-900 text-amber-100';
+      return 'bg-slate-700 text-slate-200';
+    });
+    const taskLastUpdatedLabel = computed(() => {
+      if (!taskLastUpdated.value) return 'Noch kein Status geladen.';
+      return `Stand: ${new Date(taskLastUpdated.value).toLocaleTimeString()}`;
+    });
 
     function t(key, fb) {
       return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
@@ -316,7 +362,10 @@ createApp({
     async function loadQueue() {
       try {
         const r = await fetch('/api/v1/scan-queue/status');
-        if (r.ok) queueData.value = await r.json();
+        if (r.ok) {
+          queueData.value = await r.json();
+          taskLastUpdated.value = Date.now();
+        }
       } catch (e) { /* ignore */ }
     }
 
@@ -374,7 +423,10 @@ createApp({
       // Poll queue every 5s
       queuePoll = setInterval(loadQueue, 5000);
     });
-    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, dueSoon, t, currentLang, switchLang };
+    onUnmounted(() => {
+      if (queuePoll) clearInterval(queuePoll);
+    });
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, dueSoon, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

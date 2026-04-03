@@ -33,6 +33,16 @@ Die Oberfläche ist bereits funktional und relativ konsistent (Tailwind, gleiche
    - Standard: Titelbereich, Kontext-Infos, Aktionen, Content.
    - Gleiche Reihenfolge für wiederkehrende Elemente.
 
+
+### P1 – Übersetzungen getrennt verwalten (für externe Übersetzer)
+1. **Sprache pro Datei**
+   - Jede Sprache in eigener JSON-Datei (`app/i18n/de.json`, `app/i18n/en.json`, `app/i18n/fr.json`, `app/i18n/it.json`).
+   - Übersetzer können direkt pro Sprache arbeiten, ohne UI-Code anzufassen.
+2. **Neue Sprachen hinzufügen: Französisch + Italienisch**
+   - FR und IT als offizielle UI-Sprachen im Backend freischalten und im Sprachmenü anzeigen.
+3. **Fallback-Strategie dokumentieren**
+   - Fehlende Keys fallen auf EN (oder den Fallback-Text) zurück, damit die Oberfläche funktionsfähig bleibt.
+
 ### P2 – Bessere Bedienbarkeit und Rückmeldung
 1. **Asynchrone Aktionen mit klaren Zustandswechseln**
    - `Idle → Running → Success/Failure` immer gleich visualisieren.

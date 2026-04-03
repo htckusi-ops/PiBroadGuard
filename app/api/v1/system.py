@@ -296,12 +296,12 @@ from app.services import nmap_service
 
 _I18N_DIR = Path(__file__).parent.parent.parent / "i18n"
 _PHPIPAM_NOT_CONFIGURED = "phpIPAM nicht konfiguriert (PIBG_PHPIPAM_URL / PIBG_PHPIPAM_TOKEN fehlt)"
-_SUPPORTED_LANGS = {"de", "en"}
+_SUPPORTED_LANGS = {"de", "en", "fr", "it"}
 
 
 @router.get("/i18n/{lang}")
 def get_translations(lang: str):
-    """Return i18n translations for the given language (de or en)."""
+    """Return i18n translations for the given language."""
     if lang not in _SUPPORTED_LANGS:
         raise HTTPException(400, f"Unsupported language: {lang}. Supported: {', '.join(_SUPPORTED_LANGS)}")
     path = _I18N_DIR / f"{lang}.json"
@@ -313,7 +313,12 @@ def get_translations(lang: str):
 @router.get("/i18n")
 def list_languages():
     """List available UI languages."""
-    return {"languages": [{"code": "de", "label": "Deutsch"}, {"code": "en", "label": "English"}]}
+    return {"languages": [
+        {"code": "de", "label": "Deutsch"},
+        {"code": "en", "label": "English"},
+        {"code": "fr", "label": "Français"},
+        {"code": "it", "label": "Italiano"},
+    ]}
 
 
 @router.get("/device-types")

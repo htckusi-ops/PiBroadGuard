@@ -19,6 +19,27 @@
       <span class="text-slate-200 text-sm">⏰ Scheduled Scans</span>
     </div>
     <div class="flex items-center gap-4">
+      <div class="relative">
+        <button @click="taskCenterOpen = !taskCenterOpen"
+          :class="taskCenterBadgeClass"
+          class="text-xs px-2 py-1 rounded font-semibold border border-slate-600 hover:border-slate-400">
+          {{ taskCenterBadgeLabel }}
+        </button>
+        <div v-if="taskCenterOpen"
+             class="absolute right-0 mt-2 w-80 bg-white text-slate-700 rounded-lg shadow-xl border border-slate-200 p-3 z-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-sm">Task-Center</span>
+            <span class="text-[11px] text-slate-500">Live</span>
+          </div>
+          <div class="text-xs space-y-1">
+            <div class="flex justify-between"><span>Running</span><span class="font-semibold text-green-700">{{ taskRunningCount }}</span></div>
+            <div class="flex justify-between"><span>Queued</span><span class="font-semibold text-amber-600">{{ taskQueuedCount }}</span></div>
+            <div class="flex justify-between"><span>Total</span><span class="font-semibold">{{ taskTotalCount }}</span></div>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-500">{{ taskLastUpdatedLabel }}</div>
+          <a href="/app/index.html#queue-widget" @click="taskCenterOpen = false" class="mt-2 inline-block text-xs text-blue-600 hover:underline">Zur globalen Queue</a>
+        </div>
+      </div>
       <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
       <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
       <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ Settings</a>
@@ -26,6 +47,10 @@
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('fr')" :class="currentLang === 'fr' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">FR</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('it')" :class="currentLang === 'it' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">IT</button>
       </div>
     </div>
   </header>
@@ -262,7 +287,7 @@
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 createApp({
   setup() {
@@ -277,6 +302,10 @@ createApp({
     const formError = ref('');
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const taskCenterOpen = ref(false);
+    const taskQueueData = ref({ running: [], queued: [] });
+    const taskLastUpdated = ref(null);
+    let taskPollInterval = null;
 
     const form = ref({
       device_id: '',
@@ -315,6 +344,23 @@ createApp({
     const schPageEnd    = computed(() => Math.min(schPage.value * SCH_PAGE_SIZE, filteredSchedules.value.length));
     const pagedSchedules = computed(() => filteredSchedules.value.slice((schPage.value - 1) * SCH_PAGE_SIZE, schPage.value * SCH_PAGE_SIZE));
     function resetSchPage() { schPage.value = 1; }
+    const taskRunningCount = computed(() => (taskQueueData.value?.running || []).length);
+    const taskQueuedCount = computed(() => (taskQueueData.value?.queued || []).length);
+    const taskTotalCount = computed(() => taskRunningCount.value + taskQueuedCount.value);
+    const taskCenterBadgeLabel = computed(() => {
+      if (taskRunningCount.value > 0) return `🟢 ${taskRunningCount.value} running`;
+      if (taskQueuedCount.value > 0) return `🟡 ${taskQueuedCount.value} queued`;
+      return '⚪ No active tasks';
+    });
+    const taskCenterBadgeClass = computed(() => {
+      if (taskRunningCount.value > 0) return 'bg-green-900 text-green-100';
+      if (taskQueuedCount.value > 0) return 'bg-amber-900 text-amber-100';
+      return 'bg-slate-700 text-slate-200';
+    });
+    const taskLastUpdatedLabel = computed(() => {
+      if (!taskLastUpdated.value) return 'Noch kein Status geladen.';
+      return `Stand: ${new Date(taskLastUpdated.value).toLocaleTimeString()}`;
+    });
 
     function fmtDateTime(dt) {
       if (!dt) return '—';
@@ -346,6 +392,15 @@ createApp({
         { name: 'standard', label: 'Standard', description: '' },
         { name: 'extended', label: 'Extended', description: '' },
       ];
+    }
+
+    async function loadTaskQueue() {
+      try {
+        const r = await fetch('/api/v1/scan-queue/status');
+        if (!r.ok) return;
+        taskQueueData.value = await r.json();
+        taskLastUpdated.value = Date.now();
+      } catch (e) { /* ignore */ }
     }
 
     async function createSchedule() {
@@ -417,9 +472,14 @@ createApp({
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
       await Promise.all([loadSchedules(), loadDevices(), loadScanProfiles()]);
+      await loadTaskQueue();
+      taskPollInterval = setInterval(loadTaskQueue, 5000);
+    });
+    onUnmounted(() => {
+      if (taskPollInterval) clearInterval(taskPollInterval);
     });
 
-    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, pagedSchedules, schPage, schTotalPages, schPageStart, schPageEnd, resetSchPage, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
+    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, pagedSchedules, schPage, schTotalPages, schPageStart, schPageEnd, resetSchPage, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang };
 
   }
 }).mount('#app');
