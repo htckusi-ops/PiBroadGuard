@@ -78,10 +78,12 @@
             {{ ratingLabel(assessment.overall_rating) }}
           </span>
           <button @click="recalculate" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm">
-            &#8635; Recalculate
+            <span v-if="recalcBusy" class="inline-block animate-spin mr-1">⏳</span>
+            &#8635; {{ recalcBusy ? 'Recalculating...' : 'Recalculate' }}
           </button>
         </div>
       </div>
+      <div v-if="recalcMsg" class="text-xs text-slate-500 mt-1">{{ recalcMsg }}</div>
 
       <!-- Score Bars (hidden in discovery mode) -->
       <div v-if="assessment.scan_mode !== 'discovery'" class="grid grid-cols-5 gap-3">
@@ -831,6 +833,8 @@ createApp({
     const newProfile = ref('passive');
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const recalcBusy = ref(false);
+    const recalcMsg = ref('');
     const taskCenterOpen = ref(false);
     const taskQueueData = ref({ running: [], queued: [] });
     const taskLastUpdated = ref(null);
@@ -968,9 +972,9 @@ createApp({
       }[c] || c;
     }
 
-    async function loadDevice() {
-      if (!deviceId) return;
-      const resp = await fetch(`/api/v1/devices/${deviceId}`);
+    async function loadDeviceById(id) {
+      if (!id) return;
+      const resp = await fetch(`/api/v1/devices/${id}`);
       if (resp.ok) device.value = await resp.json();
     }
 
@@ -980,6 +984,9 @@ createApp({
         const resp = await fetch(`/api/v1/assessments/${assessmentIdParam}`);
         if (resp.ok) {
           assessment.value = await resp.json();
+          if (!device.value && assessment.value.device_id) {
+            await loadDeviceById(assessment.value.device_id);
+          }
           await Promise.all([loadResults(), loadFindings(), loadManual()]);
         }
       }
@@ -1155,10 +1162,24 @@ createApp({
     }
 
     async function recalculate() {
-      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/recalculate`, { method: 'POST' });
-      if (resp.ok) { const r = await resp.json(); Object.assign(assessment.value, r); }
-      // Refresh scoring details if panel is open
-      if (showScoringDetails.value) await loadScoringDetails();
+      if (!assessment.value) return;
+      recalcBusy.value = true;
+      recalcMsg.value = '';
+      try {
+        const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/recalculate`, { method: 'POST' });
+        if (resp.ok) {
+          const r = await resp.json();
+          Object.assign(assessment.value, r);
+          recalcMsg.value = 'Score updated.';
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          recalcMsg.value = err.detail || `Recalculate failed (${resp.status})`;
+        }
+        // Refresh scoring details if panel is open
+        if (showScoringDetails.value) await loadScoringDetails();
+      } finally {
+        recalcBusy.value = false;
+      }
     }
 
     const showScoringDetails = ref(false);
@@ -1177,7 +1198,8 @@ createApp({
 
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await Promise.allSettled([loadDevice(), loadScanProfiles(), loadNetworkInterfaces()]);
+      await Promise.allSettled([loadScanProfiles(), loadNetworkInterfaces()]);
+      if (deviceId) await loadDeviceById(deviceId);
       if (assessmentIdParam) {
         await loadLatestAssessment();
         if (assessment.value) {
@@ -1354,7 +1376,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanStarting, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanStarting, recalcBusy, recalcMsg, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
   }
 }).mount('#app');
 </script>
