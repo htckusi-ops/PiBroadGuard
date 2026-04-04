@@ -690,20 +690,27 @@ createApp({
       else error.value = 'Error deleting device';
     }
 
-    async function loadAssessments() {
+    async function loadAssessments(opts = {}) {
+      const silent = !!opts.silent;
       if (!deviceId) return;
-      historyLoading.value = true;
+      if (!silent) historyLoading.value = true;
       try {
         const resp = await fetch(`/api/v1/devices/${deviceId}/assessments`);
-        if (resp.ok) assessments.value = await resp.json();
+        if (resp.ok) {
+          const next = await resp.json();
+          // Nur neu zuweisen, wenn sich tatsächlich etwas geändert hat
+          if (JSON.stringify(next) !== JSON.stringify(assessments.value)) {
+            assessments.value = next;
+          }
+        }
       } catch (e) { /* ignore */ }
-      finally { historyLoading.value = false; }
+      finally { if (!silent) historyLoading.value = false; }
     }
 
     function handleWindowRefocus() {
       if (!deviceId) return;
       if (document.visibilityState && document.visibilityState !== 'visible') return;
-      loadAssessments();
+      loadAssessments({ silent: true });
     }
 
     async function cloneAssessment(id) {
@@ -847,7 +854,8 @@ createApp({
       window.addEventListener('focus', handleWindowRefocus);
       document.addEventListener('visibilitychange', handleWindowRefocus);
       historyPoll = setInterval(() => {
-        if (hasRunningAssessment.value) loadAssessments();
+        if (document.visibilityState && document.visibilityState !== 'visible') return;
+        loadAssessments({ silent: true });
       }, 5000);
     });
 
