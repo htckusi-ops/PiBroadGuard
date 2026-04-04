@@ -3,6 +3,8 @@
     author: 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch',
     standards: 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1',
     version: 'v1.8 | March 2026',
+    logo_path: '/app/assets/pibg-logo.svg',
+    logo_alt: 'PiBroadGuard Logo',
   };
 
   async function loadMeta() {
@@ -20,6 +22,10 @@
     document.querySelectorAll('[data-pibg-meta]').forEach((el) => {
       const key = el.getAttribute('data-pibg-meta');
       if (meta[key] !== undefined) el.textContent = meta[key];
+    });
+    document.querySelectorAll('[data-pibg-logo]').forEach((img) => {
+      if (meta.logo_path) img.setAttribute('src', meta.logo_path);
+      if (meta.logo_alt) img.setAttribute('alt', meta.logo_alt);
     });
   }
 

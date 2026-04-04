@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     pibg_app_author: str = "PiBroadGuard · Markus Gerber · markus.gerber@npn.ch"
     pibg_app_standards: str = "IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1"
     pibg_app_version: str = "v1.8 | March 2026"
+    pibg_app_logo_path: str = "/app/assets/pibg-logo.svg"
+    pibg_app_logo_alt: str = "PiBroadGuard Logo"
 
     @property
     def database_url(self) -> str:

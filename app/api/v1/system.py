@@ -328,6 +328,8 @@ def get_ui_meta(user: str = Depends(verify_credentials)):
         "author": settings.pibg_app_author,
         "standards": settings.pibg_app_standards,
         "version": settings.pibg_app_version,
+        "logo_path": settings.pibg_app_logo_path,
+        "logo_alt": settings.pibg_app_logo_alt,
     }
 
 

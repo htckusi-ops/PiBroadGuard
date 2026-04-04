@@ -81,3 +81,12 @@
 @keyframes pibg-spin {
   to { transform: rotate(360deg); }
 }
+
+.pibg-tab-window {
+  width: min(1100px, 100%);
+  margin-inline: auto;
+}
+
+.pibg-tab-body {
+  min-height: 420px;
+}

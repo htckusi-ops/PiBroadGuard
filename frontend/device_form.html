@@ -13,7 +13,7 @@
 <div id="app" class="flex flex-col min-h-screen bg-slate-100">
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
-      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline inline-flex items-center gap-2"><img data-pibg-logo src="/app/assets/pibg-logo.svg" alt="PiBroadGuard Logo" class="w-5 h-5 rounded-sm"><span>PiBroadGuard</span></a>
       <span class="text-slate-400">/</span>
       <span class="text-slate-200">{{ isEdit ? t('device_form_title_edit', 'Edit Device') : t('device_form_title_new', 'Add New Device') }}</span>
     </div>
@@ -175,7 +175,7 @@
     </div>
 
     <!-- Tabbed history section (edit mode only) -->
-    <div v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm">
+    <div v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm pibg-tab-window">
       <!-- Tab bar -->
       <div class="border-b border-slate-200 px-6 pt-4 flex items-center justify-between">
         <div class="flex gap-0">
@@ -205,7 +205,7 @@
       </div>
 
       <!-- Assessments tab -->
-      <div v-if="historyTab === 'assessments'" class="p-6">
+      <div v-if="historyTab === 'assessments'" class="p-6 pibg-tab-body">
         <div v-if="historyLoading" class="text-slate-400 text-sm py-4 text-center">Loading...</div>
         <div v-else-if="!assessments.length" class="text-slate-400 text-sm py-4 text-center">No assessments yet.</div>
         <div v-else class="overflow-x-auto">
@@ -280,7 +280,7 @@
       </div>
 
       <!-- Probes tab -->
-      <div v-if="historyTab === 'probes'" class="p-6">
+      <div v-if="historyTab === 'probes'" class="p-6 pibg-tab-body">
         <p class="text-xs text-slate-500 mb-4">Lightweight discovery scans run independently — no assessment, no findings, no scoring. For observation only.</p>
 
         <!-- Start probe -->
@@ -415,7 +415,7 @@
       </div>
 
       <!-- NMOS Check tab -->
-      <div v-if="historyTab === 'nmos'" class="p-6">
+      <div v-if="historyTab === 'nmos'" class="p-6 pibg-tab-body">
         <p class="text-xs text-slate-500 mb-4">
           Passive NMOS IS-04 security checks (production-safe, no state changes).
           Verifies TLS (BCP-003-01), authentication (IS-10/BCP-003-02) and detects reachable NMOS API endpoints.
