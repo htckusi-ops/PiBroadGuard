@@ -6,6 +6,7 @@
 <title>PiBroadGuard – Scheduled Scans</title>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/app/theme.css">
 <script src="/app/i18n.js"></script>
 </head>
 <body class="bg-slate-100">
@@ -69,14 +70,14 @@
         <option value="active">Active</option>
         <option value="paused">Paused</option>
       </select>
-      <button @click="showModal = true" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+      <button @click="showModal = true" class="pibg-btn pibg-btn-primary">
         + Schedule Scan
       </button>
     </div>
 
     <!-- Schedules Table -->
-    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div v-if="loading" class="text-center py-12 text-slate-400">Loading...</div>
+    <div class="pibg-card overflow-hidden">
+      <div v-if="loading" class="text-center py-12 pibg-loading">Loading...</div>
       <div v-else-if="filteredSchedules.length === 0" class="text-center py-12 text-slate-400">
         No scheduled scans configured.
         <a href="#" @click.prevent="showModal = true" class="text-blue-600 hover:underline ml-1">Create one →</a>
@@ -127,7 +128,9 @@
               <div class="flex items-center gap-2 flex-wrap">
                 <button v-if="s.active" @click="pauseSchedule(s.id)" class="text-xs text-amber-600 hover:underline" title="Pause">⏸ Pause</button>
                 <button v-else @click="resumeSchedule(s.id)" class="text-xs text-green-600 hover:underline" title="Resume">▶ Resume</button>
-                <button @click="runNow(s.id)" class="text-xs text-blue-600 hover:underline" title="Run now">▶▶ Now</button>
+                <button @click="runNow(s.id)" :disabled="runNowBusyId === s.id" class="text-xs text-blue-600 hover:underline disabled:opacity-50" title="Run now">
+                  {{ runNowBusyId === s.id ? '⏳ Running…' : '▶▶ Now' }}
+                </button>
                 <button @click="deleteSchedule(s.id)" class="text-xs text-red-500 hover:underline" title="Delete">🗑</button>
               </div>
             </td>
@@ -271,8 +274,9 @@
         <button @click="showModal = false; formError = ''" class="px-4 py-2 text-sm border border-slate-300 rounded hover:bg-slate-50">Cancel</button>
         <button @click="createSchedule"
           :disabled="!form.device_id || !form.authorized_by_name || !form.authorized_by_role || !form.confirmed"
-          class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed">
-          ⏰ Create Schedule
+          class="pibg-btn pibg-btn-primary disabled:bg-slate-300 disabled:cursor-not-allowed">
+          <span v-if="createBusy" class="pibg-spinner"></span>
+          {{ createBusy ? 'Creating…' : '⏰ Create Schedule' }}
         </button>
       </div>
       <div v-if="formError" class="mt-2 text-red-600 text-sm">{{ formError }}</div>
@@ -305,6 +309,8 @@ createApp({
     const taskCenterOpen = ref(false);
     const taskQueueData = ref({ running: [], queued: [] });
     const taskLastUpdated = ref(null);
+    const runNowBusyId = ref(null);
+    const createBusy = ref(false);
     let taskPollInterval = null;
 
     const form = ref({
@@ -427,6 +433,7 @@ createApp({
         if (!form.value.cron_expression) { formError.value = 'Cron expression required'; return; }
         body.cron_expression = form.value.cron_expression;
       }
+      createBusy.value = true;
       try {
         const r = await fetch('/api/v1/schedules', {
           method: 'POST',
@@ -447,6 +454,8 @@ createApp({
         await loadSchedules();
       } catch (e) {
         formError.value = 'Network error: ' + e.message;
+      } finally {
+        createBusy.value = false;
       }
     }
 
@@ -460,8 +469,14 @@ createApp({
     }
     async function runNow(id) {
       if (!confirm('Trigger scan immediately?')) return;
-      await fetch(`/api/v1/schedules/${id}/run-now`, { method: 'POST' });
-      await loadSchedules();
+      runNowBusyId.value = id;
+      try {
+        await fetch(`/api/v1/schedules/${id}/run-now`, { method: 'POST' });
+        await loadSchedules();
+        await loadTaskQueue();
+      } finally {
+        runNowBusyId.value = null;
+      }
     }
     async function deleteSchedule(id) {
       if (!confirm('Delete this schedule?')) return;
@@ -479,7 +494,7 @@ createApp({
       if (taskPollInterval) clearInterval(taskPollInterval);
     });
 
-    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, pagedSchedules, schPage, schTotalPages, schPageStart, schPageEnd, resetSchPage, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang };
+    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, pagedSchedules, schPage, schTotalPages, schPageStart, schPageEnd, resetSchPage, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, runNowBusyId, createBusy, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang };
 
   }
 }).mount('#app');

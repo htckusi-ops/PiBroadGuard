@@ -1,0 +1,83 @@
+:root {
+  --pibg-primary: #2563eb;
+  --pibg-primary-hover: #1d4ed8;
+  --pibg-surface: #ffffff;
+  --pibg-surface-muted: #f8fafc;
+  --pibg-border: #cbd5e1;
+  --pibg-text: #1e293b;
+  --pibg-text-muted: #64748b;
+  --pibg-success: #15803d;
+  --pibg-warning: #b45309;
+  --pibg-danger: #b91c1c;
+  --pibg-radius: 0.5rem;
+  --pibg-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+
+.pibg-card {
+  background: var(--pibg-surface);
+  border: 1px solid #e2e8f0;
+  border-radius: var(--pibg-radius);
+  box-shadow: var(--pibg-shadow);
+}
+
+.pibg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.4rem;
+  padding: 0.42rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 120ms ease;
+}
+
+.pibg-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pibg-btn-primary {
+  color: white;
+  background: var(--pibg-primary);
+}
+
+.pibg-btn-primary:hover:not(:disabled) {
+  background: var(--pibg-primary-hover);
+}
+
+.pibg-btn-secondary {
+  color: white;
+  background: #475569;
+}
+
+.pibg-btn-secondary:hover:not(:disabled) {
+  background: #334155;
+}
+
+.pibg-btn-success {
+  color: white;
+  background: var(--pibg-success);
+}
+
+.pibg-btn-success:hover:not(:disabled) {
+  background: #166534;
+}
+
+.pibg-loading {
+  color: var(--pibg-text-muted);
+  font-size: 0.875rem;
+}
+
+.pibg-spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgb(255 255 255 / 0.45);
+  border-top-color: white;
+  border-radius: 999px;
+  animation: pibg-spin 0.8s linear infinite;
+}
+
+@keyframes pibg-spin {
+  to { transform: rotate(360deg); }
+}

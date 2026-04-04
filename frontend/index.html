@@ -6,6 +6,7 @@
 <title>PiBroadGuard – Dashboard</title>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/app/theme.css">
 <script src="/app/i18n.js"></script>
 </head>
 <body class="bg-slate-100">
@@ -64,19 +65,19 @@
 
     <!-- Stats -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-      <div class="bg-white rounded-lg p-4 shadow-sm">
+      <div class="pibg-card p-4">
         <div class="text-2xl font-bold text-slate-800">{{ devices.length }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_total_devices', 'Total Devices') }}</div>
       </div>
-      <div class="bg-white rounded-lg p-4 shadow-sm">
+      <div class="pibg-card p-4">
         <div class="text-2xl font-bold text-red-600">{{ criticalCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('rating_red', 'Critical') }}</div>
       </div>
-      <div class="bg-white rounded-lg p-4 shadow-sm">
+      <div class="pibg-card p-4">
         <div class="text-2xl font-bold text-orange-500">{{ openFindingsCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_open_findings', 'Open Findings') }}</div>
       </div>
-      <div class="bg-white rounded-lg p-4 shadow-sm">
+      <div class="pibg-card p-4">
         <div class="text-2xl font-bold text-green-600">{{ approvedCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_pending_assessments', 'Completed') }}</div>
       </div>
@@ -96,7 +97,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
       <!-- Scan Queue Widget -->
       <div id="queue-widget" v-if="queueData && (queueData.queued.length > 0 || queueData.running.length > 0)"
-           class="bg-white rounded-lg shadow-sm p-4">
+           class="pibg-card p-4">
         <div class="flex items-center justify-between mb-2">
           <span class="font-semibold text-slate-700 text-sm">🔄 Scan-Queue</span>
           <span class="text-xs text-slate-500">Max parallel: {{ queueData.max_parallel }}</span>
@@ -121,7 +122,7 @@
       </div>
 
       <!-- Next Scheduled Scans Widget -->
-      <div v-if="nextSchedules.length > 0" class="bg-white rounded-lg shadow-sm p-4">
+      <div v-if="nextSchedules.length > 0" class="pibg-card p-4">
         <div class="flex items-center justify-between mb-2">
           <span class="font-semibold text-slate-700 text-sm">⏰ Nächste geplante Scans</span>
           <a href="/app/schedules.html" class="text-xs text-blue-600 hover:underline">Alle anzeigen</a>
@@ -134,7 +135,7 @@
       </div>
 
       <!-- Re-Assessment Due Widget -->
-      <div v-if="dueSoon.length > 0" class="bg-white rounded-lg shadow-sm p-4">
+      <div v-if="dueSoon.length > 0" class="pibg-card p-4">
         <div class="flex items-center justify-between mb-2">
           <span class="font-semibold text-slate-700 text-sm">📋 Re-Assessment fällig</span>
           <a href="/app/reassessment-due.html" class="text-xs text-blue-600 hover:underline">Alle anzeigen</a>
@@ -166,16 +167,16 @@
         </option>
       </select>
       <input v-model="search" @input="resetDevPage" placeholder="Search..." class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white w-48">
-      <a href="/app/device_form.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+      <a href="/app/device_form.html" class="pibg-btn pibg-btn-primary">
         + {{ t('btn_new_device', 'Add New Device') }}
       </a>
-      <a href="/app/import.html" class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+      <a href="/app/import.html" class="pibg-btn pibg-btn-secondary">
         &#8679; {{ t('btn_import', 'Import') }}
       </a>
     </div>
 
     <!-- Device Table -->
-    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+    <div class="pibg-card overflow-hidden">
       <table class="w-full text-sm">
         <thead>
           <tr class="bg-slate-700 text-white">
@@ -190,7 +191,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading"><td colspan="8" class="text-center py-8 text-slate-400">Loading...</td></tr>
+          <tr v-if="loading"><td colspan="8" class="text-center py-8 pibg-loading">Loading...</td></tr>
           <tr v-else-if="filteredDevices.length === 0">
             <td colspan="8" class="text-center py-8 text-slate-400">No devices found. <a href="/app/device_form.html" class="text-blue-600 hover:underline">Add first device</a></td>
           </tr>

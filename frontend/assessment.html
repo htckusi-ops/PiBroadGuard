@@ -6,6 +6,7 @@
 <title>PiBroadGuard – Assessment</title>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/app/theme.css">
 <script src="/app/i18n.js"></script>
 </head>
 <body class="bg-slate-100">
@@ -64,7 +65,7 @@
   <main class="max-w-7xl mx-auto px-4 py-6 flex-1">
 
     <!-- Score Overview -->
-    <div v-if="assessment" class="bg-white rounded-lg shadow-sm p-5 mb-4">
+    <div v-if="assessment" class="pibg-card p-5 mb-4">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 class="text-xl font-bold text-slate-800">{{ device?.manufacturer }} {{ device?.model }}</h1>
@@ -145,7 +146,7 @@
     </div>
 
     <!-- Tabs -->
-    <div class="bg-white rounded-lg shadow-sm w-full" style="min-width:0">
+    <div class="pibg-card w-full" style="min-width:0">
       <div class="flex border-b border-slate-200 overflow-x-auto">
         <button v-for="tab in tabs" :key="tab.id"
           @click="activeTab = tab.id"
@@ -304,9 +305,10 @@
               {{ t('scan_authorization_confirm', 'I confirm that operational authorization for this scan has been obtained and the scan risks are understood.') }}
             </label>
             <button @click="startScan"
-              :disabled="!auth.name || !auth.role || !auth.confirmed"
-              class="bg-green-600 hover:bg-green-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded font-medium text-sm">
-              {{ t('btn_start_scan', 'Start Scan') }} →
+              :disabled="scanStarting || !auth.name || !auth.role || !auth.confirmed"
+              class="pibg-btn pibg-btn-success">
+              <span v-if="scanStarting" class="pibg-spinner"></span>
+              {{ scanStarting ? 'Starting...' : t('btn_start_scan', 'Start Scan') + ' →' }}
             </button>
           </div>
 
@@ -822,6 +824,7 @@ createApp({
     const scanError = ref('');
     const scanMsg = ref('');
     const scanRunning = ref(false);
+    const scanStarting = ref(false);
     const scanOutput = ref([]);
     const scanOutputEl = ref(null);
     const activeTab = ref('overview');
@@ -1021,45 +1024,50 @@ createApp({
     }
 
     async function startScan() {
+      scanStarting.value = true;
       scanError.value = '';
-      const authResp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/authorize`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          authorized_by_name: auth.value.name, authorized_by_role: auth.value.role,
-          authorized_by_contact: auth.value.contact, scan_profile: auth.value.profile,
-          nmap_interface: auth.value.iface === 'auto' ? null : auth.value.iface,
-          notes: auth.value.notes, time_window_start: auth.value.timeStart || null,
-          time_window_end: auth.value.timeEnd || null
-        })
-      });
-      if (!authResp.ok) { scanError.value = 'Authorization failed'; return; }
+      try {
+        const authResp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/authorize`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            authorized_by_name: auth.value.name, authorized_by_role: auth.value.role,
+            authorized_by_contact: auth.value.contact, scan_profile: auth.value.profile,
+            nmap_interface: auth.value.iface === 'auto' ? null : auth.value.iface,
+            notes: auth.value.notes, time_window_start: auth.value.timeStart || null,
+            time_window_end: auth.value.timeEnd || null
+          })
+        });
+        if (!authResp.ok) { scanError.value = 'Authorization failed'; return; }
 
-      assessment.value.scan_profile = auth.value.profile;
-      await fetch(`/api/v1/assessments/${assessment.value.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scan_profile: auth.value.profile })
-      });
+        assessment.value.scan_profile = auth.value.profile;
+        await fetch(`/api/v1/assessments/${assessment.value.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scan_profile: auth.value.profile })
+        });
 
-      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan`, { method: 'POST' });
-      if (resp.ok) {
-        const data = await resp.json();
-        scanRunning.value = true;
-        scanOutput.value = [];
-        assessment.value.status = 'scan_running';
-        // Track job for queue polling
-        if (data.job_id) {
-          currentJobId.value = data.job_id;
-          if (data.position > 1) {
-            // Job is queued (not immediately running)
-            queueStatus.value = { position: data.position, job_id: data.job_id, running_device: null };
-            queuePollInterval = setInterval(pollQueueStatus, 3000);
+        const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan`, { method: 'POST' });
+        if (resp.ok) {
+          const data = await resp.json();
+          scanRunning.value = true;
+          scanOutput.value = [];
+          assessment.value.status = 'scan_running';
+          // Track job for queue polling
+          if (data.job_id) {
+            currentJobId.value = data.job_id;
+            if (data.position > 1) {
+              // Job is queued (not immediately running)
+              queueStatus.value = { position: data.position, job_id: data.job_id, running_device: null };
+              queuePollInterval = setInterval(pollQueueStatus, 3000);
+            }
           }
+          startSSE();
+          startPolling();
+        } else {
+          const err = await resp.json();
+          scanError.value = err.detail || 'Could not start scan';
         }
-        startSSE();
-        startPolling();
-      } else {
-        const err = await resp.json();
-        scanError.value = err.detail || 'Could not start scan';
+      } finally {
+        scanStarting.value = false;
       }
     }
 
@@ -1346,7 +1354,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanStarting, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
   }
 }).mount('#app');
 </script>
