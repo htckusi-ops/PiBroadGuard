@@ -321,6 +321,16 @@ def list_languages():
     ]}
 
 
+@router.get("/system/ui-meta")
+def get_ui_meta(user: str = Depends(verify_credentials)):
+    """Return centrally managed UI metadata (author/version/standards)."""
+    return {
+        "author": settings.pibg_app_author,
+        "standards": settings.pibg_app_standards,
+        "version": settings.pibg_app_version,
+    }
+
+
 @router.get("/device-types")
 def get_device_types(
     db: Session = Depends(get_db),

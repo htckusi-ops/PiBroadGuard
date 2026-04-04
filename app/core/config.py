@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     pibg_phpipam_app_id: str = "pibroadguard"
     pibg_phpipam_token: str = ""
 
+    # UI metadata (central single source of truth)
+    pibg_app_author: str = "PiBroadGuard · Markus Gerber · markus.gerber@npn.ch"
+    pibg_app_standards: str = "IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1"
+    pibg_app_version: str = "v1.8 | March 2026"
+
     @property
     def database_url(self) -> str:
         return f"sqlite:///{self.pibg_db_path}"
