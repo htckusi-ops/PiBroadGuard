@@ -182,38 +182,36 @@
   "error_auth_required": "Scan authorization required",
   "confirm_delete_device": "Really delete this device?",
   "confirm_start_scan": "Really start scan?",
-
   "tooltip_default_creds_exist": "Does the manufacturer ship the device with a predefined default password (e.g. admin/admin)? Check the vendor documentation or the device's first-login screen.",
   "tooltip_default_creds_changeable": "Does the device allow changing the factory-set password? Some broadcast devices have backdoor accounts that cannot be changed.",
   "tooltip_individual_accounts": "Does the device support multiple user accounts with individual credentials? Shared accounts (one login for all) make activity attribution impossible.",
   "tooltip_roles_available": "Can users be assigned different permission levels (e.g. Read-Only vs. Admin)? Required to implement the principle of least privilege.",
   "tooltip_mfa_possible": "Does the device support multi-factor authentication (e.g. TOTP, hardware token)? Especially important for management interfaces.",
   "tooltip_central_auth_possible": "Can the device integrate with a central authentication infrastructure (LDAP, Active Directory, RADIUS)? Enables centralised user management and quick account lockout.",
-
   "tooltip_firmware_updatable": "Can the device firmware be updated by the operator themselves? On some devices this is only possible via the manufacturer or a service partner.",
   "tooltip_security_updates_available": "Does the manufacturer provide security-only patches without requiring a full firmware upgrade? Reduces risk and effort for critical vulnerabilities.",
   "tooltip_security_advisories": "Does the manufacturer publish structured security advisories when vulnerabilities are discovered? Check the vendor website for a security or PSIRT section.",
   "tooltip_lifecycle_documented": "Has the manufacturer published a clear End-of-Life (no more updates) or End-of-Support (no more vendor support) date for this product?",
   "tooltip_update_without_downtime": "Can a firmware update be applied without interrupting broadcast operations for an extended period? E.g. via redundant systems, rolling update, or short reboot time.",
-
   "tooltip_unnecessary_services_disableable": "Does the device allow disabling services that are not needed (e.g. Telnet, FTP, SNMP)? Fewer open ports means a smaller attack surface.",
   "tooltip_web_interface_disableable": "If the management interface is accessible via HTTP/HTTPS: can it be disabled when not needed, or restricted to HTTPS only?",
   "tooltip_insecure_protocols_disableable": "Can protocols such as Telnet, FTP, SNMPv1/v2 and unencrypted HTTP be disabled? Ask the vendor if not evident from documentation.",
   "tooltip_certificates_replaceable": "Does the device allow replacing the factory self-signed certificate with a custom certificate (e.g. from an internal PKI)?",
   "tooltip_tls_configurable": "Can you configure which TLS versions (minimum TLS 1.2) and cipher suites are allowed? TLS 1.0 and 1.1 are considered insecure.",
-
   "tooltip_syslog_supported": "Can the device send security events (logins, errors, configuration changes) to a central syslog server? Essential for detection and incident response.",
   "tooltip_snmpv3_supported": "Does the device support SNMPv3 with authentication and encryption? SNMPv1/v2 transmit community strings in plaintext.",
   "tooltip_login_logging": "Does the device log successful and failed login attempts? A basic requirement for detecting brute-force attacks.",
   "tooltip_config_change_logging": "Is there an audit log recording who made which configuration change and when? Important for traceability and forensics.",
-
   "tooltip_production_critical": "Does a failure of this device directly cause a broadcast outage or significant quality degradation in live operations? This significantly influences the risk rating.",
   "tooltip_redundancy_available": "Is there an identical spare device or redundant solution that can take over automatically or manually in case of failure?",
   "tooltip_fallback_possible": "Can an alternative solution be switched to in case of failure (e.g. analogue backup, alternative signal path)?",
   "tooltip_management_vlan_possible": "Can the device's management interface be placed in a separate, production-network-isolated management VLAN? This is the most important compensating control.",
   "tooltip_legacy_services_required": "Are insecure protocols (Telnet, FTP, SNMPv1) unavoidably required for operational reasons? If yes: describe compensating controls in the next field.",
-
   "tooltip_psirt_available": "Does the manufacturer have a Product Security Incident Response Team (PSIRT) or at least a documented contact for security reports? Without this channel, coordinated vulnerability remediation is barely possible.",
   "tooltip_hardening_guide_available": "Does the manufacturer provide documentation explaining how to securely configure the device? Check the vendor website and ask support.",
-  "tooltip_security_roadmap": "Has the manufacturer communicated how security topics will be addressed in future versions? Indicates the long-term security maturity of the vendor."
+  "tooltip_security_roadmap": "Has the manufacturer communicated how security topics will be addressed in future versions? Indicates the long-term security maturity of the vendor.",
+  "nav_schedules": "Schedules",
+  "nav_rules": "Ruleset",
+  "dashboard_next_schedules": "Next scheduled scans",
+  "common_show_all": "Show all"
 }

@@ -548,7 +548,7 @@
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 createApp({
   setup() {
     const params = new URLSearchParams(window.location.search);
@@ -570,6 +570,8 @@ createApp({
     const deviceTypes = ref([]);
     const deviceClasses = ref([]);
     const historyTab = ref('assessments');
+    const hasRunningAssessment = computed(() => assessments.value.some(a => a.status === 'scan_running'));
+    let historyPoll = null;
 
     // NMOS check state
     const nmosRunning = ref(false);
@@ -696,6 +698,12 @@ createApp({
         if (resp.ok) assessments.value = await resp.json();
       } catch (e) { /* ignore */ }
       finally { historyLoading.value = false; }
+    }
+
+    function handleWindowRefocus() {
+      if (!deviceId) return;
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      loadAssessments();
     }
 
     async function cloneAssessment(id) {
@@ -836,6 +844,17 @@ createApp({
       await Promise.all([loadDeviceTypes(), loadDeviceClasses(), loadProbeProfiles()]);
       await load();
       await Promise.all([loadAssessments(), loadProbes()]);
+      window.addEventListener('focus', handleWindowRefocus);
+      document.addEventListener('visibilitychange', handleWindowRefocus);
+      historyPoll = setInterval(() => {
+        if (hasRunningAssessment.value) loadAssessments();
+      }, 5000);
+    });
+
+    onUnmounted(() => {
+      window.removeEventListener('focus', handleWindowRefocus);
+      document.removeEventListener('visibilitychange', handleWindowRefocus);
+      if (historyPoll) clearInterval(historyPoll);
     });
     return { form, isEdit, saving, error, success, ipError, rdnsLoading,
              assessments, historyLoading, deviceTypes, deviceClasses,
@@ -847,6 +866,7 @@ createApp({
              save, lookupRdns, deleteDevice, cloneAssessment, deleteAssessment,
              startProbe, openProbeDetail, saveObservations,
              nmosRunning, nmosResult, nmosError, nmosRegistryUrl, nmosCheckedAt, runNmosCheck,
+             hasRunningAssessment,
              fmtDate, ratingClass, statusClass,
              t, currentLang, switchLang };
   }

@@ -125,8 +125,8 @@
       <!-- Next Scheduled Scans Widget -->
       <div v-if="nextSchedules.length > 0" class="pibg-card p-4">
         <div class="flex items-center justify-between mb-2">
-          <span class="font-semibold text-slate-700 text-sm">⏰ Nächste geplante Scans</span>
-          <a href="/app/schedules.html" class="text-xs text-blue-600 hover:underline">Alle anzeigen</a>
+          <span class="font-semibold text-slate-700 text-sm">⏰ {{ t('dashboard_next_schedules', 'Next scheduled scans') }}</span>
+          <a href="/app/schedules.html" class="text-xs text-blue-600 hover:underline">{{ t('common_show_all', 'Show all') }}</a>
         </div>
         <div v-for="s in nextSchedules" :key="s.id" class="text-xs text-slate-600 py-0.5 border-t border-slate-50 flex justify-between">
           <span>{{ fmtDateTime(s.next_run_at) }}</span>

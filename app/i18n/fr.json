@@ -209,5 +209,9 @@
   "tooltip_legacy_services_required": "Are insecure protocols (Telnet, FTP, SNMPv1) unavoidably required for operational reasons? If yes: describe compensating controls in the next field.",
   "tooltip_psirt_available": "Does the manufacturer have a Product Security Incident Response Team (PSIRT) or at least a documented contact for security reports? Without this channel, coordinated vulnerability remediation is barely possible.",
   "tooltip_hardening_guide_available": "Does the manufacturer provide documentation explaining how to securely configure the device? Check the vendor website and ask support.",
-  "tooltip_security_roadmap": "Has the manufacturer communicated how security topics will be addressed in future versions? Indicates the long-term security maturity of the vendor."
+  "tooltip_security_roadmap": "Has the manufacturer communicated how security topics will be addressed in future versions? Indicates the long-term security maturity of the vendor.",
+  "nav_schedules": "Planifications",
+  "nav_rules": "Jeu de règles",
+  "dashboard_next_schedules": "Prochains scans planifiés",
+  "common_show_all": "Afficher tout"
 }

@@ -253,18 +253,16 @@
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
-                  Scan Profile
-                  <span class="ml-1 text-slate-400 cursor-help" title="Passive: ~20 broadcast-relevant ports, T2 (gentle). Standard: Top 1000 ports, T3. Extended: Top 1000 TCP + UDP, T3 (slowest, most thorough)">ℹ</span>
+                  Scan Profile (aus Assessment übernommen)
+                  <span class="ml-1 text-slate-400 cursor-help" title="Profil wird aus dem Assessment übernommen. Änderung im Tab 'Overview' oder beim Erstellen eines neuen Assessments.">ℹ</span>
                 </label>
-                <select :value="auth.profile" @change="changeProfile($event.target.value)"
-                        :disabled="assessment.status === 'scan_complete' || assessment.status === 'completed'"
-                        class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white disabled:bg-slate-100">
-                  <option v-for="p in scanProfiles" :key="p.name" :value="p.name">{{ p.label }}</option>
-                </select>
-                <p v-if="scanProfiles.find(p=>p.name===auth.profile)?.description" class="text-xs text-slate-500 mt-1 bg-slate-50 rounded px-2 py-1">
-                  {{ scanProfiles.find(p=>p.name===auth.profile).description }}
+                <div class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-slate-50 text-slate-700">
+                  {{ assessment.scan_profile || auth.profile }}
+                </div>
+                <p v-if="scanProfiles.find(p=>p.name===(assessment.scan_profile || auth.profile))?.description" class="text-xs text-slate-500 mt-1 bg-slate-50 rounded px-2 py-1">
+                  {{ scanProfiles.find(p=>p.name===(assessment.scan_profile || auth.profile)).description }}
                 </p>
-                <p v-if="scanProfiles.find(p=>p.name===auth.profile)?.is_discovery" class="text-xs text-purple-700 bg-purple-50 rounded px-2 py-1 mt-1">
+                <p v-if="scanProfiles.find(p=>p.name===(assessment.scan_profile || auth.profile))?.is_discovery" class="text-xs text-purple-700 bg-purple-50 rounded px-2 py-1 mt-1">
                   🔍 <strong>Discovery-Profil:</strong> Kein Regelwerk, kein Scoring – nur Geräteverhalten dokumentieren.
                 </p>
               </div>
@@ -319,6 +317,7 @@
               <div class="animate-spin text-2xl">&#9881;</div>
               <p class="text-slate-600 font-medium">{{ scanMsg || 'Scan running...' }}</p>
             </div>
+            <p class="text-xs text-slate-500 mb-2">Du kannst die Seite verlassen – der Scan läuft serverseitig weiter und erscheint in der Historie.</p>
             <div v-if="scanOutput.length" class="bg-slate-900 rounded p-3 font-mono text-xs text-green-400 max-h-64 overflow-y-auto" ref="scanOutputEl">
               <div v-for="(line, i) in scanOutput" :key="i">{{ line }}</div>
             </div>
@@ -1032,7 +1031,7 @@ createApp({
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             authorized_by_name: auth.value.name, authorized_by_role: auth.value.role,
-            authorized_by_contact: auth.value.contact, scan_profile: auth.value.profile,
+            authorized_by_contact: auth.value.contact, scan_profile: (assessment.value.scan_profile || auth.value.profile),
             nmap_interface: auth.value.iface === 'auto' ? null : auth.value.iface,
             notes: auth.value.notes, time_window_start: auth.value.timeStart || null,
             time_window_end: auth.value.timeEnd || null
@@ -1040,10 +1039,10 @@ createApp({
         });
         if (!authResp.ok) { scanError.value = 'Authorization failed'; return; }
 
-        assessment.value.scan_profile = auth.value.profile;
+        assessment.value.scan_profile = assessment.value.scan_profile || auth.value.profile;
         await fetch(`/api/v1/assessments/${assessment.value.id}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scan_profile: auth.value.profile })
+          body: JSON.stringify({ scan_profile: assessment.value.scan_profile })
         });
 
         const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan`, { method: 'POST' });
