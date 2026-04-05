@@ -374,6 +374,7 @@
                   <th class="py-2 px-3 font-medium">Ports</th>
                   <th class="py-2 px-3 font-medium">Duration</th>
                   <th class="py-2 px-3 font-medium">By</th>
+                  <th class="py-2 px-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -384,13 +385,19 @@
                   <td class="py-2 px-3 text-slate-700 whitespace-nowrap">{{ fmtDate(p.created_at) }}</td>
                   <td class="py-2 px-3 text-slate-700">{{ p.profile_label || p.profile_name }}</td>
                   <td class="py-2 px-3">
-                    <span :class="p.status === 'done' ? 'bg-green-100 text-green-800' : p.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'"
+                    <span :class="p.status === 'done' ? 'bg-green-100 text-green-800' : p.status === 'failed' ? 'bg-red-100 text-red-800' : p.status === 'cancelled' ? 'bg-slate-200 text-slate-700' : 'bg-yellow-100 text-yellow-800'"
                           class="px-2 py-0.5 rounded text-xs font-medium">{{ p.status }}</span>
                   </td>
                   <td class="py-2 px-3 text-slate-700">{{ p.reachable || '—' }}</td>
                   <td class="py-2 px-3 text-slate-700">{{ p.port_count ?? '—' }}</td>
                   <td class="py-2 px-3 text-slate-500 text-xs">{{ p.scan_duration_seconds ? p.scan_duration_seconds.toFixed(1) + 's' : '—' }}</td>
                   <td class="py-2 px-3 text-slate-500 text-xs">{{ p.initiated_by || '—' }}</td>
+                  <td class="py-2 px-3">
+                    <div class="flex items-center gap-2">
+                      <button v-if="p.status === 'running'" @click.stop="cancelProbe(p.id)" class="text-xs text-amber-700 hover:underline" :disabled="probeActionBusy[p.id]">Stop</button>
+                      <button v-if="p.status === 'failed' || p.status === 'cancelled' || p.status === 'done'" @click.stop="deleteProbe(p.id)" class="text-xs text-red-600 hover:underline" :disabled="probeActionBusy[p.id]">Remove</button>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -608,6 +615,7 @@ createApp({
     const probeProfiles = ref([]);
     const probeProfile = ref('passive');
     const probeRunning = ref(false);
+    const probeActionBusy = ref({});
     const activeProbe = ref(null);
     const activeProbeObservations = ref([]);
     const obsSaveMsg = ref('');
@@ -818,6 +826,36 @@ createApp({
       } catch (e) { /* ignore */ }
     }
 
+    async function cancelProbe(probeId) {
+      if (probeActionBusy.value[probeId]) return;
+      probeActionBusy.value[probeId] = true;
+      try {
+        await fetch(`/api/v1/devices/${deviceId}/probe/${probeId}/cancel`, { method: 'POST' });
+        await loadProbes();
+        if (activeProbe.value && activeProbe.value.id === probeId) await openProbeDetail(probeId);
+      } finally {
+        probeActionBusy.value[probeId] = false;
+      }
+    }
+
+    async function deleteProbe(probeId) {
+      if (!confirm('Remove this probe result?')) return;
+      if (probeActionBusy.value[probeId]) return;
+      probeActionBusy.value[probeId] = true;
+      try {
+        const resp = await fetch(`/api/v1/devices/${deviceId}/probe/${probeId}`, { method: 'DELETE' });
+        if (resp.ok) {
+          if (activeProbe.value && activeProbe.value.id === probeId) {
+            activeProbe.value = null;
+            activeProbeObservations.value = [];
+          }
+          await loadProbes();
+        }
+      } finally {
+        probeActionBusy.value[probeId] = false;
+      }
+    }
+
     async function saveObservations() {
       if (!activeProbe.value) return;
       obsSaveMsg.value = '';
@@ -868,11 +906,12 @@ createApp({
              assessments, historyLoading, deviceTypes, deviceClasses,
              pagedAssessments, asmPage, assessmentsTotalPages, asmPageStart, asmPageEnd,
              probes, probeProfiles, probeProfile, probeRunning, activeProbe,
+             probeActionBusy,
              activeProbeObservations, obsSaveMsg,
              pagedProbes, probePage, probesTotalPages, probePageStart, probePageEnd,
              historyTab,
              save, lookupRdns, deleteDevice, cloneAssessment, deleteAssessment,
-             startProbe, openProbeDetail, saveObservations,
+             startProbe, openProbeDetail, saveObservations, cancelProbe, deleteProbe,
              nmosRunning, nmosResult, nmosError, nmosRegistryUrl, nmosCheckedAt, runNmosCheck,
              hasRunningAssessment,
              fmtDate, ratingClass, statusClass,

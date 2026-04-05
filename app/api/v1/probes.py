@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +20,7 @@ router = APIRouter(tags=["probes"])
 
 # In-progress probes: probe_id -> asyncio.Task
 _probe_tasks: dict = {}
+_STALE_RUNNING_THRESHOLD = timedelta(minutes=15)
 
 
 async def _run_probe_task(probe_id: int, ip: str, profile_name: str,
@@ -53,6 +54,12 @@ async def _run_probe_task(probe_id: int, ip: str, profile_name: str,
             probe.nmap_version = result.get("nmap_version")
             probe.completed_at = datetime.now(timezone.utc)
 
+        except asyncio.CancelledError:
+            probe.status = "cancelled"
+            probe.error_message = probe.error_message or "Probe was cancelled."
+            probe.completed_at = datetime.now(timezone.utc)
+            db.commit()
+            raise
         except Exception as exc:
             logger.error(f"Probe {probe_id} failed: {exc}")
             probe.status = "failed"
@@ -63,6 +70,34 @@ async def _run_probe_task(probe_id: int, ip: str, profile_name: str,
     finally:
         db.close()
         _probe_tasks.pop(probe_id, None)
+
+
+def _reconcile_probe_state(probe: ProbeResult, db: Session):
+    """Ensure 'running' probe states are consistent with in-memory task state."""
+    if probe.status != "running":
+        return
+
+    task = _probe_tasks.get(probe.id)
+    now = datetime.now(timezone.utc)
+    created = probe.created_at
+    if created and created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+
+    # Task known and finished but DB still says running
+    if task and task.done():
+        probe.status = "failed"
+        probe.error_message = probe.error_message or "Probe task finished unexpectedly."
+        probe.completed_at = probe.completed_at or now
+        db.commit()
+        _probe_tasks.pop(probe.id, None)
+        return
+
+    # No task known anymore and probe is stale -> mark failed
+    if not task and created and now - created > _STALE_RUNNING_THRESHOLD:
+        probe.status = "failed"
+        probe.error_message = probe.error_message or "Probe timed out or agent was restarted."
+        probe.completed_at = probe.completed_at or now
+        db.commit()
 
 
 @router.post("/devices/{device_id}/probe", status_code=201)
@@ -130,6 +165,8 @@ def list_probes(
         .order_by(ProbeResult.created_at.desc())
         .all()
     )
+    for p in probes:
+        _reconcile_probe_state(p, db)
     return [_serialize(p) for p in probes]
 
 
@@ -145,6 +182,7 @@ def get_probe(
     ).first()
     if not probe:
         raise HTTPException(404, "Probe not found")
+    _reconcile_probe_state(probe, db)
     return _serialize(probe, include_ports=True)
 
 
@@ -166,6 +204,53 @@ def save_observations(
     probe.observations_json = json.dumps(observations)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/devices/{device_id}/probe/{probe_id}/cancel")
+def cancel_probe(
+    device_id: int,
+    probe_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    probe = db.query(ProbeResult).filter(
+        ProbeResult.id == probe_id, ProbeResult.device_id == device_id
+    ).first()
+    if not probe:
+        raise HTTPException(404, "Probe not found")
+    if probe.status != "running":
+        return {"ok": True, "status": probe.status}
+
+    task = _probe_tasks.get(probe.id)
+    if task and not task.done():
+        task.cancel()
+        _probe_tasks.pop(probe.id, None)
+
+    probe.status = "cancelled"
+    probe.error_message = probe.error_message or f"Cancelled by {user}"
+    probe.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "status": "cancelled"}
+
+
+@router.delete("/devices/{device_id}/probe/{probe_id}", status_code=204)
+def delete_probe(
+    device_id: int,
+    probe_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    probe = db.query(ProbeResult).filter(
+        ProbeResult.id == probe_id, ProbeResult.device_id == device_id
+    ).first()
+    if not probe:
+        raise HTTPException(404, "Probe not found")
+    if probe.status == "running":
+        raise HTTPException(409, "Running probe must be cancelled before deletion")
+
+    db.delete(probe)
+    db.commit()
+    return
 
 
 def _serialize(probe: ProbeResult, include_ports: bool = False) -> dict:
