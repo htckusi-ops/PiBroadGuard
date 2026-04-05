@@ -128,6 +128,24 @@ def start_probe(
             pass
         timeout_override = sp.timeout_seconds
 
+    running_probe = (
+        db.query(ProbeResult)
+        .filter(ProbeResult.device_id == device_id, ProbeResult.status == "running")
+        .order_by(ProbeResult.created_at.desc())
+        .first()
+    )
+    if running_probe:
+        _reconcile_probe_state(running_probe, db)
+        db.refresh(running_probe)
+        if running_probe.status == "running":
+            raise HTTPException(
+                409,
+                {
+                    "message": "A probe is already running for this device",
+                    "probe_id": running_probe.id,
+                },
+            )
+
     probe = ProbeResult(
         device_id=device_id,
         profile_name=profile_name,

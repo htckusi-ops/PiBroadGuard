@@ -299,11 +299,12 @@
 
         <!-- Active / last probe result -->
         <div v-if="activeProbe" class="mb-5 p-4 rounded border"
-             :class="activeProbe.status === 'running' ? 'bg-yellow-50 border-yellow-200' : activeProbe.status === 'failed' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'">
+             :class="activeProbe.status === 'running' ? 'bg-yellow-50 border-yellow-200' : activeProbe.status === 'failed' ? 'bg-red-50 border-red-200' : activeProbe.status === 'cancelled' ? 'bg-slate-100 border-slate-300' : 'bg-green-50 border-green-200'">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-semibold">
               <span v-if="activeProbe.status === 'running'">⟳ Scan läuft — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
               <span v-else-if="activeProbe.status === 'failed'">❌ Fehlgeschlagen — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
+              <span v-else-if="activeProbe.status === 'cancelled'">⏹ Abgebrochen — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
               <span v-else>✅ Abgeschlossen — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
             </span>
             <span class="text-xs text-slate-500">{{ fmtDate(activeProbe.created_at) }}</span>
@@ -358,6 +359,7 @@
           </div>
 
           <div v-if="activeProbe.status === 'failed'" class="text-xs text-red-700 mt-1">{{ activeProbe.error_message }}</div>
+          <div v-if="activeProbe.status === 'cancelled'" class="text-xs text-slate-700 mt-1">{{ activeProbe.error_message || 'Probe cancelled.' }}</div>
         </div>
 
         <!-- Probe history table -->
@@ -769,7 +771,18 @@ createApp({
       if (!deviceId) return;
       try {
         const resp = await fetch(`/api/v1/devices/${deviceId}/probes`);
-        if (resp.ok) probes.value = await resp.json();
+        if (!resp.ok) return;
+
+        probes.value = await resp.json();
+        const running = probes.value.find(p => p.status === 'running');
+        if (running) {
+          probeRunning.value = true;
+          if (!activeProbe.value || activeProbe.value.id !== running.id || activeProbe.value.status !== 'running') {
+            await openProbeDetail(running.id);
+          }
+        } else if (!activeProbe.value || activeProbe.value.status !== 'running') {
+          probeRunning.value = false;
+        }
       } catch (e) { /* ignore */ }
     }
 
@@ -785,7 +798,19 @@ createApp({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ profile_name: probeProfile.value }),
         });
-        if (!resp.ok) { probeRunning.value = false; return; }
+        if (!resp.ok) {
+          if (resp.status === 409) {
+            const conflict = await resp.json().catch(() => ({}));
+            const runningProbeId = conflict?.detail?.probe_id;
+            if (runningProbeId) {
+              await openProbeDetail(runningProbeId);
+              await pollProbe(runningProbeId);
+              return;
+            }
+          }
+          probeRunning.value = false;
+          return;
+        }
         const data = await resp.json();
         // Poll until done
         await pollProbe(data.probe_id);
@@ -813,6 +838,7 @@ createApp({
         } catch (e) { /* ignore transient errors */ }
       }
       probeRunning.value = false;
+      await loadProbes();
     }
 
     async function openProbeDetail(probeId) {
