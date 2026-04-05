@@ -281,7 +281,18 @@
 
       <!-- Probes tab -->
       <div v-if="historyTab === 'probes'" class="p-6 pibg-tab-body">
-        <p class="text-xs text-slate-500 mb-4">Lightweight discovery scans run independently — no assessment, no findings, no scoring. For observation only.</p>
+        <div class="mb-4 rounded border border-indigo-200 bg-indigo-50 p-3 text-xs text-slate-700">
+          <p class="font-semibold text-indigo-800 mb-1">ℹ️ Was ist ein Device Probe?</p>
+          <p class="mb-2">
+            Ein Device Probe ist ein schneller, passiver Netzwerk-Check für dieses eine Gerät (typisch per Nmap):
+            Er prüft Erreichbarkeit und offene Ports, ohne ein vollständiges Security-Assessment zu starten.
+          </p>
+          <ul class="list-disc pl-5 space-y-0.5">
+            <li><strong>Mit Probe:</strong> schneller Sichtcheck (Reachability, Ports, Dienste), kein Score, keine Findings.</li>
+            <li><strong>Mit Assessment:</strong> vollständige Bewertung mit Regeln, Findings, Risiko-Score und Report.</li>
+            <li><strong>Einsatz:</strong> z. B. nach Gerätetausch, Firmware-Update oder bei Netzwerk-Änderungen.</li>
+          </ul>
+        </div>
 
         <!-- Start probe -->
         <div class="flex items-end gap-3 mb-5 p-3 bg-slate-50 rounded border border-slate-200">
