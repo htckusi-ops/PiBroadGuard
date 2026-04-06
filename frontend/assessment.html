@@ -947,7 +947,7 @@ createApp({
       vendor:       { label: t('score_vendor', 'Vendor') },
     }));
 
-    function ratingLabel(r) { return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r || '—'; }
+    function ratingLabel(r) { return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red', unrated: '⚪ Unrated' }[r] || r || '—'; }
     const taskRunningCount = computed(() => (taskQueueData.value?.running || []).length);
     const taskQueuedCount = computed(() => (taskQueueData.value?.queued || []).length);
     const taskTotalCount = computed(() => taskRunningCount.value + taskQueuedCount.value);

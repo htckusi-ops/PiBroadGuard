@@ -49,7 +49,17 @@ def create_assessment(
     device = db.query(Device).filter(Device.id == device_id, Device.deleted == False).first()
     if not device:
         raise HTTPException(404, "Gerät nicht gefunden")
-    assessment = Assessment(device_id=device_id, scan_profile=body.scan_profile, status="draft")
+    assessment = Assessment(
+        device_id=device_id,
+        scan_profile=body.scan_profile,
+        status="draft",
+        overall_rating="unrated",
+        technical_score=0,
+        operational_score=0,
+        compensation_score=0,
+        lifecycle_score=0,
+        vendor_score=0,
+    )
     db.add(assessment)
     db.commit()
     db.refresh(assessment)

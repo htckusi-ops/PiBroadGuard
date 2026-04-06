@@ -401,10 +401,10 @@ createApp({
       } catch (e) { /* ignore */ }
     }
     function ratingLabel(r) {
-      return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r;
+      return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red', unrated: '⚪ Unrated' }[r] || r;
     }
     function ratingClass(r) {
-      return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800' }[r] || '';
+      return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800', unrated: 'bg-slate-100 text-slate-700' }[r] || '';
     }
     function criticalityClass(c) {
       return { critical: 'bg-red-100 text-red-800', high: 'bg-orange-100 text-orange-800', medium: 'bg-yellow-100 text-yellow-800', low: 'bg-green-100 text-green-800' }[c] || 'bg-slate-100 text-slate-600';
