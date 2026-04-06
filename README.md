@@ -1,6 +1,6 @@
 # PiBroadGuard – Device Security Assessment Platform
 
-Standardisiertes Sicherheits-Assessment für Broadcast-Geräte in Medienunternehmen.
+Standardisiertes Sicherheits-Assessment für Broadcast-Geräte in Medienunternehmen (POC).
 Läuft auf dem Raspberry Pi 4 (ARM64) und Standard Linux (x86_64).
 
 ---
