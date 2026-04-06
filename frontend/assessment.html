@@ -175,8 +175,8 @@
               {{ scanProfiles.find(p=>p.name===newProfile).description }}
             </p>
           </div>
-          <button @click="createAssessment" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
-            {{ t('btn_new_assessment', 'Start Assessment') }}
+          <button @click="createAssessment" :disabled="createBusy" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-5 py-2 rounded font-medium text-sm">
+            {{ createBusy ? 'Creating…' : t('btn_new_assessment', 'Start Assessment') }}
           </button>
         </div>
         <div v-else>
@@ -812,8 +812,8 @@ const { createApp, ref, computed, onMounted, onUnmounted, nextTick } = Vue;
 createApp({
   setup() {
     const params = new URLSearchParams(window.location.search);
-    const deviceId = params.get('device_id');
-    const assessmentIdParam = params.get('assessment_id');
+    const deviceId = params.get('device_id') || params.get('deviceId');
+    const assessmentIdParam = params.get('assessment_id') || params.get('id');
 
     const device = ref(null);
     const assessment = ref(null);
@@ -825,6 +825,7 @@ createApp({
     const manualQuestions = ref({});
     const manualSaved = ref(false);
     const globalError = ref('');
+    const createBusy = ref(false);
     const saveMsg = ref('');
     const scanError = ref('');
     const scanMsg = ref('');
@@ -1028,14 +1029,32 @@ createApp({
     }
 
     async function createAssessment() {
-      const resp = await fetch(`/api/v1/devices/${deviceId}/assessments`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scan_profile: newProfile.value })
-      });
-      if (resp.ok) {
-        assessment.value = await resp.json();
-        window.history.replaceState({}, '', `?device_id=${deviceId}&assessment_id=${assessment.value.id}`);
-        await loadManual();
+      globalError.value = '';
+      const targetDeviceId = deviceId || device.value?.id || null;
+      if (!targetDeviceId) {
+        globalError.value = 'Cannot create assessment: missing device_id in URL.';
+        return;
+      }
+
+      createBusy.value = true;
+      try {
+        const resp = await fetch(`/api/v1/devices/${targetDeviceId}/assessments`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scan_profile: newProfile.value })
+        });
+        if (resp.ok) {
+          assessment.value = await resp.json();
+          window.history.replaceState({}, '', `?device_id=${targetDeviceId}&assessment_id=${assessment.value.id}`);
+          await loadManual();
+          return;
+        }
+
+        const err = await resp.json().catch(() => ({}));
+        globalError.value = err.detail || 'Failed to create assessment.';
+      } catch (e) {
+        globalError.value = e.message || 'Failed to create assessment.';
+      } finally {
+        createBusy.value = false;
       }
     }
 
@@ -1385,7 +1404,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanStarting, recalcBusy, recalcMsg, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanStarting, recalcBusy, recalcMsg, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, createBusy, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
   }
 }).mount('#app');
 </script>
