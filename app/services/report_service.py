@@ -227,13 +227,27 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
             "network_arch": "Netzwerk-Architektur",
             "scan_effects": "Scan-Seiteneffekte",
         }
-        # Group manual_findings by category (excluding scan_effects, shown separately)
+        # Group manual questionnaire for report:
+        # include unanswered questions as explicit placeholders so missing inputs are visible.
         from collections import OrderedDict
         cat_order = ["auth", "patch", "hardening", "monitoring", "operational", "vendor",
                      "nmos", "ptp_timing", "network_arch"]
         grouped_manual: "OrderedDict[str, list]" = OrderedDict()
+        answered_map = {(mf.category, mf.question_key): mf for mf in manual_findings}
         for cat in cat_order:
-            entries = [mf for mf in manual_findings if mf.category == cat]
+            questions = QUESTION_CATALOG.get(cat, [])
+            entries = []
+            for q in questions:
+                mf = answered_map.get((cat, q["key"]))
+                entries.append({
+                    "category": cat,
+                    "question_key": q["key"],
+                    "answer_value": getattr(mf, "answer_value", None) if mf else None,
+                    "comment": getattr(mf, "comment", None) if mf else None,
+                    "source": getattr(mf, "source", None) if mf else None,
+                    "is_answered": bool(getattr(mf, "answer_value", None)) if mf else False,
+                })
+            # Keep categories with questionnaire definitions visible in report
             if entries:
                 grouped_manual[cat] = entries
         # Include any additional categories that may exist in DB but are not in cat_order
@@ -243,7 +257,16 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
             if mf.category and mf.category not in grouped_manual and mf.category != "scan_effects"
         })
         for cat in extra_categories:
-            entries = [mf for mf in manual_findings if mf.category == cat]
+            entries = []
+            for mf in [m for m in manual_findings if m.category == cat]:
+                entries.append({
+                    "category": mf.category,
+                    "question_key": mf.question_key,
+                    "answer_value": mf.answer_value,
+                    "comment": mf.comment,
+                    "source": mf.source,
+                    "is_answered": bool(mf.answer_value),
+                })
             if entries:
                 grouped_manual[cat] = entries
     except Exception:
@@ -293,7 +316,7 @@ def generate_html(db, assessment: Assessment) -> str:
 def generate_json(db, assessment: Assessment) -> str:
     ctx = _build_context(db, assessment)
     grouped_manual_json = {
-        cat: [_model_to_dict(mf) for mf in entries]
+        cat: [(mf if isinstance(mf, dict) else _model_to_dict(mf)) for mf in entries]
         for cat, entries in (ctx.get("grouped_manual") or {}).items()
     }
     data = {
