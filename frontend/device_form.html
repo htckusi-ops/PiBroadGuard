@@ -284,11 +284,11 @@
         <div class="mb-4 rounded border border-indigo-200 bg-indigo-50 p-3 text-xs text-slate-700">
           <p class="font-semibold text-indigo-800 mb-1">ℹ️ Was ist ein Device Probe?</p>
           <p class="mb-2">
-            Ein Device Probe ist ein schneller, passiver Netzwerk-Check für dieses eine Gerät (typisch per Nmap):
-            Er prüft Erreichbarkeit und offene Ports, ohne ein vollständiges Security-Assessment zu starten.
+            Ein Device Probe ist ein schneller Reachability-Check für dieses eine Gerät (Ping-only):
+            Er prüft nur die Erreichbarkeit, ohne ein vollständiges Security-Assessment zu starten.
           </p>
           <ul class="list-disc pl-5 space-y-0.5">
-            <li><strong>Mit Probe:</strong> schneller Sichtcheck (Reachability, Ports, Dienste), kein Score, keine Findings.</li>
+            <li><strong>Mit Probe:</strong> schneller Ping-Check (reachable/unreachable), kein Score, keine Findings.</li>
             <li><strong>Mit Assessment:</strong> vollständige Bewertung mit Regeln, Findings, Risiko-Score und Report.</li>
             <li><strong>Einsatz:</strong> z. B. nach Gerätetausch, Firmware-Update oder bei Netzwerk-Änderungen.</li>
           </ul>
@@ -296,15 +296,12 @@
 
         <!-- Start probe -->
         <div class="flex items-end gap-3 mb-5 p-3 bg-slate-50 rounded border border-slate-200">
-          <div class="flex-1">
-            <label class="block text-xs font-medium text-slate-600 mb-1">Scan Profile</label>
-            <select v-model="probeProfile" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
-              <option v-for="sp in probeProfiles" :key="sp.name" :value="sp.name">{{ sp.label || sp.name }}</option>
-            </select>
+          <div class="flex-1 text-xs text-slate-600">
+            Probe führt nur einen schnellen Reachability-Check via Ping aus (kein Portscan, keine zweite Scan-Engine).
           </div>
           <button @click="startProbe" :disabled="probeRunning"
             class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-4 py-2 rounded text-sm font-medium whitespace-nowrap">
-            {{ probeRunning ? '⟳ Running...' : '▶ Start Probe' }}
+            {{ probeRunning ? '⟳ Running...' : '▶ Ping Probe' }}
           </button>
         </div>
 
@@ -324,34 +321,8 @@
           <div v-if="activeProbe.status === 'done'">
             <div class="text-sm mb-3 flex flex-wrap gap-4">
               <span>Reachable: <strong :class="activeProbe.reachable === 'yes' ? 'text-green-700' : 'text-red-700'">{{ activeProbe.reachable || '—' }}</strong></span>
-              <span>Ports found: <strong>{{ (activeProbe.ports || []).length }}</strong></span>
-              <span v-if="activeProbe.scan_duration_seconds" class="text-slate-500 text-xs self-center">{{ activeProbe.scan_duration_seconds.toFixed(1) }}s · nmap {{ activeProbe.nmap_version }}</span>
+              <span v-if="activeProbe.scan_duration_seconds" class="text-slate-500 text-xs self-center">{{ activeProbe.scan_duration_seconds.toFixed(2) }}s · {{ activeProbe.nmap_version || 'ping' }}</span>
             </div>
-
-            <!-- Port table -->
-            <div v-if="activeProbe.ports && activeProbe.ports.length" class="overflow-x-auto mb-4 rounded border border-slate-200 bg-white">
-              <table class="w-full text-xs">
-                <thead class="bg-slate-50">
-                  <tr class="border-b border-slate-200 text-slate-500 text-left">
-                    <th class="py-1.5 px-3 font-medium">Port</th>
-                    <th class="py-1.5 px-3 font-medium">State</th>
-                    <th class="py-1.5 px-3 font-medium">Service</th>
-                    <th class="py-1.5 px-3 font-medium">Product / Version</th>
-                    <th class="py-1.5 px-3 font-medium">Extra</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="p in activeProbe.ports" :key="`${p.port}/${p.protocol}`" class="border-b border-slate-50">
-                    <td class="py-1 px-3 font-mono font-semibold">{{ p.port }}/{{ p.protocol }}</td>
-                    <td class="py-1 px-3"><span :class="p.state === 'open' ? 'text-red-600 font-semibold' : 'text-slate-500'">{{ p.state }}</span></td>
-                    <td class="py-1 px-3 text-slate-700">{{ p.service_name || '—' }}</td>
-                    <td class="py-1 px-3 text-slate-600">{{ [p.service_product, p.service_version].filter(Boolean).join(' ') || '—' }}</td>
-                    <td class="py-1 px-3 text-slate-400">{{ p.extra_info || '' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div v-else class="text-xs text-slate-500 mb-4">No open ports detected.</div>
 
             <!-- Observations -->
             <div class="border-t border-slate-200 pt-3">
@@ -384,7 +355,7 @@
                   <th class="py-2 px-3 font-medium">Profile</th>
                   <th class="py-2 px-3 font-medium">Status</th>
                   <th class="py-2 px-3 font-medium">Reachable</th>
-                  <th class="py-2 px-3 font-medium">Ports</th>
+                  <th class="py-2 px-3 font-medium">Probe Type</th>
                   <th class="py-2 px-3 font-medium">Duration</th>
                   <th class="py-2 px-3 font-medium">By</th>
                   <th class="py-2 px-3 font-medium">Actions</th>
@@ -402,7 +373,7 @@
                           class="px-2 py-0.5 rounded text-xs font-medium">{{ p.status }}</span>
                   </td>
                   <td class="py-2 px-3 text-slate-700">{{ p.reachable || '—' }}</td>
-                  <td class="py-2 px-3 text-slate-700">{{ p.port_count ?? '—' }}</td>
+                  <td class="py-2 px-3 text-slate-700">{{ p.profile_label || 'Ping' }}</td>
                   <td class="py-2 px-3 text-slate-500 text-xs">{{ p.scan_duration_seconds ? p.scan_duration_seconds.toFixed(1) + 's' : '—' }}</td>
                   <td class="py-2 px-3 text-slate-500 text-xs">{{ p.initiated_by || '—' }}</td>
                   <td class="py-2 px-3">
@@ -625,8 +596,6 @@ createApp({
 
     // Probes state
     const probes = ref([]);
-    const probeProfiles = ref([]);
-    const probeProfile = ref('passive');
     const probeRunning = ref(false);
     const probeActionBusy = ref({});
     const activeProbe = ref(null);
@@ -768,16 +737,6 @@ createApp({
       return 'bg-slate-100 text-slate-600';
     }
 
-    async function loadProbeProfiles() {
-      try {
-        const resp = await fetch('/api/v1/scan-profiles');
-        if (resp.ok) {
-          probeProfiles.value = await resp.json();
-          if (probeProfiles.value.length) probeProfile.value = probeProfiles.value[0].name;
-        }
-      } catch (e) { /* ignore */ }
-    }
-
     async function loadProbes() {
       if (!deviceId) return;
       try {
@@ -807,7 +766,7 @@ createApp({
         const resp = await fetch(`/api/v1/devices/${deviceId}/probe`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile_name: probeProfile.value }),
+          body: JSON.stringify({}),
         });
         if (!resp.ok) {
           if (resp.status === 409) {
@@ -923,7 +882,7 @@ createApp({
 
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await Promise.all([loadDeviceTypes(), loadDeviceClasses(), loadProbeProfiles()]);
+      await Promise.all([loadDeviceTypes(), loadDeviceClasses()]);
       await load();
       await Promise.all([loadAssessments(), loadProbes()]);
       window.addEventListener('focus', handleWindowRefocus);
@@ -942,7 +901,7 @@ createApp({
     return { form, isEdit, saving, error, success, ipError, rdnsLoading,
              assessments, historyLoading, deviceTypes, deviceClasses,
              pagedAssessments, asmPage, assessmentsTotalPages, asmPageStart, asmPageEnd,
-             probes, probeProfiles, probeProfile, probeRunning, activeProbe,
+             probes, probeRunning, activeProbe,
              probeActionBusy,
              activeProbeObservations, obsSaveMsg,
              pagedProbes, probePage, probesTotalPages, probePageStart, probePageEnd,

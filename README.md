@@ -254,7 +254,8 @@ GET             /api/v1/scan-queue/status
 GET             /api/v1/device-types
 GET             /api/v1/device-classes
 GET             /api/v1/devices/reassessment-due         # Fälligkeitsliste
-GET/POST        /api/v1/devices/{id}/probes              # Device Probe (schnell, kein Assessment)
+POST            /api/v1/devices/{id}/ping                # Einfacher Reachability-Check (persistiert Last Seen)
+GET/POST        /api/v1/devices/{id}/probes              # Device Probe (Ping-only, kein Assessment)
 POST            /api/v1/devices/{id}/nmos-check          # NMOS-Sicherheitscheck
 GET/POST/PUT/DELETE /api/v1/rules                        # Regelwerk-CRUD
 GET/POST        /api/v1/usb/devices|export|import
@@ -400,7 +401,7 @@ PiBroadGuard verwendet **SQLite** (via SQLAlchemy 2.x). Die Datenbank liegt stan
 | `ics_advisory_cache` | CISA ICS Advisories | `advisory_id`, `vendor`, `product`, `cve_ids` (JSON), `advisory_url`, `fetched_at` |
 | `scan_profiles` | Nmap-Profile (YAML-Flags) | `nmap_flags` (JSON), `timeout_seconds`, `built_in`, `is_discovery` |
 | `scheduled_scans` | Geplante Scans | `trigger_type` (once/interval/cron), `interval_unit/value`, `start_hour/minute` |
-| `probe_results` | Schnelle Geräte-Probes | `ports_json`, `reachable`, `observations_json`, `raw_xml` |
+| `probe_results` | Schnelle Geräte-Probes (Ping-only) | `reachable`, `scan_duration_seconds`, `observations_json` |
 | `system_settings` | Laufzeit-Konfiguration | Key-Value: `connectivity_mode`, `last_backup_at`, `encryption_enabled` |
 | `import_log` | USB/Datei-Import-Protokoll | `package_id`, `source_host`, `package_checksum`, `status` |
 

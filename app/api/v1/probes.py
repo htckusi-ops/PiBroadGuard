@@ -2,29 +2,26 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db, SessionLocal
 from app.core.security import verify_credentials
-from app.core.config import settings
 from app.models.device import Device
 from app.models.probe_result import ProbeResult
-from app.models.scan_profile import ScanProfile
-from app.services import nmap_service
+from app.services import ping_service
 
 logger = logging.getLogger("pibroadguard.probe")
 router = APIRouter(tags=["probes"])
 
 # In-progress probes: probe_id -> asyncio.Task
 _probe_tasks: dict = {}
-_STALE_RUNNING_THRESHOLD = timedelta(minutes=15)
+_STALE_RUNNING_THRESHOLD = timedelta(minutes=2)
 
 
-async def _run_probe_task(probe_id: int, ip: str, profile_name: str,
-                          flags_override: Optional[list], timeout_override: Optional[int]):
+async def _run_probe_task(probe_id: int, ip: str):
     db = SessionLocal()
     try:
         probe = db.query(ProbeResult).filter(ProbeResult.id == probe_id).first()
@@ -32,27 +29,20 @@ async def _run_probe_task(probe_id: int, ip: str, profile_name: str,
             return
 
         try:
-            result = await nmap_service.run_scan(
-                ip=ip,
-                profile=profile_name,
-                host_timeout=settings.pibg_nmap_host_timeout,
-                max_rate=settings.pibg_nmap_max_rate,
-                assessment_id=None,
-                flags_override=flags_override,
-                timeout_override=timeout_override,
-            )
-
-            ports = result.get("results", [])
-            reachable = "yes" if ports else ("no" if result.get("returncode", 1) == 0 else "unknown")
+            started = datetime.now(timezone.utc)
+            result = ping_service.ping_host(ip, timeout_seconds=1)
+            finished = datetime.now(timezone.utc)
+            elapsed = max((finished - started).total_seconds(), 0.0)
 
             probe.status = "done"
-            probe.reachable = reachable
-            probe.ports_json = json.dumps(ports)
-            probe.raw_xml = result.get("xml", "")
-            probe.scan_duration_seconds = result.get("elapsed_seconds")
-            probe.nmap_exit_code = result.get("returncode")
-            probe.nmap_version = result.get("nmap_version")
-            probe.completed_at = datetime.now(timezone.utc)
+            probe.reachable = "yes" if result.reachable else "no"
+            probe.ports_json = json.dumps([])
+            probe.raw_xml = ""
+            probe.scan_duration_seconds = elapsed
+            probe.nmap_exit_code = 0 if result.reachable else 1
+            probe.nmap_version = "ping"
+            probe.error_message = None if result.reachable else "Ping failed or timed out."
+            probe.completed_at = finished
 
         except asyncio.CancelledError:
             probe.status = "cancelled"
@@ -111,22 +101,8 @@ def start_probe(
     if not device:
         raise HTTPException(404, "Device not found")
 
-    profile_name = payload.get("profile_name", "passive")
-    profile_label = profile_name
-    flags_override = None
-    timeout_override = None
-
-    # Load profile from DB
-    sp = db.query(ScanProfile).filter(
-        ScanProfile.name == profile_name, ScanProfile.active == True
-    ).first()
-    if sp:
-        profile_label = sp.label or profile_name
-        try:
-            flags_override = json.loads(sp.nmap_flags)
-        except Exception:
-            pass
-        timeout_override = sp.timeout_seconds
+    profile_name = "ping"
+    profile_label = "Ping"
 
     running_probe = (
         db.query(ProbeResult)
@@ -159,7 +135,7 @@ def start_probe(
 
     # Fire and forget – independent of the scan queue
     task = asyncio.create_task(
-        _run_probe_task(probe.id, device.ip_address, profile_name, flags_override, timeout_override)
+        _run_probe_task(probe.id, device.ip_address)
     )
     _probe_tasks[probe.id] = task
 
