@@ -123,8 +123,8 @@ Transport via USB (3-Schritt-Wizard). Optionale AES-256-GCM-Verschlüsselung mit
 ## Schnellstart (Docker)
 
 ```bash
-git clone https://github.com/htckusi-ops/pibroadguard
-cd pibroadguard
+git clone https://github.com/htckusi-ops/PiBroadGuard
+cd PiBroadGuard
 cp .env.example .env
 # .env anpassen (Passwort, optionaler NVD API Key)
 docker compose up -d
@@ -134,8 +134,8 @@ docker compose up -d
 ## Direktinstallation (systemd)
 
 ```bash
-git clone https://github.com/htckusi-ops/pibroadguard
-cd pibroadguard
+git clone https://github.com/htckusi-ops/PiBroadGuard
+cd PiBroadGuard
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env && nano .env
@@ -164,7 +164,7 @@ sudo systemctl enable --now pibroadguard
 ## Update (Docker)
 
 ```bash
-cd pibroadguard
+cd PiBroadGuard
 git pull origin main
 docker compose up -d --build
 docker compose exec pibroadguard alembic upgrade head
@@ -173,7 +173,7 @@ docker compose exec pibroadguard alembic upgrade head
 ## Update (systemd)
 
 ```bash
-cd pibroadguard
+cd PiBroadGuard
 git pull origin main
 source venv/bin/activate
 pip install -r requirements.txt
