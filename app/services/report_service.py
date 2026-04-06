@@ -236,6 +236,16 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
             entries = [mf for mf in manual_findings if mf.category == cat]
             if entries:
                 grouped_manual[cat] = entries
+        # Include any additional categories that may exist in DB but are not in cat_order
+        # (e.g. newly introduced manual questionnaire groups), excluding scan_effects.
+        extra_categories = sorted({
+            mf.category for mf in manual_findings
+            if mf.category and mf.category not in grouped_manual and mf.category != "scan_effects"
+        })
+        for cat in extra_categories:
+            entries = [mf for mf in manual_findings if mf.category == cat]
+            if entries:
+                grouped_manual[cat] = entries
     except Exception:
         question_labels = {}
         category_labels = {}
@@ -282,11 +292,19 @@ def generate_html(db, assessment: Assessment) -> str:
 
 def generate_json(db, assessment: Assessment) -> str:
     ctx = _build_context(db, assessment)
+    grouped_manual_json = {
+        cat: [_model_to_dict(mf) for mf in entries]
+        for cat, entries in (ctx.get("grouped_manual") or {}).items()
+    }
     data = {
         "device": _model_to_dict(ctx["device"]),
         "assessment": _model_to_dict(ctx["assessment"]),
         "scan_results": [_model_to_dict(s) for s in ctx["scan_results"]],
         "findings": [_model_to_dict(f) for f in ctx["findings"]],
+        "manual_findings": [_model_to_dict(mf) for mf in ctx.get("manual_findings", [])],
+        "grouped_manual_findings": grouped_manual_json,
+        "manual_category_labels": ctx.get("category_labels", {}),
+        "manual_question_labels": ctx.get("question_labels", {}),
         "vendor_info": _model_to_dict(ctx["vendor_info"]) if ctx["vendor_info"] else None,
         "auth": _model_to_dict(ctx["auth"]) if ctx["auth"] else None,
         "generated_at": ctx["generated_at"].isoformat(),
