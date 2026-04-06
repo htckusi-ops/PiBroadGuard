@@ -60,5 +60,9 @@ class DeviceRead(DeviceBase):
     last_assessment_rating: Optional[str] = None
     last_assessment_id: Optional[int] = None
     last_assessment_date: Optional[datetime] = None
+    last_ping_status: Optional[str] = None
+    last_ping_checked_at: Optional[datetime] = None
+    last_seen_ping_at: Optional[datetime] = None
+    last_ping_rtt_ms: Optional[int] = None
 
     model_config = {"from_attributes": True}

@@ -188,13 +188,14 @@
             <th class="text-left px-4 py-3">Criticality</th>
             <th class="text-left px-4 py-3">Last Assessment</th>
             <th class="text-left px-4 py-3">Rating</th>
+            <th class="text-left px-4 py-3">Last Seen (Ping)</th>
             <th class="text-left px-4 py-3">Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading"><td colspan="8" class="text-center py-8 pibg-loading">Loading...</td></tr>
+          <tr v-if="loading"><td colspan="9" class="text-center py-8 pibg-loading">Loading...</td></tr>
           <tr v-else-if="filteredDevices.length === 0">
-            <td colspan="8" class="text-center py-8 text-slate-400">No devices found. <a href="/app/device_form.html" class="text-blue-600 hover:underline">Add first device</a></td>
+            <td colspan="9" class="text-center py-8 text-slate-400">No devices found. <a href="/app/device_form.html" class="text-blue-600 hover:underline">Add first device</a></td>
           </tr>
           <tr v-for="d in pagedDevices" :key="d.id" class="border-t border-slate-100 hover:bg-slate-50">
             <td class="px-4 py-3">
@@ -225,8 +226,19 @@
               </span>
               <span v-else class="text-slate-400 text-xs">—</span>
             </td>
+            <td class="px-4 py-3 text-xs">
+              <div v-if="d.last_seen_ping_at" class="text-green-700 font-medium">✅ {{ fmtDateTime(d.last_seen_ping_at) }}</div>
+              <div v-else class="text-slate-400">—</div>
+              <div class="text-slate-500 mt-0.5">
+                <span v-if="d.last_ping_status === 'reachable'">reachable</span>
+                <span v-else-if="d.last_ping_status === 'unreachable'" class="text-red-600">unreachable</span>
+                <span v-else>unknown</span>
+                <span v-if="d.last_ping_rtt_ms !== null && d.last_ping_rtt_ms !== undefined"> · {{ d.last_ping_rtt_ms }} ms</span>
+              </div>
+            </td>
             <td class="px-4 py-3">
               <div class="flex gap-2">
+                <button @click="pingDevice(d.id)" :disabled="pingBusyId === d.id" class="text-emerald-700 hover:underline text-xs disabled:opacity-50">{{ pingBusyId === d.id ? '⏳ Ping…' : 'Ping' }}</button>
                 <a :href="'/app/assessment.html?device_id=' + d.id" class="text-blue-600 hover:underline text-xs">+ New</a>
                 <a :href="'/app/device_form.html?id=' + d.id + '#history'" class="text-slate-500 hover:underline text-xs">History</a>
                 <a :href="'/app/device_form.html?id=' + d.id" class="text-slate-500 hover:underline text-xs">{{ t('btn_edit', 'Edit') }}</a>
@@ -283,6 +295,7 @@ createApp({
     const taskLastUpdated = ref(null);
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const pingBusyId = ref(null);
     let queuePoll = null;
     const taskRunningCount = computed(() => (queueData.value?.running || []).length);
     const taskQueuedCount = computed(() => (queueData.value?.queued || []).length);
@@ -398,6 +411,19 @@ createApp({
     }
     function goSettings() { window.location.href = '/app/settings.html'; }
 
+    async function pingDevice(deviceId) {
+      if (pingBusyId.value === deviceId) return;
+      pingBusyId.value = deviceId;
+      try {
+        const resp = await fetch(`/api/v1/devices/${deviceId}/ping`, { method: 'POST' });
+        if (!resp.ok) return;
+        const updated = await resp.json();
+        const idx = devices.value.findIndex(d => d.id === deviceId);
+        if (idx !== -1) devices.value[idx] = updated;
+      } catch (e) { /* ignore */ }
+      finally { pingBusyId.value = null; }
+    }
+
     async function load() {
       try {
         const [devResp, connResp] = await Promise.all([
@@ -428,7 +454,7 @@ createApp({
     onUnmounted(() => {
       if (queuePoll) clearInterval(queuePoll);
     });
-    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, dueSoon, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang };
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, pingDevice, pingBusyId, queueData, nextSchedules, dueSoon, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

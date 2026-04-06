@@ -32,6 +32,10 @@ class Device(Base):
     device_class_id = Column(Integer, ForeignKey("device_classes.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    last_ping_status = Column(String)            # "reachable" | "unreachable"
+    last_ping_checked_at = Column(DateTime(timezone=True))
+    last_seen_ping_at = Column(DateTime(timezone=True))
+    last_ping_rtt_ms = Column(Integer)
 
     assessments = relationship("Assessment", back_populates="device")
     scheduled_scans = relationship("ScheduledScan", back_populates="device")
