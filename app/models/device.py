@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, ForeignKey, Integer, String, DateTime, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -21,6 +21,10 @@ class Device(Base):
     production_criticality = Column(String)
     owner_team = Column(String)
     notes = Column(String)
+    device_capabilities_json = Column(Text)      # JSON list, e.g. ["nmos", "ptp"]
+    nmos_registry_url = Column(String)
+    nmos_node_api_url = Column(String)
+    nmos_connection_api_url = Column(String)
     deleted = Column(Boolean, default=False)
     # v1.5 extensions
     rdns_hostname = Column(String)

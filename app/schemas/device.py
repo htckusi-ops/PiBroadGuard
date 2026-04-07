@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 import ipaddress
 
 
@@ -19,6 +19,10 @@ class DeviceBase(BaseModel):
     production_criticality: Optional[str] = None
     owner_team: Optional[str] = None
     notes: Optional[str] = None
+    device_capabilities: Optional[list[str]] = None
+    nmos_registry_url: Optional[str] = None
+    nmos_node_api_url: Optional[str] = None
+    nmos_connection_api_url: Optional[str] = None
 
     @field_validator("ip_address")
     @classmethod
@@ -64,5 +68,6 @@ class DeviceRead(DeviceBase):
     last_ping_checked_at: Optional[datetime] = None
     last_seen_ping_at: Optional[datetime] = None
     last_ping_rtt_ms: Optional[int] = None
+    device_capabilities: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}

@@ -385,7 +385,7 @@ PiBroadGuard verwendet **SQLite** (via SQLAlchemy 2.x). Die Datenbank liegt stan
 
 | Tabelle | Zweck | Wichtige Felder |
 |---------|-------|-----------------|
-| `devices` | Gerät-Stammdaten | `ip_address` (Pflicht), `device_type`, `production_criticality`, `mac_address`, `rdns_hostname`, `phpipam_id` |
+| `devices` | Gerät-Stammdaten | `ip_address` (Pflicht), `device_type`, `production_criticality`, `mac_address`, `rdns_hostname`, `phpipam_id`, `device_capabilities_json` (Mehrfachauswahl), optionale NMOS-URLs (`nmos_registry_url`, `nmos_node_api_url`, `nmos_connection_api_url`) |
 | `device_classes` | Geräteklassen (z.B. Broadcast, IT) | `name`, `label_de/en`, `risk_weight` |
 | `device_types` | Gerätetypen (konfigurierbar) | `name`, `label_de/en`, `sort_order` |
 | `assessments` | Sicherheitsbewertung | `scan_mode` (assessment/discovery), `overall_rating`, 5× Score, `decision` |
