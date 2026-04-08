@@ -43,6 +43,13 @@ async def _run_probe_task(probe_id: int, ip: str):
             probe.nmap_version = "ping"
             probe.error_message = None if result.reachable else "Ping failed or timed out."
             probe.completed_at = finished
+            device = db.query(Device).filter(Device.id == probe.device_id).first()
+            if device:
+                device.last_ping_status = "reachable" if result.reachable else "unreachable"
+                device.last_ping_checked_at = finished
+                device.last_ping_rtt_ms = int(round(result.rtt_ms)) if result.rtt_ms is not None else None
+                if result.reachable:
+                    device.last_seen_ping_at = finished
 
         except asyncio.CancelledError:
             probe.status = "cancelled"

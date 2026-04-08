@@ -22,6 +22,17 @@ from app.services import backup_service, connectivity_service, ics_service, reme
 
 logger = logging.getLogger("pibroadguard.api")
 router = APIRouter(tags=["system"])
+DEFAULT_DEVICE_OS_OPTIONS = [
+    "Proprietary/Others",
+    "Windows Desktop",
+    "Windows Server",
+    "iOS",
+    "MacOS",
+    "Android",
+    "GNU/Linux",
+    "Linux BusyBox",
+    "BSD",
+]
 
 
 def _get_setting(db: Session, key: str, default: str = "") -> str:
@@ -38,6 +49,18 @@ def _set_setting(db: Session, key: str, value: str, user: str = "system"):
     else:
         db.add(SystemSettings(key=key, value=value, updated_by=user, updated_at=datetime.now(timezone.utc)))
     db.commit()
+
+
+def _get_device_os_options(db: Session) -> list[str]:
+    raw = _get_setting(db, "device_os_options_json", "")
+    if raw:
+        try:
+            val = json.loads(raw)
+            if isinstance(val, list) and all(isinstance(x, str) for x in val):
+                return val
+        except Exception:
+            pass
+    return list(DEFAULT_DEVICE_OS_OPTIONS)
 
 
 @router.get("/system/connectivity", response_model=ConnectivityStatus)
@@ -341,6 +364,40 @@ def get_device_types(
     """Return all active device types for dropdowns."""
     from app.models.device_type import DeviceType
     return db.query(DeviceType).filter(DeviceType.active == True).order_by(DeviceType.sort_order).all()
+
+
+@router.get("/device-os-options")
+def get_device_os_options(
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    return _get_device_os_options(db)
+
+
+@router.put("/device-os-options")
+def set_device_os_options(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    options = payload.get("options", [])
+    if not isinstance(options, list):
+        raise HTTPException(400, "options must be a list")
+    cleaned = []
+    seen = set()
+    for item in options:
+        s = str(item or "").strip()
+        if not s:
+            continue
+        key = s.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(s)
+    if not cleaned:
+        cleaned = list(DEFAULT_DEVICE_OS_OPTIONS)
+    _set_setting(db, "device_os_options_json", json.dumps(cleaned), user)
+    return {"options": cleaned}
 
 
 @router.post("/device-types")

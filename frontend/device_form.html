@@ -139,6 +139,14 @@
           </div>
         </div>
 
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Operating System</label>
+          <select v-model="form.operating_system" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+            <option value="">—</option>
+            <option v-for="os in operatingSystemOptions" :key="os" :value="os">{{ os }}</option>
+          </select>
+        </div>
+
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('device_form_production_criticality', 'Production Criticality') }}</label>
@@ -180,6 +188,20 @@
           <div>
             <label class="block text-xs font-medium text-slate-700 mb-1">NMOS Connection API URL (optional)</label>
             <input v-model="form.nmos_connection_api_url" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="http://device/x-nmos/connection/v1.1">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input type="checkbox" v-model="form.ping_monitor_enabled">
+              <span>Recurring ping monitoring</span>
+            </label>
+            <p class="text-xs text-slate-500 mt-1">Wenn aktiv, wird das Gerät periodisch gepingt und "Last seen" automatisch gepflegt.</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Ping interval (minutes)</label>
+            <input v-model.number="form.ping_interval_minutes" :disabled="!form.ping_monitor_enabled" type="number" min="1" max="1440" class="w-full border border-slate-300 rounded px-3 py-2 text-sm disabled:bg-slate-100">
           </div>
         </div>
 
@@ -637,6 +659,7 @@ createApp({
 
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const operatingSystemOptions = ref([]);
     const capabilityOptions = [
       { value: 'nmos', label: 'NMOS' },
       { value: 'ptp', label: 'PTP / ST 2059' },
@@ -659,10 +682,13 @@ createApp({
       owner_team: '', notes: '',
       rdns_hostname: '', mac_address: '', mac_vendor: '',
       phpipam_id: null,
+      operating_system: '',
       device_capabilities: [],
       nmos_registry_url: '',
       nmos_node_api_url: '',
       nmos_connection_api_url: '',
+      ping_monitor_enabled: false,
+      ping_interval_minutes: 5,
     });
 
     async function load() {
@@ -917,9 +943,16 @@ createApp({
       } catch (e) { /* ignore – dropdown falls back to empty */ }
     }
 
+    async function loadOperatingSystemOptions() {
+      try {
+        const resp = await fetch('/api/v1/device-os-options');
+        if (resp.ok) operatingSystemOptions.value = await resp.json();
+      } catch (e) { /* ignore */ }
+    }
+
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await Promise.all([loadDeviceTypes(), loadDeviceClasses()]);
+      await Promise.all([loadDeviceTypes(), loadDeviceClasses(), loadOperatingSystemOptions()]);
       await load();
       await Promise.all([loadAssessments(), loadProbes()]);
       window.addEventListener('focus', handleWindowRefocus);
@@ -937,6 +970,7 @@ createApp({
     });
     return { form, isEdit, saving, error, success, ipError, rdnsLoading,
              assessments, historyLoading, deviceTypes, deviceClasses,
+             operatingSystemOptions,
              capabilityOptions,
              pagedAssessments, asmPage, assessmentsTotalPages, asmPageStart, asmPageEnd,
              probes, probeRunning, activeProbe,

@@ -1,7 +1,7 @@
 import logging
 import json
 from typing import List, Optional
-from datetime import date, timedelta, datetime, timezone
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,8 @@ from app.core.security import verify_credentials
 from app.models.assessment import Assessment
 from app.models.device import Device
 from app.schemas.device import DeviceCreate, DeviceRead, DeviceUpdate
-from app.services import dns_service, nmos_service, ping_service
+from app.services import dns_service, nmos_service
+from app.services import ping_monitor_service
 
 logger = logging.getLogger("pibroadguard.api")
 router = APIRouter(tags=["devices"])
@@ -144,14 +145,7 @@ def ping_device(
     if not device:
         raise HTTPException(404, "Gerät nicht gefunden")
 
-    result = ping_service.ping_host(device.ip_address, timeout_seconds=1)
-    checked_at = datetime.now(timezone.utc)
-
-    device.last_ping_status = "reachable" if result.reachable else "unreachable"
-    device.last_ping_checked_at = checked_at
-    device.last_ping_rtt_ms = int(round(result.rtt_ms)) if result.rtt_ms is not None else None
-    if result.reachable:
-        device.last_seen_ping_at = checked_at
+    ping_monitor_service.ping_device_once(device)
 
     db.commit()
     db.refresh(device)

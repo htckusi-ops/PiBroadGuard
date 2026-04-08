@@ -46,10 +46,13 @@ def run_migrations():
 
 def init_default_settings(db):
     from app.models.system_settings import SystemSettings
+    from app.api.v1.system import DEFAULT_DEVICE_OS_OPTIONS
+    import json
     from datetime import datetime, timezone
     defaults = {
         "connectivity_mode": "auto",
         "encryption_enabled": "true",
+        "device_os_options_json": json.dumps(DEFAULT_DEVICE_OS_OPTIONS),
     }
     for key, value in defaults.items():
         existing = db.query(SystemSettings).filter(SystemSettings.key == key).first()
@@ -67,12 +70,18 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         init_default_settings(db)
+        from app.api.v1.scans import reconcile_stale_scan_assessments
+        stale_count = reconcile_stale_scan_assessments(db)
+        if stale_count:
+            logger.warning(f"Reconciled {stale_count} stale scan_running assessments on startup")
     finally:
         db.close()
 
     from app.services import nmap_service, connectivity_service
     asyncio.create_task(nmap_service.get_nmap_capabilities())
     asyncio.create_task(connectivity_service.check_internet())
+    from app.services.ping_monitor_service import run_ping_monitor_loop
+    asyncio.create_task(run_ping_monitor_loop())
 
     # KEV sync in background
     async def kev_task():

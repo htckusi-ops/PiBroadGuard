@@ -12,6 +12,7 @@ logger = logging.getLogger("pibroadguard.scan")
 
 # SSE queues: assessment_id → asyncio.Queue of str messages
 scan_queues: Dict[int, asyncio.Queue] = {}
+running_scan_processes: Dict[int, asyncio.subprocess.Process] = {}
 
 # Fallback profiles used when the database is unavailable.
 # These mirror migration 009 (improved flags).
@@ -169,12 +170,15 @@ async def run_scan(
         scan_queues[assessment_id] = queue
         await queue.put(f"data: Starte Scan ({profile}) auf {safe_ip}...\n\n")
 
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        if assessment_id is not None:
+            running_scan_processes[assessment_id] = proc
 
         # Stream stdout to SSE queue AND drain stderr concurrently.
         # Both pipes must be consumed to prevent the subprocess from blocking
@@ -226,16 +230,36 @@ async def run_scan(
             "nmap_version": nmap_version,
             "total_ports_scanned": len(parsed),
         }
+    except asyncio.CancelledError:
+        if proc and proc.returncode is None:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                proc.kill()
+        if queue is not None:
+            await queue.put("data: Scan abgebrochen\n\ndata: __DONE__\n\n")
+        raise
     except FileNotFoundError:
         logger.error("nmap binary not found")
         if queue is not None:
             await queue.put("data: FEHLER: nmap nicht gefunden\n\ndata: __DONE__\n\n")
         raise RuntimeError("nmap is not installed or not in PATH")
     finally:
+        if assessment_id is not None:
+            running_scan_processes.pop(assessment_id, None)
         try:
             os.unlink(output_file)
         except OSError:
             pass
+
+
+def cancel_running_scan(assessment_id: int) -> bool:
+    proc = running_scan_processes.get(assessment_id)
+    if not proc or proc.returncode is not None:
+        return False
+    proc.terminate()
+    return True
 
 
 async def check_nmap_capabilities() -> dict:

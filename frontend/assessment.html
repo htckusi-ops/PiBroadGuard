@@ -352,17 +352,18 @@
             </div>
           </div>
 
-          <!-- Queue status (when job is waiting) -->
-          <div v-if="queueStatus && queueStatus.position > 0" class="mt-4 bg-amber-50 border border-amber-200 rounded p-4 text-sm">
+          <!-- Queue / running status -->
+          <div v-if="queueStatus" class="mt-4 bg-amber-50 border border-amber-200 rounded p-4 text-sm">
             <div class="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <span class="font-semibold">⏳ Scan wartet in der Queue...</span>
-                <span class="ml-2 text-slate-600">Position {{ queueStatus.position }}</span>
+                <span v-if="queueStatus.position > 0" class="font-semibold">⏳ Scan wartet in der Queue...</span>
+                <span v-else class="font-semibold">🟡 Scan läuft…</span>
+                <span v-if="queueStatus.position > 0" class="ml-2 text-slate-600">Position {{ queueStatus.position }}</span>
                 <span v-if="queueStatus.running_device" class="ml-2 text-slate-500">(Läuft: {{ queueStatus.running_device }})</span>
               </div>
               <button v-if="queueStatus.job_id" @click="cancelQueueJob(queueStatus.job_id)"
                 class="text-xs text-red-600 hover:underline border border-red-200 rounded px-2 py-1">
-                Aus Queue entfernen
+                Scan abbrechen
               </button>
             </div>
           </div>
@@ -1277,11 +1278,15 @@ createApp({
           };
         } else {
           // Job left queue → scan started or done
-          queueStatus.value = null;
-          if (running.find(j => j.job_id === currentJobId.value)) {
-            // still running, no position
-            queueStatus.value = null;
+          const runningEntry = running.find(j => j.job_id === currentJobId.value);
+          if (runningEntry) {
+            queueStatus.value = {
+              position: 0,
+              job_id: currentJobId.value,
+              running_device: runningEntry.ip_address || null,
+            };
           } else {
+            queueStatus.value = null;
             currentJobId.value = null;
             clearInterval(queuePollInterval);
             queuePollInterval = null;

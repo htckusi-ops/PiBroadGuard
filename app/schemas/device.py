@@ -14,6 +14,7 @@ class DeviceBase(BaseModel):
     hostname: Optional[str] = None
     ip_address: str
     firmware_version: Optional[str] = None
+    operating_system: Optional[str] = None
     location: Optional[str] = None
     network_segment: Optional[str] = None
     production_criticality: Optional[str] = None
@@ -23,12 +24,23 @@ class DeviceBase(BaseModel):
     nmos_registry_url: Optional[str] = None
     nmos_node_api_url: Optional[str] = None
     nmos_connection_api_url: Optional[str] = None
+    ping_monitor_enabled: Optional[bool] = None
+    ping_interval_minutes: Optional[int] = None
 
     @field_validator("ip_address")
     @classmethod
     def validate_ip(cls, v: str) -> str:
         ipaddress.ip_address(v)
         return v
+
+    @field_validator("ping_interval_minutes")
+    @classmethod
+    def validate_ping_interval(cls, v):
+        if v is None:
+            return v
+        if int(v) < 1:
+            raise ValueError("ping_interval_minutes must be >= 1")
+        return int(v)
 
 
 class DeviceCreate(DeviceBase):

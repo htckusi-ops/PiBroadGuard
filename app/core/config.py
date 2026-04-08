@@ -41,6 +41,10 @@ class Settings(BaseSettings):
 
     # Scan Queue
     pibg_max_parallel_scans: int = 1
+    pibg_scan_max_runtime_seconds: int = 3600
+
+    # Device ping monitor
+    pibg_ping_monitor_poll_seconds: int = 30
 
     # Scheduler
     pibg_scheduler_timezone: str = "Europe/Zurich"

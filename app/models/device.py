@@ -16,6 +16,7 @@ class Device(Base):
     hostname = Column(String)
     ip_address = Column(String, nullable=False)
     firmware_version = Column(String)
+    operating_system = Column(String)
     location = Column(String)
     network_segment = Column(String)
     production_criticality = Column(String)
@@ -40,6 +41,8 @@ class Device(Base):
     last_ping_checked_at = Column(DateTime(timezone=True))
     last_seen_ping_at = Column(DateTime(timezone=True))
     last_ping_rtt_ms = Column(Integer)
+    ping_monitor_enabled = Column(Boolean, default=False)
+    ping_interval_minutes = Column(Integer, default=5)
 
     assessments = relationship("Assessment", back_populates="device")
     scheduled_scans = relationship("ScheduledScan", back_populates="device")
