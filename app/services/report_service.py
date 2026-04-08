@@ -215,6 +215,7 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
             for questions in QUESTION_CATALOG.values()
             for q in questions
         }
+        question_labels["unsupported_notice"] = "Protokoll-Unterstützung"
         category_labels: Dict[str, str] = {
             "auth": "Authentisierung",
             "patch": "Updates / Lifecycle",
@@ -227,6 +228,11 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
             "network_arch": "Netzwerk-Architektur",
             "scan_effects": "Scan-Seiteneffekte",
         }
+        category_enabled = {
+            "nmos": bool(getattr(assessment, "manual_nmos_enabled", True)),
+            "ptp_timing": bool(getattr(assessment, "manual_ptp_enabled", True)),
+            "network_arch": bool(getattr(assessment, "manual_network_arch_enabled", True)),
+        }
         # Group manual questionnaire for report:
         # include unanswered questions as explicit placeholders so missing inputs are visible.
         from collections import OrderedDict
@@ -235,6 +241,16 @@ def _build_context(db, assessment: Assessment) -> Dict[str, Any]:
         grouped_manual: "OrderedDict[str, list]" = OrderedDict()
         answered_map = {(mf.category, mf.question_key): mf for mf in manual_findings}
         for cat in cat_order:
+            if cat in category_enabled and not category_enabled[cat]:
+                grouped_manual[cat] = [{
+                    "category": cat,
+                    "question_key": "unsupported_notice",
+                    "answer_value": "__unsupported__",
+                    "comment": "Nicht unterstützt für dieses Gerät.",
+                    "source": None,
+                    "is_answered": True,
+                }]
+                continue
             questions = QUESTION_CATALOG.get(cat, [])
             entries = []
             for q in questions:

@@ -546,6 +546,23 @@
             Diese Informationen werden im Discovery-Report ausgewertet.</p>
           </div>
           <p v-else class="text-slate-500 text-sm mb-4">Answer the following questions for the security assessment of this device.</p>
+          <div v-if="assessment.scan_mode !== 'discovery'" class="mb-4 p-3 border border-slate-200 rounded bg-slate-50">
+            <p class="text-xs font-semibold text-slate-700 mb-2">Optional protocol question groups</p>
+            <div class="flex flex-wrap gap-4 text-sm">
+              <label class="inline-flex items-center gap-2">
+                <input type="checkbox" :checked="assessment.manual_nmos_enabled" @change="toggleManualCategory('nmos', $event.target.checked)">
+                <span>NMOS Fragen</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="checkbox" :checked="assessment.manual_ptp_enabled" @change="toggleManualCategory('ptp_timing', $event.target.checked)">
+                <span>PTP Fragen</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="checkbox" :checked="assessment.manual_network_arch_enabled" @change="toggleManualCategory('network_arch', $event.target.checked)">
+                <span>Netz-Architektur Fragen</span>
+              </label>
+            </div>
+          </div>
           <div v-for="(questions, cat) in manualQuestions" :key="cat" class="mb-6"
                :class="cat === 'scan_effects' ? 'border border-amber-300 rounded-lg p-4 bg-amber-50' : ''">
             <h3 class="font-semibold capitalize mb-3 border-b pb-1"
@@ -1143,6 +1160,12 @@ createApp({
             const aResp = await fetch(`/api/v1/assessments/${assessment.value.id}`);
             if (aResp.ok) assessment.value = await aResp.json();
             await Promise.all([loadResults(), loadFindings()]);
+          } else if (s.status === 'cancelled') {
+            clearInterval(pollInterval); pollInterval = null;
+            scanRunning.value = false;
+            scanMsg.value = s.message || 'Scan cancelled';
+            const aResp = await fetch(`/api/v1/assessments/${assessment.value.id}`);
+            if (aResp.ok) assessment.value = await aResp.json();
           } else if (s.status === 'error') {
             clearInterval(pollInterval); pollInterval = null;
             scanRunning.value = false;
@@ -1176,6 +1199,28 @@ createApp({
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items)
       });
       if (resp.ok) { manualSaved.value = true; setTimeout(() => manualSaved.value = false, 3000); }
+    }
+
+    async function toggleManualCategory(category, enabled) {
+      if (!assessment.value) return;
+      const keyMap = {
+        nmos: 'manual_nmos_enabled',
+        ptp_timing: 'manual_ptp_enabled',
+        network_arch: 'manual_network_arch_enabled',
+      };
+      const key = keyMap[category];
+      if (!key) return;
+      const payload = {};
+      payload[key] = !!enabled;
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (resp.ok) {
+        assessment.value = await resp.json();
+        await loadManual();
+      }
     }
 
     const findingSavedId = ref(null);
@@ -1409,7 +1454,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanStarting, recalcBusy, recalcMsg, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, createBusy, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanStarting, recalcBusy, recalcMsg, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, createBusy, startScan, changeProfile, saveAssessmentMeta, saveManual, toggleManualCategory, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
   }
 }).mount('#app');
 </script>

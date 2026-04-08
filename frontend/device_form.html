@@ -215,7 +215,7 @@
 
         <div class="flex gap-3 pt-2">
           <button type="submit" :disabled="saving" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded font-medium text-sm">
-            {{ saving ? 'Saving...' : (isEdit ? t('btn_edit', 'Update') : 'Create Device') }}
+            {{ saving ? 'Saving...' : (isEdit ? t('btn_save', 'Save') : 'Create Device') }}
           </button>
           <a href="/app/index.html" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-6 py-2 rounded font-medium text-sm">{{ t('btn_cancel', 'Cancel') }}</a>
           <button v-if="isEdit" type="button" @click="deleteDevice" class="ml-auto bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded text-sm">{{ t('btn_delete', 'Delete') }}</button>
@@ -712,8 +712,12 @@ createApp({
         });
         if (resp.ok) {
           const d = await resp.json();
-          success.value = isEdit.value ? 'Device updated.' : 'Device created.';
-          setTimeout(() => window.location.href = `/app/assessment.html?device_id=${d.id}`, 1000);
+          success.value = isEdit.value ? 'Device saved.' : 'Device created.';
+          if (!isEdit.value) {
+            setTimeout(() => window.location.href = `/app/assessment.html?device_id=${d.id}`, 1000);
+          } else {
+            Object.assign(form.value, d);
+          }
         } else {
           const err = await resp.json();
           error.value = err.detail || JSON.stringify(err);

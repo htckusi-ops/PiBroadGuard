@@ -75,7 +75,7 @@
 | Frage | Antwort | Kommentar |
 |-------|---------|-----------|
 {% for mf in entries %}
-{% set ans_map = {"yes": "✅ Ja", "no": "❌ Nein", "partial": "⚠️ Teilweise", "unknown": "— Unbekannt"} %}
+{% set ans_map = {"yes": "✅ Ja", "no": "❌ Nein", "partial": "⚠️ Teilweise", "unknown": "— Unbekannt", "__unsupported__": "⛔ Nicht unterstützt"} %}
 | {{ question_labels.get(mf.question_key, mf.question_key) }} | {{ ans_map.get(mf.answer_value or "", "⚪ Unbeantwortet") }} | {{ mf.comment or "" }}{% if mf.source %} *({{ mf.source }})*{% endif %} |
 {% endfor %}
 

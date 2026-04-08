@@ -133,7 +133,8 @@
   <tr>
     <td>{{ question_labels.get(mf.question_key, mf.question_key) }}</td>
     <td>
-      {% if ans == "yes" %}<span class="ans-yes">Ja</span>
+      {% if ans == "__unsupported__" %}<span class="ans-unknown">Nicht unterstützt</span>
+      {% elif ans == "yes" %}<span class="ans-yes">Ja</span>
       {% elif ans == "no" %}<span class="ans-no">Nein</span>
       {% elif ans == "partial" %}<span class="ans-partial">Teilweise</span>
       {% elif ans == "unknown" %}<span class="ans-unknown">Unbekannt</span>
