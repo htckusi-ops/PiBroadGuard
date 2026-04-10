@@ -198,6 +198,15 @@ def recalculate(findings: List[Any], findings_dicts: List[Dict] = None) -> Dict:
     findings_dicts: optional pre-built dicts (for rule-engine output)
     """
     use = findings_dicts if findings_dicts is not None else findings
+    if not use:
+        return {
+            "technical": 0,
+            "operational": 0,
+            "compensation": 0,
+            "lifecycle": 0,
+            "vendor": 0,
+            "overall_rating": "unrated",
+        }
     scores = calculate_scores(use)
     base_rating = calculate_overall_rating(scores)
     final_rating = apply_override_rules(base_rating, use, scores)
@@ -209,6 +218,23 @@ def recalculate_detailed(findings: List[Any], findings_dicts: List[Dict] = None)
     Returns a ScoringResult with per-dimension reasons for the UI score explanation panel.
     """
     use = findings_dicts if findings_dicts is not None else findings
+    if not use:
+        return ScoringResult(
+            overall_rating="unrated",
+            overall_score=0.0,
+            dimensions={
+                dim: DimensionScore(
+                    dimension=dim,
+                    score=0,
+                    max_score=100,
+                    reasons=[],
+                    standard_ref=meta["standard_ref"],
+                )
+                for dim, meta in SCORE_DIMENSIONS.items()
+            },
+            override_reasons=["Noch keine Daten vorhanden (kein Scan/keine Findings)."],
+            decision_path="no_data",
+        )
 
     # Build dimension scores with reasons
     dim_scores: Dict[str, DimensionScore] = {}

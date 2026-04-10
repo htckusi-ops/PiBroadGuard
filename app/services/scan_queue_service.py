@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Callable, Optional
-from uuid import uuid4
+from app.core.config import settings
 
 logger = logging.getLogger("pibroadguard.scan_queue")
 
@@ -15,6 +15,7 @@ class ScanJobStatus(str, Enum):
     DONE = "done"
     FAILED = "failed"
     SKIPPED = "skipped"
+    CANCELLED = "cancelled"
 
 
 @dataclass
@@ -51,10 +52,12 @@ class ScanQueueService:
     def __init__(self, max_parallel: int = 1):
         self._queue: asyncio.Queue = asyncio.Queue()
         self._running: dict[str, ScanJob] = {}
+        self._running_tasks: dict[str, asyncio.Task] = {}
         self._max_parallel = max_parallel
         self._semaphore = asyncio.Semaphore(max_parallel)
         self._history: list[ScanJob] = []
         self._job_processor: Optional[Callable] = None
+        self._max_runtime_seconds = max(60, int(getattr(settings, "pibg_scan_max_runtime_seconds", 3600)))
 
     def set_job_processor(self, fn: Callable) -> None:
         self._job_processor = fn
@@ -91,13 +94,29 @@ class ScanQueueService:
                 logger.info(f"Scan job {job.job_id} starting (assessment={job.assessment_id})")
                 try:
                     if self._job_processor:
-                        await self._job_processor(job.assessment_id, job.ip_address, job.scan_profile, job.interface)
+                        task = asyncio.create_task(
+                            self._job_processor(job.assessment_id, job.ip_address, job.scan_profile, job.interface)
+                        )
+                        self._running_tasks[job.job_id] = task
+                        await asyncio.wait_for(task, timeout=self._max_runtime_seconds)
                     job.status = ScanJobStatus.DONE
                     logger.info(f"Scan job {job.job_id} completed successfully")
+                except asyncio.TimeoutError:
+                    running_task = self._running_tasks.get(job.job_id)
+                    if running_task and not running_task.done():
+                        running_task.cancel()
+                    job.status = ScanJobStatus.FAILED
+                    logger.error(
+                        f"Scan job {job.job_id} timed out after {self._max_runtime_seconds}s and was cancelled"
+                    )
+                except asyncio.CancelledError:
+                    job.status = ScanJobStatus.CANCELLED
+                    logger.warning(f"Scan job {job.job_id} cancelled")
                 except Exception as e:
                     job.status = ScanJobStatus.FAILED
                     logger.error(f"Scan job {job.job_id} failed: {e}")
                 finally:
+                    self._running_tasks.pop(job.job_id, None)
                     self._running.pop(job.job_id, None)
                     self._history.insert(0, job)
                     self._history = self._history[:50]
@@ -151,7 +170,7 @@ class ScanQueueService:
         }
 
     async def cancel(self, job_id: str) -> bool:
-        """Remove job from queue (only if not yet started)."""
+        """Cancel queued or running scan job."""
         items = []
         cancelled = False
         while not self._queue.empty():
@@ -166,6 +185,15 @@ class ScanQueueService:
                 break
         for item in items:
             await self._queue.put(item)
+
         if cancelled:
             logger.info(f"Scan job {job_id} cancelled from queue")
-        return cancelled
+            return True
+
+        running_task = self._running_tasks.get(job_id)
+        if running_task and not running_task.done():
+            running_task.cancel()
+            logger.info(f"Scan job {job_id} cancellation requested for running task")
+            return True
+
+        return False

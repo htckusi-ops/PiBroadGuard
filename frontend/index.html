@@ -6,7 +6,9 @@
 <title>PiBroadGuard – Dashboard</title>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/app/theme.css">
 <script src="/app/i18n.js"></script>
+<script src="/app/app-meta.js"></script>
 </head>
 <body class="bg-slate-100">
 <div id="app" class="flex flex-col min-h-screen bg-slate-100">
@@ -14,13 +16,36 @@
   <!-- Header -->
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
-      <span class="text-lg font-bold text-blue-400">PiBroadGuard</span>
+      <span class="text-lg font-bold text-blue-400 inline-flex items-center gap-2"><img data-pibg-logo src="/app/assets/pibg-logo.svg" alt="PiBroadGuard Logo" class="w-5 h-5 rounded-sm"><span>PiBroadGuard</span></span>
       <span class="text-slate-400 text-sm">{{ t('app_subtitle', 'Device Security Assessment Platform') }}</span>
     </div>
     <div class="flex items-center gap-4">
       <span :class="connectivityBadgeClass" class="text-xs px-2 py-1 rounded font-semibold cursor-pointer" @click="goSettings">
         {{ connectivityLabel }}
       </span>
+      <div class="relative">
+        <button @click="taskCenterOpen = !taskCenterOpen"
+          :class="taskCenterBadgeClass"
+          class="text-xs px-2 py-1 rounded font-semibold border border-slate-600 hover:border-slate-400">
+          {{ taskCenterBadgeLabel }}
+        </button>
+        <div v-if="taskCenterOpen"
+             class="absolute right-0 mt-2 w-80 bg-white text-slate-700 rounded-lg shadow-xl border border-slate-200 p-3 z-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-sm">Task-Center</span>
+            <span class="text-[11px] text-slate-500">Live</span>
+          </div>
+          <div class="text-xs space-y-1">
+            <div class="flex justify-between"><span>Running</span><span class="font-semibold text-green-700">{{ taskRunningCount }}</span></div>
+            <div class="flex justify-between"><span>Queued</span><span class="font-semibold text-amber-600">{{ taskQueuedCount }}</span></div>
+            <div class="flex justify-between"><span>Total</span><span class="font-semibold">{{ taskTotalCount }}</span></div>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-500">
+            {{ taskLastUpdatedLabel }}
+          </div>
+          <a href="#queue-widget" @click="taskCenterOpen = false" class="mt-2 inline-block text-xs text-blue-600 hover:underline">Zur Queue im Dashboard</a>
+        </div>
+      </div>
       <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ {{ t('nav_schedules', 'Schedules') }}</a>
       <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 {{ t('nav_rules', 'Ruleset') }}</a>
       <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ {{ t('nav_settings', 'Settings') }}</a>
@@ -28,6 +53,10 @@
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('fr')" :class="currentLang === 'fr' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">FR</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('it')" :class="currentLang === 'it' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">IT</button>
       </div>
     </div>
   </header>
@@ -37,19 +66,19 @@
 
     <!-- Stats -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-      <div class="bg-white rounded-lg p-4 shadow-sm">
+      <div class="pibg-card p-4">
         <div class="text-2xl font-bold text-slate-800">{{ devices.length }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_total_devices', 'Total Devices') }}</div>
       </div>
-      <div class="bg-white rounded-lg p-4 shadow-sm">
+      <div class="pibg-card p-4">
         <div class="text-2xl font-bold text-red-600">{{ criticalCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('rating_red', 'Critical') }}</div>
       </div>
-      <div class="bg-white rounded-lg p-4 shadow-sm">
+      <div class="pibg-card p-4">
         <div class="text-2xl font-bold text-orange-500">{{ openFindingsCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_open_findings', 'Open Findings') }}</div>
       </div>
-      <div class="bg-white rounded-lg p-4 shadow-sm">
+      <div class="pibg-card p-4">
         <div class="text-2xl font-bold text-green-600">{{ approvedCount }}</div>
         <div class="text-slate-500 text-sm">{{ t('dashboard_pending_assessments', 'Completed') }}</div>
       </div>
@@ -68,8 +97,8 @@
     <!-- Queue + Next Scans Widgets -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
       <!-- Scan Queue Widget -->
-      <div v-if="queueData && (queueData.queued.length > 0 || queueData.running.length > 0)"
-           class="bg-white rounded-lg shadow-sm p-4">
+      <div id="queue-widget" v-if="queueData && (queueData.queued.length > 0 || queueData.running.length > 0)"
+           class="pibg-card p-4">
         <div class="flex items-center justify-between mb-2">
           <span class="font-semibold text-slate-700 text-sm">🔄 Scan-Queue</span>
           <span class="text-xs text-slate-500">Max parallel: {{ queueData.max_parallel }}</span>
@@ -94,10 +123,10 @@
       </div>
 
       <!-- Next Scheduled Scans Widget -->
-      <div v-if="nextSchedules.length > 0" class="bg-white rounded-lg shadow-sm p-4">
+      <div v-if="nextSchedules.length > 0" class="pibg-card p-4">
         <div class="flex items-center justify-between mb-2">
-          <span class="font-semibold text-slate-700 text-sm">⏰ Nächste geplante Scans</span>
-          <a href="/app/schedules.html" class="text-xs text-blue-600 hover:underline">Alle anzeigen</a>
+          <span class="font-semibold text-slate-700 text-sm">⏰ {{ t('dashboard_next_schedules', 'Next scheduled scans') }}</span>
+          <a href="/app/schedules.html" class="text-xs text-blue-600 hover:underline">{{ t('common_show_all', 'Show all') }}</a>
         </div>
         <div v-for="s in nextSchedules" :key="s.id" class="text-xs text-slate-600 py-0.5 border-t border-slate-50 flex justify-between">
           <span>{{ fmtDateTime(s.next_run_at) }}</span>
@@ -107,7 +136,7 @@
       </div>
 
       <!-- Re-Assessment Due Widget -->
-      <div v-if="dueSoon.length > 0" class="bg-white rounded-lg shadow-sm p-4">
+      <div v-if="dueSoon.length > 0" class="pibg-card p-4">
         <div class="flex items-center justify-between mb-2">
           <span class="font-semibold text-slate-700 text-sm">📋 Re-Assessment fällig</span>
           <a href="/app/reassessment-due.html" class="text-xs text-blue-600 hover:underline">Alle anzeigen</a>
@@ -139,16 +168,16 @@
         </option>
       </select>
       <input v-model="search" @input="resetDevPage" placeholder="Search..." class="border border-slate-300 rounded px-3 py-1.5 text-sm bg-white w-48">
-      <a href="/app/device_form.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+      <a href="/app/device_form.html" class="pibg-btn pibg-btn-primary">
         + {{ t('btn_new_device', 'Add New Device') }}
       </a>
-      <a href="/app/import.html" class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+      <a href="/app/import.html" class="pibg-btn pibg-btn-secondary">
         &#8679; {{ t('btn_import', 'Import') }}
       </a>
     </div>
 
     <!-- Device Table -->
-    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+    <div class="pibg-card overflow-hidden">
       <table class="w-full text-sm">
         <thead>
           <tr class="bg-slate-700 text-white">
@@ -159,13 +188,14 @@
             <th class="text-left px-4 py-3">Criticality</th>
             <th class="text-left px-4 py-3">Last Assessment</th>
             <th class="text-left px-4 py-3">Rating</th>
+            <th class="text-left px-4 py-3">Last Seen (Ping)</th>
             <th class="text-left px-4 py-3">Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading"><td colspan="8" class="text-center py-8 text-slate-400">Loading...</td></tr>
+          <tr v-if="loading"><td colspan="9" class="text-center py-8 pibg-loading">Loading...</td></tr>
           <tr v-else-if="filteredDevices.length === 0">
-            <td colspan="8" class="text-center py-8 text-slate-400">No devices found. <a href="/app/device_form.html" class="text-blue-600 hover:underline">Add first device</a></td>
+            <td colspan="9" class="text-center py-8 text-slate-400">No devices found. <a href="/app/device_form.html" class="text-blue-600 hover:underline">Add first device</a></td>
           </tr>
           <tr v-for="d in pagedDevices" :key="d.id" class="border-t border-slate-100 hover:bg-slate-50">
             <td class="px-4 py-3">
@@ -196,8 +226,19 @@
               </span>
               <span v-else class="text-slate-400 text-xs">—</span>
             </td>
+            <td class="px-4 py-3 text-xs">
+              <div v-if="d.last_seen_ping_at" class="text-green-700 font-medium">✅ {{ fmtDateTime(d.last_seen_ping_at) }}</div>
+              <div v-else class="text-slate-400">—</div>
+              <div class="text-slate-500 mt-0.5">
+                <span v-if="d.last_ping_status === 'reachable'">reachable</span>
+                <span v-else-if="d.last_ping_status === 'unreachable'" class="text-red-600">unreachable</span>
+                <span v-else>unknown</span>
+                <span v-if="d.last_ping_rtt_ms !== null && d.last_ping_rtt_ms !== undefined"> · {{ d.last_ping_rtt_ms }} ms</span>
+              </div>
+            </td>
             <td class="px-4 py-3">
               <div class="flex gap-2">
+                <button @click="pingDevice(d.id)" :disabled="pingBusyId === d.id" class="text-emerald-700 hover:underline text-xs disabled:opacity-50">{{ pingBusyId === d.id ? '⏳ Ping…' : 'Ping' }}</button>
                 <a :href="'/app/assessment.html?device_id=' + d.id" class="text-blue-600 hover:underline text-xs">+ New</a>
                 <a :href="'/app/device_form.html?id=' + d.id + '#history'" class="text-slate-500 hover:underline text-xs">History</a>
                 <a :href="'/app/device_form.html?id=' + d.id" class="text-slate-500 hover:underline text-xs">{{ t('btn_edit', 'Edit') }}</a>
@@ -228,14 +269,14 @@
   </main>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
-    <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
-    <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
-    <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>
+    <span data-pibg-meta="author"></span>
+    <span data-pibg-meta="standards"></span>
+    <span data-pibg-meta="version"></span>
   </footer>
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 createApp({
   setup() {
@@ -250,9 +291,29 @@ createApp({
     const queueData = ref(null);
     const nextSchedules = ref([]);
     const dueSoon = ref([]);
+    const taskCenterOpen = ref(false);
+    const taskLastUpdated = ref(null);
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const pingBusyId = ref(null);
     let queuePoll = null;
+    const taskRunningCount = computed(() => (queueData.value?.running || []).length);
+    const taskQueuedCount = computed(() => (queueData.value?.queued || []).length);
+    const taskTotalCount = computed(() => taskRunningCount.value + taskQueuedCount.value);
+    const taskCenterBadgeLabel = computed(() => {
+      if (taskRunningCount.value > 0) return `🟢 ${taskRunningCount.value} running`;
+      if (taskQueuedCount.value > 0) return `🟡 ${taskQueuedCount.value} queued`;
+      return '⚪ No active tasks';
+    });
+    const taskCenterBadgeClass = computed(() => {
+      if (taskRunningCount.value > 0) return 'bg-green-900 text-green-100';
+      if (taskQueuedCount.value > 0) return 'bg-amber-900 text-amber-100';
+      return 'bg-slate-700 text-slate-200';
+    });
+    const taskLastUpdatedLabel = computed(() => {
+      if (!taskLastUpdated.value) return 'Noch kein Status geladen.';
+      return `Stand: ${new Date(taskLastUpdated.value).toLocaleTimeString()}`;
+    });
 
     function t(key, fb) {
       return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
@@ -316,7 +377,10 @@ createApp({
     async function loadQueue() {
       try {
         const r = await fetch('/api/v1/scan-queue/status');
-        if (r.ok) queueData.value = await r.json();
+        if (r.ok) {
+          queueData.value = await r.json();
+          taskLastUpdated.value = Date.now();
+        }
       } catch (e) { /* ignore */ }
     }
 
@@ -337,15 +401,28 @@ createApp({
       } catch (e) { /* ignore */ }
     }
     function ratingLabel(r) {
-      return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r;
+      return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red', unrated: '⚪ Unrated' }[r] || r;
     }
     function ratingClass(r) {
-      return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800' }[r] || '';
+      return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800', unrated: 'bg-slate-100 text-slate-700' }[r] || '';
     }
     function criticalityClass(c) {
       return { critical: 'bg-red-100 text-red-800', high: 'bg-orange-100 text-orange-800', medium: 'bg-yellow-100 text-yellow-800', low: 'bg-green-100 text-green-800' }[c] || 'bg-slate-100 text-slate-600';
     }
     function goSettings() { window.location.href = '/app/settings.html'; }
+
+    async function pingDevice(deviceId) {
+      if (pingBusyId.value === deviceId) return;
+      pingBusyId.value = deviceId;
+      try {
+        const resp = await fetch(`/api/v1/devices/${deviceId}/ping`, { method: 'POST' });
+        if (!resp.ok) return;
+        const updated = await resp.json();
+        const idx = devices.value.findIndex(d => d.id === deviceId);
+        if (idx !== -1) devices.value[idx] = updated;
+      } catch (e) { /* ignore */ }
+      finally { pingBusyId.value = null; }
+    }
 
     async function load() {
       try {
@@ -374,7 +451,10 @@ createApp({
       // Poll queue every 5s
       queuePoll = setInterval(loadQueue, 5000);
     });
-    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, queueData, nextSchedules, dueSoon, t, currentLang, switchLang };
+    onUnmounted(() => {
+      if (queuePoll) clearInterval(queuePoll);
+    });
+    return { devices, loading, error, filterRating, filterType, search, deviceTypes, filteredDevices, pagedDevices, devPage, devicesTotalPages, devPageStart, devPageEnd, resetDevPage, connectivity, connectivityLabel, connectivityBadgeClass, criticalCount, openFindingsCount, approvedCount, fmtDate, fmtDateTime, timeSince, ratingLabel, ratingClass, criticalityClass, goSettings, pingDevice, pingBusyId, queueData, nextSchedules, dueSoon, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

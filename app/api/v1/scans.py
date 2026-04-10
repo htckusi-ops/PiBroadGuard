@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, List
 from uuid import uuid4
 
@@ -23,6 +24,24 @@ router = APIRouter(tags=["scans"])
 
 _scan_status: dict = {}
 _job_id_for_assessment: dict = {}  # assessment_id -> job_id
+
+
+def reconcile_stale_scan_assessments(db: Session, max_age_hours: int = 12) -> int:
+    """
+    Reset stale 'scan_running' assessments that no longer have active queue jobs.
+    This prevents indefinite running states after crashes/restarts.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    stale = (
+        db.query(Assessment)
+        .filter(Assessment.status == "scan_running", Assessment.created_at < cutoff)
+        .all()
+    )
+    for a in stale:
+        a.status = "draft"
+    if stale:
+        db.commit()
+    return len(stale)
 
 
 async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: str = None):
@@ -81,6 +100,12 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
         assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
         if assessment:
             assessment.scan_mode = "discovery" if is_discovery else "assessment"
+            dev = db.query(Device).filter(Device.id == assessment.device_id).first()
+            if dev:
+                now = datetime.now(timezone.utc)
+                dev.last_ping_status = "reachable"
+                dev.last_ping_checked_at = now
+                dev.last_seen_ping_at = now
             db.commit()
 
         if is_discovery:
@@ -331,6 +356,21 @@ async def _run_scan_task(assessment_id: int, ip: str, profile: str, interface: s
         }
         logger.info(f"Scan {assessment_id} complete: {len(triggered)} findings")
 
+    except asyncio.CancelledError:
+        logger.warning(f"Scan {assessment_id} cancelled")
+        try:
+            db.rollback()
+            db_a = db.query(Assessment).filter(Assessment.id == assessment_id).first()
+            if db_a:
+                db_a.status = "draft"
+                db.commit()
+        except Exception as db_err:
+            logger.error(f"Could not reset assessment status after scan cancel: {db_err}")
+        _scan_status[assessment_id] = {"status": "cancelled", "message": "Scan wurde abgebrochen."}
+        q = scan_queues.get(assessment_id)
+        if q:
+            await q.put("data: Scan wurde abgebrochen\n\ndata: __DONE__\n\n")
+        raise
     except Exception as e:
         logger.error(f"Scan {assessment_id} failed: {e}")
         try:
@@ -429,7 +469,11 @@ def get_queue_status(user: str = Depends(verify_credentials)):
 
 
 @router.delete("/scan-queue/{job_id}", status_code=200)
-async def cancel_queue_job(job_id: str, user: str = Depends(verify_credentials)):
+async def cancel_queue_job(
+    job_id: str,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
     from app.services.scan_queue_service import get_queue
     queue = get_queue()
     if not queue:
@@ -437,6 +481,20 @@ async def cancel_queue_job(job_id: str, user: str = Depends(verify_credentials))
     cancelled = await queue.cancel(job_id)
     if not cancelled:
         raise HTTPException(404, "Job nicht in Queue (läuft bereits oder existiert nicht)")
+    status = queue.get_status()
+    for r in status.get("running", []):
+        if r.get("job_id") == job_id:
+            ass_id = r.get("assessment_id")
+            if ass_id:
+                _scan_status[ass_id] = {"status": "cancelled", "message": "Scan wurde abgebrochen."}
+            break
+    for ass_id, j_id in list(_job_id_for_assessment.items()):
+        if j_id == job_id:
+            a = db.query(Assessment).filter(Assessment.id == ass_id).first()
+            if a and a.status == "scan_running":
+                a.status = "draft"
+                db.commit()
+            _job_id_for_assessment.pop(ass_id, None)
     return {"cancelled": True, "job_id": job_id}
 
 

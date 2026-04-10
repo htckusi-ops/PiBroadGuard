@@ -1,29 +1,27 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import datetime, timezone, timedelta
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db, SessionLocal
 from app.core.security import verify_credentials
-from app.core.config import settings
 from app.models.device import Device
 from app.models.probe_result import ProbeResult
-from app.models.scan_profile import ScanProfile
-from app.services import nmap_service
+from app.services import ping_service
 
 logger = logging.getLogger("pibroadguard.probe")
 router = APIRouter(tags=["probes"])
 
 # In-progress probes: probe_id -> asyncio.Task
 _probe_tasks: dict = {}
+_STALE_RUNNING_THRESHOLD = timedelta(minutes=2)
 
 
-async def _run_probe_task(probe_id: int, ip: str, profile_name: str,
-                          flags_override: Optional[list], timeout_override: Optional[int]):
+async def _run_probe_task(probe_id: int, ip: str):
     db = SessionLocal()
     try:
         probe = db.query(ProbeResult).filter(ProbeResult.id == probe_id).first()
@@ -31,28 +29,34 @@ async def _run_probe_task(probe_id: int, ip: str, profile_name: str,
             return
 
         try:
-            result = await nmap_service.run_scan(
-                ip=ip,
-                profile=profile_name,
-                host_timeout=settings.pibg_nmap_host_timeout,
-                max_rate=settings.pibg_nmap_max_rate,
-                assessment_id=None,
-                flags_override=flags_override,
-                timeout_override=timeout_override,
-            )
-
-            ports = result.get("results", [])
-            reachable = "yes" if ports else ("no" if result.get("returncode", 1) == 0 else "unknown")
+            started = datetime.now(timezone.utc)
+            result = ping_service.ping_host(ip, timeout_seconds=1)
+            finished = datetime.now(timezone.utc)
+            elapsed = max((finished - started).total_seconds(), 0.0)
 
             probe.status = "done"
-            probe.reachable = reachable
-            probe.ports_json = json.dumps(ports)
-            probe.raw_xml = result.get("xml", "")
-            probe.scan_duration_seconds = result.get("elapsed_seconds")
-            probe.nmap_exit_code = result.get("returncode")
-            probe.nmap_version = result.get("nmap_version")
-            probe.completed_at = datetime.now(timezone.utc)
+            probe.reachable = "yes" if result.reachable else "no"
+            probe.ports_json = json.dumps([])
+            probe.raw_xml = ""
+            probe.scan_duration_seconds = elapsed
+            probe.nmap_exit_code = 0 if result.reachable else 1
+            probe.nmap_version = "ping"
+            probe.error_message = None if result.reachable else "Ping failed or timed out."
+            probe.completed_at = finished
+            device = db.query(Device).filter(Device.id == probe.device_id).first()
+            if device:
+                device.last_ping_status = "reachable" if result.reachable else "unreachable"
+                device.last_ping_checked_at = finished
+                device.last_ping_rtt_ms = int(round(result.rtt_ms)) if result.rtt_ms is not None else None
+                if result.reachable:
+                    device.last_seen_ping_at = finished
 
+        except asyncio.CancelledError:
+            probe.status = "cancelled"
+            probe.error_message = probe.error_message or "Probe was cancelled."
+            probe.completed_at = datetime.now(timezone.utc)
+            db.commit()
+            raise
         except Exception as exc:
             logger.error(f"Probe {probe_id} failed: {exc}")
             probe.status = "failed"
@@ -63,6 +67,34 @@ async def _run_probe_task(probe_id: int, ip: str, profile_name: str,
     finally:
         db.close()
         _probe_tasks.pop(probe_id, None)
+
+
+def _reconcile_probe_state(probe: ProbeResult, db: Session):
+    """Ensure 'running' probe states are consistent with in-memory task state."""
+    if probe.status != "running":
+        return
+
+    task = _probe_tasks.get(probe.id)
+    now = datetime.now(timezone.utc)
+    created = probe.created_at
+    if created and created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+
+    # Task known and finished but DB still says running
+    if task and task.done():
+        probe.status = "failed"
+        probe.error_message = probe.error_message or "Probe task finished unexpectedly."
+        probe.completed_at = probe.completed_at or now
+        db.commit()
+        _probe_tasks.pop(probe.id, None)
+        return
+
+    # No task known anymore and probe is stale -> mark failed
+    if not task and created and now - created > _STALE_RUNNING_THRESHOLD:
+        probe.status = "failed"
+        probe.error_message = probe.error_message or "Probe timed out or agent was restarted."
+        probe.completed_at = probe.completed_at or now
+        db.commit()
 
 
 @router.post("/devices/{device_id}/probe", status_code=201)
@@ -76,22 +108,26 @@ def start_probe(
     if not device:
         raise HTTPException(404, "Device not found")
 
-    profile_name = payload.get("profile_name", "passive")
-    profile_label = profile_name
-    flags_override = None
-    timeout_override = None
+    profile_name = "ping"
+    profile_label = "Ping"
 
-    # Load profile from DB
-    sp = db.query(ScanProfile).filter(
-        ScanProfile.name == profile_name, ScanProfile.active == True
-    ).first()
-    if sp:
-        profile_label = sp.label or profile_name
-        try:
-            flags_override = json.loads(sp.nmap_flags)
-        except Exception:
-            pass
-        timeout_override = sp.timeout_seconds
+    running_probe = (
+        db.query(ProbeResult)
+        .filter(ProbeResult.device_id == device_id, ProbeResult.status == "running")
+        .order_by(ProbeResult.created_at.desc())
+        .first()
+    )
+    if running_probe:
+        _reconcile_probe_state(running_probe, db)
+        db.refresh(running_probe)
+        if running_probe.status == "running":
+            raise HTTPException(
+                409,
+                {
+                    "message": "A probe is already running for this device",
+                    "probe_id": running_probe.id,
+                },
+            )
 
     probe = ProbeResult(
         device_id=device_id,
@@ -106,7 +142,7 @@ def start_probe(
 
     # Fire and forget – independent of the scan queue
     task = asyncio.create_task(
-        _run_probe_task(probe.id, device.ip_address, profile_name, flags_override, timeout_override)
+        _run_probe_task(probe.id, device.ip_address)
     )
     _probe_tasks[probe.id] = task
 
@@ -130,6 +166,8 @@ def list_probes(
         .order_by(ProbeResult.created_at.desc())
         .all()
     )
+    for p in probes:
+        _reconcile_probe_state(p, db)
     return [_serialize(p) for p in probes]
 
 
@@ -145,6 +183,7 @@ def get_probe(
     ).first()
     if not probe:
         raise HTTPException(404, "Probe not found")
+    _reconcile_probe_state(probe, db)
     return _serialize(probe, include_ports=True)
 
 
@@ -166,6 +205,53 @@ def save_observations(
     probe.observations_json = json.dumps(observations)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/devices/{device_id}/probe/{probe_id}/cancel")
+def cancel_probe(
+    device_id: int,
+    probe_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    probe = db.query(ProbeResult).filter(
+        ProbeResult.id == probe_id, ProbeResult.device_id == device_id
+    ).first()
+    if not probe:
+        raise HTTPException(404, "Probe not found")
+    if probe.status != "running":
+        return {"ok": True, "status": probe.status}
+
+    task = _probe_tasks.get(probe.id)
+    if task and not task.done():
+        task.cancel()
+        _probe_tasks.pop(probe.id, None)
+
+    probe.status = "cancelled"
+    probe.error_message = probe.error_message or f"Cancelled by {user}"
+    probe.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "status": "cancelled"}
+
+
+@router.delete("/devices/{device_id}/probe/{probe_id}", status_code=204)
+def delete_probe(
+    device_id: int,
+    probe_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    probe = db.query(ProbeResult).filter(
+        ProbeResult.id == probe_id, ProbeResult.device_id == device_id
+    ).first()
+    if not probe:
+        raise HTTPException(404, "Probe not found")
+    if probe.status == "running":
+        raise HTTPException(409, "Running probe must be cancelled before deletion")
+
+    db.delete(probe)
+    db.commit()
+    return
 
 
 def _serialize(probe: ProbeResult, include_ports: bool = False) -> dict:

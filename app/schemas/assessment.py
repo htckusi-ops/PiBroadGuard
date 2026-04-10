@@ -14,6 +14,9 @@ class AssessmentUpdate(BaseModel):
     decision: Optional[str] = None
     decision_notes: Optional[str] = None
     reassessment_due: Optional[date] = None
+    manual_nmos_enabled: Optional[bool] = None
+    manual_ptp_enabled: Optional[bool] = None
+    manual_network_arch_enabled: Optional[bool] = None
 
 
 class AssessmentRead(BaseModel):
@@ -28,6 +31,9 @@ class AssessmentRead(BaseModel):
     compensation_score: int
     lifecycle_score: int
     vendor_score: int
+    manual_nmos_enabled: bool = True
+    manual_ptp_enabled: bool = True
+    manual_network_arch_enabled: bool = True
     reviewer: Optional[str] = None
     summary: Optional[str] = None
     decision: Optional[str] = None

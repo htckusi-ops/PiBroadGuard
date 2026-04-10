@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -12,12 +12,15 @@ class Assessment(Base):
     status = Column(String, default="draft")
     scan_profile = Column(String)
     scan_mode = Column(String, default="assessment")       # "assessment" | "discovery"
-    overall_rating = Column(String)
-    technical_score = Column(Integer, default=100)
-    operational_score = Column(Integer, default=100)
-    compensation_score = Column(Integer, default=100)
-    lifecycle_score = Column(Integer, default=100)
-    vendor_score = Column(Integer, default=100)
+    overall_rating = Column(String, default="unrated")
+    technical_score = Column(Integer, default=0)
+    operational_score = Column(Integer, default=0)
+    compensation_score = Column(Integer, default=0)
+    lifecycle_score = Column(Integer, default=0)
+    vendor_score = Column(Integer, default=0)
+    manual_nmos_enabled = Column(Boolean, default=True)
+    manual_ptp_enabled = Column(Boolean, default=True)
+    manual_network_arch_enabled = Column(Boolean, default=True)
     reviewer = Column(String)
     summary = Column(String)
     decision = Column(String)

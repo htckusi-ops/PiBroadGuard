@@ -6,13 +6,15 @@
 <title>PiBroadGuard – Assessment</title>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/app/theme.css">
 <script src="/app/i18n.js"></script>
+<script src="/app/app-meta.js"></script>
 </head>
 <body class="bg-slate-100">
 <div id="app" class="flex flex-col min-h-screen bg-slate-100">
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3 flex-wrap">
-      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline inline-flex items-center gap-2"><img data-pibg-logo src="/app/assets/pibg-logo.svg" alt="PiBroadGuard Logo" class="w-5 h-5 rounded-sm"><span>PiBroadGuard</span></a>
       <span class="text-slate-400">/</span>
       <a v-if="device" :href="`/app/device_form.html?id=${device.id}`"
          class="text-blue-300 hover:underline text-sm">{{ device.manufacturer }} {{ device.model }}</a>
@@ -24,6 +26,27 @@
       </a>
     </div>
     <div class="flex items-center gap-4">
+      <div class="relative">
+        <button @click="taskCenterOpen = !taskCenterOpen"
+          :class="taskCenterBadgeClass"
+          class="text-xs px-2 py-1 rounded font-semibold border border-slate-600 hover:border-slate-400">
+          {{ taskCenterBadgeLabel }}
+        </button>
+        <div v-if="taskCenterOpen"
+             class="absolute right-0 mt-2 w-80 bg-white text-slate-700 rounded-lg shadow-xl border border-slate-200 p-3 z-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-sm">Task-Center</span>
+            <span class="text-[11px] text-slate-500">Live</span>
+          </div>
+          <div class="text-xs space-y-1">
+            <div class="flex justify-between"><span>Running</span><span class="font-semibold text-green-700">{{ taskRunningCount }}</span></div>
+            <div class="flex justify-between"><span>Queued</span><span class="font-semibold text-amber-600">{{ taskQueuedCount }}</span></div>
+            <div class="flex justify-between"><span>Total</span><span class="font-semibold">{{ taskTotalCount }}</span></div>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-500">{{ taskLastUpdatedLabel }}</div>
+          <a href="/app/index.html#queue-widget" @click="taskCenterOpen = false" class="mt-2 inline-block text-xs text-blue-600 hover:underline">Zur globalen Queue</a>
+        </div>
+      </div>
       <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
       <a href="/app/schedules.html" class="text-slate-400 hover:text-white text-sm">⏰ Schedules</a>
       <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
@@ -32,6 +55,10 @@
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('fr')" :class="currentLang === 'fr' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">FR</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('it')" :class="currentLang === 'it' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">IT</button>
       </div>
     </div>
   </header>
@@ -39,7 +66,7 @@
   <main class="max-w-7xl mx-auto px-4 py-6 flex-1">
 
     <!-- Score Overview -->
-    <div v-if="assessment" class="bg-white rounded-lg shadow-sm p-5 mb-4">
+    <div v-if="assessment" class="pibg-card p-5 mb-4">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 class="text-xl font-bold text-slate-800">{{ device?.manufacturer }} {{ device?.model }}</h1>
@@ -51,10 +78,12 @@
             {{ ratingLabel(assessment.overall_rating) }}
           </span>
           <button @click="recalculate" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm">
-            &#8635; Recalculate
+            <span v-if="recalcBusy" class="inline-block animate-spin mr-1">⏳</span>
+            &#8635; {{ recalcBusy ? 'Recalculating...' : 'Recalculate' }}
           </button>
         </div>
       </div>
+      <div v-if="recalcMsg" class="text-xs text-slate-500 mt-1">{{ recalcMsg }}</div>
 
       <!-- Score Bars (hidden in discovery mode) -->
       <div v-if="assessment.scan_mode !== 'discovery'" class="grid grid-cols-5 gap-3">
@@ -120,7 +149,7 @@
     </div>
 
     <!-- Tabs -->
-    <div class="bg-white rounded-lg shadow-sm w-full" style="min-width:0">
+    <div class="pibg-card pibg-tab-window w-full overflow-hidden" style="min-width:0">
       <div class="flex border-b border-slate-200 overflow-x-auto">
         <button v-for="tab in tabs" :key="tab.id"
           @click="activeTab = tab.id"
@@ -131,10 +160,10 @@
       </div>
 
       <!-- Shared tab body: single container so width is always the card width -->
-      <div class="p-5" style="min-width:0">
+      <div class="p-5 pibg-tab-body overflow-x-auto" style="min-width:0">
 
       <!-- Tab: Overview -->
-      <div v-show="activeTab === 'overview'" class="w-full">
+      <div v-show="activeTab === 'overview'" class="w-full min-w-0">
         <div v-if="!assessment">
           <p class="text-slate-500 mb-3">No assessment yet.</p>
           <div class="mb-3">
@@ -146,8 +175,8 @@
               {{ scanProfiles.find(p=>p.name===newProfile).description }}
             </p>
           </div>
-          <button @click="createAssessment" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-medium text-sm">
-            {{ t('btn_new_assessment', 'Start Assessment') }}
+          <button @click="createAssessment" :disabled="createBusy" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-5 py-2 rounded font-medium text-sm">
+            {{ createBusy ? 'Creating…' : t('btn_new_assessment', 'Start Assessment') }}
           </button>
         </div>
         <div v-else>
@@ -192,7 +221,7 @@
       </div>
 
       <!-- Tab: Scan -->
-      <div v-show="activeTab === 'scan'" class="w-full">
+      <div v-show="activeTab === 'scan'" class="w-full min-w-0">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <!-- Authorization form -->
@@ -226,18 +255,16 @@
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
-                  Scan Profile
-                  <span class="ml-1 text-slate-400 cursor-help" title="Passive: ~20 broadcast-relevant ports, T2 (gentle). Standard: Top 1000 ports, T3. Extended: Top 1000 TCP + UDP, T3 (slowest, most thorough)">ℹ</span>
+                  Scan Profile (aus Assessment übernommen)
+                  <span class="ml-1 text-slate-400 cursor-help" title="Profil wird aus dem Assessment übernommen. Änderung im Tab 'Overview' oder beim Erstellen eines neuen Assessments.">ℹ</span>
                 </label>
-                <select :value="auth.profile" @change="changeProfile($event.target.value)"
-                        :disabled="assessment.status === 'scan_complete' || assessment.status === 'completed'"
-                        class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white disabled:bg-slate-100">
-                  <option v-for="p in scanProfiles" :key="p.name" :value="p.name">{{ p.label }}</option>
-                </select>
-                <p v-if="scanProfiles.find(p=>p.name===auth.profile)?.description" class="text-xs text-slate-500 mt-1 bg-slate-50 rounded px-2 py-1">
-                  {{ scanProfiles.find(p=>p.name===auth.profile).description }}
+                <div class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-slate-50 text-slate-700">
+                  {{ assessment.scan_profile || auth.profile }}
+                </div>
+                <p v-if="scanProfiles.find(p=>p.name===(assessment.scan_profile || auth.profile))?.description" class="text-xs text-slate-500 mt-1 bg-slate-50 rounded px-2 py-1">
+                  {{ scanProfiles.find(p=>p.name===(assessment.scan_profile || auth.profile)).description }}
                 </p>
-                <p v-if="scanProfiles.find(p=>p.name===auth.profile)?.is_discovery" class="text-xs text-purple-700 bg-purple-50 rounded px-2 py-1 mt-1">
+                <p v-if="scanProfiles.find(p=>p.name===(assessment.scan_profile || auth.profile))?.is_discovery" class="text-xs text-purple-700 bg-purple-50 rounded px-2 py-1 mt-1">
                   🔍 <strong>Discovery-Profil:</strong> Kein Regelwerk, kein Scoring – nur Geräteverhalten dokumentieren.
                 </p>
               </div>
@@ -279,9 +306,10 @@
               {{ t('scan_authorization_confirm', 'I confirm that operational authorization for this scan has been obtained and the scan risks are understood.') }}
             </label>
             <button @click="startScan"
-              :disabled="!auth.name || !auth.role || !auth.confirmed"
-              class="bg-green-600 hover:bg-green-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded font-medium text-sm">
-              {{ t('btn_start_scan', 'Start Scan') }} →
+              :disabled="scanStarting || !auth.name || !auth.role || !auth.confirmed"
+              class="pibg-btn pibg-btn-success">
+              <span v-if="scanStarting" class="pibg-spinner"></span>
+              {{ scanStarting ? 'Starting...' : t('btn_start_scan', 'Start Scan') + ' →' }}
             </button>
           </div>
 
@@ -291,6 +319,7 @@
               <div class="animate-spin text-2xl">&#9881;</div>
               <p class="text-slate-600 font-medium">{{ scanMsg || 'Scan running...' }}</p>
             </div>
+            <p class="text-xs text-slate-500 mb-2">Du kannst die Seite verlassen – der Scan läuft serverseitig weiter und erscheint in der Historie.</p>
             <div v-if="scanOutput.length" class="bg-slate-900 rounded p-3 font-mono text-xs text-green-400 max-h-64 overflow-y-auto" ref="scanOutputEl">
               <div v-for="(line, i) in scanOutput" :key="i">{{ line }}</div>
             </div>
@@ -323,17 +352,18 @@
             </div>
           </div>
 
-          <!-- Queue status (when job is waiting) -->
-          <div v-if="queueStatus && queueStatus.position > 0" class="mt-4 bg-amber-50 border border-amber-200 rounded p-4 text-sm">
+          <!-- Queue / running status -->
+          <div v-if="queueStatus" class="mt-4 bg-amber-50 border border-amber-200 rounded p-4 text-sm">
             <div class="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <span class="font-semibold">⏳ Scan wartet in der Queue...</span>
-                <span class="ml-2 text-slate-600">Position {{ queueStatus.position }}</span>
+                <span v-if="queueStatus.position > 0" class="font-semibold">⏳ Scan wartet in der Queue...</span>
+                <span v-else class="font-semibold">🟡 Scan läuft…</span>
+                <span v-if="queueStatus.position > 0" class="ml-2 text-slate-600">Position {{ queueStatus.position }}</span>
                 <span v-if="queueStatus.running_device" class="ml-2 text-slate-500">(Läuft: {{ queueStatus.running_device }})</span>
               </div>
               <button v-if="queueStatus.job_id" @click="cancelQueueJob(queueStatus.job_id)"
                 class="text-xs text-red-600 hover:underline border border-red-200 rounded px-2 py-1">
-                Aus Queue entfernen
+                Scan abbrechen
               </button>
             </div>
           </div>
@@ -343,7 +373,7 @@
       </div>
 
       <!-- Tab: Schedules -->
-      <div v-show="activeTab === 'schedules'" class="w-full">
+      <div v-show="activeTab === 'schedules'" class="w-full min-w-0">
         <div v-if="!device" class="text-slate-500">No device loaded.</div>
         <div v-else>
           <div class="flex items-center justify-between mb-4">
@@ -466,11 +496,14 @@
 
             <div class="mb-4">
               <label class="block text-sm font-medium text-slate-700 mb-1">Scan Profile</label>
-              <div class="flex gap-4">
-                <label v-for="p in ['passive','standard','extended']" :key="p" class="flex items-center gap-1 text-sm cursor-pointer capitalize">
-                  <input type="radio" v-model="newSchedule.scan_profile" :value="p"> {{ p }}
+              <div class="space-y-1">
+                <label v-for="p in scanProfiles" :key="p.name" class="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" v-model="newSchedule.scan_profile" :value="p.name">
+                  <span class="font-medium">{{ p.label || p.name }}</span>
+                  <span class="text-slate-400 text-xs">{{ p.description ? p.description.substring(0, 90) + '…' : '' }}</span>
                 </label>
               </div>
+              <p class="text-xs text-slate-500 mt-1">Für geplante Scans sollte ein risikoarmer Profiltyp gewählt werden (z. B. passive) – je nach Gerät und Wartungsfenster.</p>
             </div>
 
             <div class="grid grid-cols-2 gap-3 mb-4">
@@ -504,7 +537,7 @@
       </div>
 
       <!-- Tab: Manual Questions -->
-      <div v-show="activeTab === 'manual'" class="w-full">
+      <div v-show="activeTab === 'manual'" class="w-full min-w-0">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <div v-if="assessment.scan_mode === 'discovery'" class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4 text-purple-800 text-sm">
@@ -513,6 +546,23 @@
             Diese Informationen werden im Discovery-Report ausgewertet.</p>
           </div>
           <p v-else class="text-slate-500 text-sm mb-4">Answer the following questions for the security assessment of this device.</p>
+          <div v-if="assessment.scan_mode !== 'discovery'" class="mb-4 p-3 border border-slate-200 rounded bg-slate-50">
+            <p class="text-xs font-semibold text-slate-700 mb-2">Optional protocol question groups</p>
+            <div class="flex flex-wrap gap-4 text-sm">
+              <label class="inline-flex items-center gap-2">
+                <input type="checkbox" :checked="assessment.manual_nmos_enabled" @change="toggleManualCategory('nmos', $event.target.checked)">
+                <span>NMOS Fragen</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="checkbox" :checked="assessment.manual_ptp_enabled" @change="toggleManualCategory('ptp_timing', $event.target.checked)">
+                <span>PTP Fragen</span>
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="checkbox" :checked="assessment.manual_network_arch_enabled" @change="toggleManualCategory('network_arch', $event.target.checked)">
+                <span>Netz-Architektur Fragen</span>
+              </label>
+            </div>
+          </div>
           <div v-for="(questions, cat) in manualQuestions" :key="cat" class="mb-6"
                :class="cat === 'scan_effects' ? 'border border-amber-300 rounded-lg p-4 bg-amber-50' : ''">
             <h3 class="font-semibold capitalize mb-3 border-b pb-1"
@@ -559,7 +609,7 @@
       </div>
 
       <!-- Tab: Findings -->
-      <div v-show="activeTab === 'findings'" class="w-full">
+      <div v-show="activeTab === 'findings'" class="w-full min-w-0">
 
         <!-- Scan Port Results -->
         <div v-if="scanResults.length > 0" class="mb-6">
@@ -729,7 +779,7 @@
       </div>
 
       <!-- Tab: Report -->
-      <div v-show="activeTab === 'report'" class="w-full">
+      <div v-show="activeTab === 'report'" class="w-full min-w-0">
         <div v-if="!assessment" class="text-slate-500">Create an assessment first.</div>
         <div v-else>
           <p class="text-slate-500 text-sm mb-4">Report downloads for Assessment #{{ assessment.id }}</p>
@@ -769,9 +819,9 @@
   </main>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
-    <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
-    <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
-    <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>
+    <span data-pibg-meta="author"></span>
+    <span data-pibg-meta="standards"></span>
+    <span data-pibg-meta="version"></span>
   </footer>
 </div>
 
@@ -780,8 +830,8 @@ const { createApp, ref, computed, onMounted, onUnmounted, nextTick } = Vue;
 createApp({
   setup() {
     const params = new URLSearchParams(window.location.search);
-    const deviceId = params.get('device_id');
-    const assessmentIdParam = params.get('assessment_id');
+    const deviceId = params.get('device_id') || params.get('deviceId');
+    const assessmentIdParam = params.get('assessment_id') || params.get('id');
 
     const device = ref(null);
     const assessment = ref(null);
@@ -793,16 +843,24 @@ createApp({
     const manualQuestions = ref({});
     const manualSaved = ref(false);
     const globalError = ref('');
+    const createBusy = ref(false);
     const saveMsg = ref('');
     const scanError = ref('');
     const scanMsg = ref('');
     const scanRunning = ref(false);
+    const scanStarting = ref(false);
     const scanOutput = ref([]);
     const scanOutputEl = ref(null);
     const activeTab = ref('overview');
     const newProfile = ref('passive');
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const recalcBusy = ref(false);
+    const recalcMsg = ref('');
+    const taskCenterOpen = ref(false);
+    const taskQueueData = ref({ running: [], queued: [] });
+    const taskLastUpdated = ref(null);
+    let taskPollInterval = null;
 
     function t(key, fb) {
       return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
@@ -833,7 +891,13 @@ createApp({
         const r = await fetch('/api/v1/scan-profiles');
         if (r.ok) {
           const data = await r.json();
-          if (data.length) scanProfiles.value = data;
+          if (data.length) {
+            scanProfiles.value = data;
+            const validProfileNames = new Set(data.map(p => p.name));
+            if (!validProfileNames.has(newSchedule.value.scan_profile)) {
+              newSchedule.value.scan_profile = data[0].name;
+            }
+          }
         }
       } catch (e) { /* keep fallback */ }
     }
@@ -901,7 +965,24 @@ createApp({
       vendor:       { label: t('score_vendor', 'Vendor') },
     }));
 
-    function ratingLabel(r) { return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red' }[r] || r || '—'; }
+    function ratingLabel(r) { return { green: '🟢 Green', yellow: '🟡 Yellow', orange: '🟠 Orange', red: '🔴 Red', unrated: '⚪ Unrated' }[r] || r || '—'; }
+    const taskRunningCount = computed(() => (taskQueueData.value?.running || []).length);
+    const taskQueuedCount = computed(() => (taskQueueData.value?.queued || []).length);
+    const taskTotalCount = computed(() => taskRunningCount.value + taskQueuedCount.value);
+    const taskCenterBadgeLabel = computed(() => {
+      if (taskRunningCount.value > 0) return `🟢 ${taskRunningCount.value} running`;
+      if (taskQueuedCount.value > 0) return `🟡 ${taskQueuedCount.value} queued`;
+      return '⚪ No active tasks';
+    });
+    const taskCenterBadgeClass = computed(() => {
+      if (taskRunningCount.value > 0) return 'bg-green-900 text-green-100';
+      if (taskQueuedCount.value > 0) return 'bg-amber-900 text-amber-100';
+      return 'bg-slate-700 text-slate-200';
+    });
+    const taskLastUpdatedLabel = computed(() => {
+      if (!taskLastUpdated.value) return 'Noch kein Status geladen.';
+      return `Stand: ${new Date(taskLastUpdated.value).toLocaleTimeString()}`;
+    });
     function ratingBgClass(r) { return { green: 'bg-green-100 text-green-800', yellow: 'bg-yellow-100 text-yellow-800', orange: 'bg-orange-100 text-orange-800', red: 'bg-red-100 text-red-800' }[r] || 'bg-slate-100 text-slate-600'; }
     function decisionLabel(d) { return { approved: 'Approved', approved_with_conditions: 'Approved with Conditions', deferred: 'Deferred', rejected: 'Rejected' }[d] || d || '—'; }
     function severityClass(s) { return { critical: 'bg-red-100 text-red-800', high: 'bg-orange-100 text-orange-800', medium: 'bg-yellow-100 text-yellow-800', low: 'bg-green-100 text-green-800', info: 'bg-blue-100 text-blue-800' }[s] || ''; }
@@ -919,9 +1000,9 @@ createApp({
       }[c] || c;
     }
 
-    async function loadDevice() {
-      if (!deviceId) return;
-      const resp = await fetch(`/api/v1/devices/${deviceId}`);
+    async function loadDeviceById(id) {
+      if (!id) return;
+      const resp = await fetch(`/api/v1/devices/${id}`);
       if (resp.ok) device.value = await resp.json();
     }
 
@@ -931,6 +1012,9 @@ createApp({
         const resp = await fetch(`/api/v1/assessments/${assessmentIdParam}`);
         if (resp.ok) {
           assessment.value = await resp.json();
+          if (!device.value && assessment.value.device_id) {
+            await loadDeviceById(assessment.value.device_id);
+          }
           await Promise.all([loadResults(), loadFindings(), loadManual()]);
         }
       }
@@ -963,58 +1047,90 @@ createApp({
     }
 
     async function createAssessment() {
-      const resp = await fetch(`/api/v1/devices/${deviceId}/assessments`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scan_profile: newProfile.value })
-      });
-      if (resp.ok) {
-        assessment.value = await resp.json();
-        window.history.replaceState({}, '', `?device_id=${deviceId}&assessment_id=${assessment.value.id}`);
-        await loadManual();
+      globalError.value = '';
+      const targetDeviceId = deviceId || device.value?.id || null;
+      if (!targetDeviceId) {
+        globalError.value = 'Cannot create assessment: missing device_id in URL.';
+        return;
+      }
+
+      createBusy.value = true;
+      try {
+        const resp = await fetch(`/api/v1/devices/${targetDeviceId}/assessments`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scan_profile: newProfile.value })
+        });
+        if (resp.ok) {
+          assessment.value = await resp.json();
+          window.history.replaceState({}, '', `?device_id=${targetDeviceId}&assessment_id=${assessment.value.id}`);
+          await loadManual();
+          return;
+        }
+
+        const err = await resp.json().catch(() => ({}));
+        globalError.value = err.detail || 'Failed to create assessment.';
+      } catch (e) {
+        globalError.value = e.message || 'Failed to create assessment.';
+      } finally {
+        createBusy.value = false;
       }
     }
 
     async function startScan() {
+      scanStarting.value = true;
       scanError.value = '';
-      const authResp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/authorize`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          authorized_by_name: auth.value.name, authorized_by_role: auth.value.role,
-          authorized_by_contact: auth.value.contact, scan_profile: auth.value.profile,
-          nmap_interface: auth.value.iface === 'auto' ? null : auth.value.iface,
-          notes: auth.value.notes, time_window_start: auth.value.timeStart || null,
-          time_window_end: auth.value.timeEnd || null
-        })
-      });
-      if (!authResp.ok) { scanError.value = 'Authorization failed'; return; }
+      try {
+        const authResp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan/authorize`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            authorized_by_name: auth.value.name, authorized_by_role: auth.value.role,
+            authorized_by_contact: auth.value.contact, scan_profile: (assessment.value.scan_profile || auth.value.profile),
+            nmap_interface: auth.value.iface === 'auto' ? null : auth.value.iface,
+            notes: auth.value.notes, time_window_start: auth.value.timeStart || null,
+            time_window_end: auth.value.timeEnd || null
+          })
+        });
+        if (!authResp.ok) { scanError.value = 'Authorization failed'; return; }
 
-      assessment.value.scan_profile = auth.value.profile;
-      await fetch(`/api/v1/assessments/${assessment.value.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scan_profile: auth.value.profile })
-      });
+        assessment.value.scan_profile = assessment.value.scan_profile || auth.value.profile;
+        await fetch(`/api/v1/assessments/${assessment.value.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scan_profile: assessment.value.scan_profile })
+        });
 
-      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan`, { method: 'POST' });
-      if (resp.ok) {
-        const data = await resp.json();
-        scanRunning.value = true;
-        scanOutput.value = [];
-        assessment.value.status = 'scan_running';
-        // Track job for queue polling
-        if (data.job_id) {
-          currentJobId.value = data.job_id;
-          if (data.position > 1) {
-            // Job is queued (not immediately running)
-            queueStatus.value = { position: data.position, job_id: data.job_id, running_device: null };
-            queuePollInterval = setInterval(pollQueueStatus, 3000);
+        const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/scan`, { method: 'POST' });
+        if (resp.ok) {
+          const data = await resp.json();
+          scanRunning.value = true;
+          scanOutput.value = [];
+          assessment.value.status = 'scan_running';
+          // Track job for queue polling
+          if (data.job_id) {
+            currentJobId.value = data.job_id;
+            if (data.position > 1) {
+              // Job is queued (not immediately running)
+              queueStatus.value = { position: data.position, job_id: data.job_id, running_device: null };
+              queuePollInterval = setInterval(pollQueueStatus, 3000);
+            }
           }
+          startSSE();
+          startPolling();
+        } else {
+          const err = await resp.json();
+          scanError.value = err.detail || 'Could not start scan';
         }
-        startSSE();
-        startPolling();
-      } else {
-        const err = await resp.json();
-        scanError.value = err.detail || 'Could not start scan';
+      } finally {
+        scanStarting.value = false;
       }
+    }
+
+    async function loadTaskQueue() {
+      try {
+        const r = await fetch('/api/v1/scan-queue/status');
+        if (!r.ok) return;
+        taskQueueData.value = await r.json();
+        taskLastUpdated.value = Date.now();
+      } catch (e) { /* ignore */ }
     }
 
     function startSSE() {
@@ -1044,6 +1160,12 @@ createApp({
             const aResp = await fetch(`/api/v1/assessments/${assessment.value.id}`);
             if (aResp.ok) assessment.value = await aResp.json();
             await Promise.all([loadResults(), loadFindings()]);
+          } else if (s.status === 'cancelled') {
+            clearInterval(pollInterval); pollInterval = null;
+            scanRunning.value = false;
+            scanMsg.value = s.message || 'Scan cancelled';
+            const aResp = await fetch(`/api/v1/assessments/${assessment.value.id}`);
+            if (aResp.ok) assessment.value = await aResp.json();
           } else if (s.status === 'error') {
             clearInterval(pollInterval); pollInterval = null;
             scanRunning.value = false;
@@ -1079,6 +1201,28 @@ createApp({
       if (resp.ok) { manualSaved.value = true; setTimeout(() => manualSaved.value = false, 3000); }
     }
 
+    async function toggleManualCategory(category, enabled) {
+      if (!assessment.value) return;
+      const keyMap = {
+        nmos: 'manual_nmos_enabled',
+        ptp_timing: 'manual_ptp_enabled',
+        network_arch: 'manual_network_arch_enabled',
+      };
+      const key = keyMap[category];
+      if (!key) return;
+      const payload = {};
+      payload[key] = !!enabled;
+      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (resp.ok) {
+        assessment.value = await resp.json();
+        await loadManual();
+      }
+    }
+
     const findingSavedId = ref(null);
     async function updateFinding(f) {
       const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/findings/${f.id}`, {
@@ -1092,10 +1236,24 @@ createApp({
     }
 
     async function recalculate() {
-      const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/recalculate`, { method: 'POST' });
-      if (resp.ok) { const r = await resp.json(); Object.assign(assessment.value, r); }
-      // Refresh scoring details if panel is open
-      if (showScoringDetails.value) await loadScoringDetails();
+      if (!assessment.value) return;
+      recalcBusy.value = true;
+      recalcMsg.value = '';
+      try {
+        const resp = await fetch(`/api/v1/assessments/${assessment.value.id}/recalculate`, { method: 'POST' });
+        if (resp.ok) {
+          const r = await resp.json();
+          Object.assign(assessment.value, r);
+          recalcMsg.value = 'Score updated.';
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          recalcMsg.value = err.detail || `Recalculate failed (${resp.status})`;
+        }
+        // Refresh scoring details if panel is open
+        if (showScoringDetails.value) await loadScoringDetails();
+      } finally {
+        recalcBusy.value = false;
+      }
     }
 
     const showScoringDetails = ref(false);
@@ -1114,7 +1272,8 @@ createApp({
 
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await Promise.allSettled([loadDevice(), loadScanProfiles(), loadNetworkInterfaces()]);
+      await Promise.allSettled([loadScanProfiles(), loadNetworkInterfaces()]);
+      if (deviceId) await loadDeviceById(deviceId);
       if (assessmentIdParam) {
         await loadLatestAssessment();
         if (assessment.value) {
@@ -1135,11 +1294,14 @@ createApp({
       }
       // Load schedules for this device
       await loadSchedules();
+      await loadTaskQueue();
+      taskPollInterval = setInterval(loadTaskQueue, 5000);
     });
 
     onUnmounted(() => {
       if (pollInterval) clearInterval(pollInterval);
       if (queuePollInterval) clearInterval(queuePollInterval);
+      if (taskPollInterval) clearInterval(taskPollInterval);
       if (sseSource) { sseSource.close(); sseSource = null; }
     });
 
@@ -1161,11 +1323,15 @@ createApp({
           };
         } else {
           // Job left queue → scan started or done
-          queueStatus.value = null;
-          if (running.find(j => j.job_id === currentJobId.value)) {
-            // still running, no position
-            queueStatus.value = null;
+          const runningEntry = running.find(j => j.job_id === currentJobId.value);
+          if (runningEntry) {
+            queueStatus.value = {
+              position: 0,
+              job_id: currentJobId.value,
+              running_device: runningEntry.ip_address || null,
+            };
           } else {
+            queueStatus.value = null;
             currentJobId.value = null;
             clearInterval(queuePollInterval);
             queuePollInterval = null;
@@ -1288,7 +1454,7 @@ createApp({
       return days + 'd ago';
     }
 
-    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, startScan, changeProfile, saveAssessmentMeta, saveManual, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
+    return { device, assessment, scanResults, findings, manualQuestions, manualSaved, globalError, saveMsg, scanError, scanMsg, scanRunning, scanStarting, recalcBusy, recalcMsg, scanOutput, scanOutputEl, activeTab, newProfile, tabs, scoreDims, editReviewer, editSummary, editDecision, editDecisionNotes, editReassessmentDue, auth, ratingLabel, ratingBgClass, decisionLabel, severityClass, scoreBarColor, scoreTextColor, catLabel, createAssessment, createBusy, startScan, changeProfile, saveAssessmentMeta, saveManual, toggleManualCategory, updateFinding, findingSavedId, recalculate, parseRemediationSources, parseIcsIds, fmtDate, fmtDateTime, cacheAge, queueStatus, cancelQueueJob, schedules, schedulesLoading, showScheduleModal, scheduleError, newSchedule, saveSchedule, pauseSchedule, resumeSchedule, runScheduleNow, deleteSchedule, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang, showScoringDetails, scoringDetails, toggleScoringDetails, scanProfiles, networkInterfaces, srPage, fPage, scanResultsPage, scanResultsTotalPages, scanResultsPageStart, scanResultsPageEnd, findingsPage, findingsTotalPages, findingsPageStart, findingsPageEnd, scanInitiator };
   }
 }).mount('#app');
 </script>

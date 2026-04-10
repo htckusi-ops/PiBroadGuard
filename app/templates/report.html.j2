@@ -116,7 +116,14 @@
 {% endif %}
 
 {% if grouped_manual %}
-<h2>Manuelle Befragung ({{ manual_findings | selectattr('category', 'ne', 'scan_effects') | list | length }} Antworten)</h2>
+{% set ns = namespace(total=0, answered=0) %}
+{% for _cat, _entries in grouped_manual.items() %}
+  {% for _e in _entries %}
+    {% set ns.total = ns.total + 1 %}
+    {% if _e.answer_value %}{% set ns.answered = ns.answered + 1 %}{% endif %}
+  {% endfor %}
+{% endfor %}
+<h2>Manuelle Befragung ({{ ns.answered }}/{{ ns.total }} beantwortet)</h2>
 {% for cat, entries in grouped_manual.items() %}
 <h3 style="margin-top:0.8rem;margin-bottom:0.3rem;font-size:0.88rem;color:#374151;">{{ category_labels.get(cat, cat) }}</h3>
 <table style="margin-top:0;">
@@ -126,11 +133,12 @@
   <tr>
     <td>{{ question_labels.get(mf.question_key, mf.question_key) }}</td>
     <td>
-      {% if ans == "yes" %}<span class="ans-yes">Ja</span>
+      {% if ans == "__unsupported__" %}<span class="ans-unknown">Nicht unterstützt</span>
+      {% elif ans == "yes" %}<span class="ans-yes">Ja</span>
       {% elif ans == "no" %}<span class="ans-no">Nein</span>
       {% elif ans == "partial" %}<span class="ans-partial">Teilweise</span>
       {% elif ans == "unknown" %}<span class="ans-unknown">Unbekannt</span>
-      {% else %}<span class="ans-unknown">—</span>{% endif %}
+      {% else %}<span class="ans-unknown">Unbeantwortet</span>{% endif %}
     </td>
     <td class="meta">{{ mf.comment or "" }}{% if mf.source %}<br><em>Quelle: {{ mf.source }}</em>{% endif %}</td>
   </tr>

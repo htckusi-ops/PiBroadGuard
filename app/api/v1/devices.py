@@ -1,4 +1,5 @@
 import logging
+import json
 from typing import List, Optional
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,6 +11,7 @@ from app.models.assessment import Assessment
 from app.models.device import Device
 from app.schemas.device import DeviceCreate, DeviceRead, DeviceUpdate
 from app.services import dns_service, nmos_service
+from app.services import ping_monitor_service
 
 logger = logging.getLogger("pibroadguard.api")
 router = APIRouter(tags=["devices"])
@@ -23,6 +25,10 @@ def _enrich(device: Device, db: Session) -> DeviceRead:
         .first()
     )
     data = DeviceRead.model_validate(device)
+    try:
+        data.device_capabilities = json.loads(device.device_capabilities_json) if device.device_capabilities_json else []
+    except Exception:
+        data.device_capabilities = []
     if last:
         data.last_assessment_status = last.status
         data.last_assessment_rating = last.overall_rating
@@ -39,7 +45,10 @@ def list_devices(db: Session = Depends(get_db), user: str = Depends(verify_crede
 
 @router.post("/devices", response_model=DeviceRead, status_code=201)
 def create_device(body: DeviceCreate, db: Session = Depends(get_db), user: str = Depends(verify_credentials)):
-    device = Device(**body.model_dump())
+    payload = body.model_dump()
+    capabilities = payload.pop("device_capabilities", None) or []
+    device = Device(**payload)
+    device.device_capabilities_json = json.dumps(capabilities)
     db.add(device)
     db.commit()
     db.refresh(device)
@@ -60,8 +69,12 @@ def update_device(device_id: int, body: DeviceUpdate, db: Session = Depends(get_
     device = db.query(Device).filter(Device.id == device_id, Device.deleted == False).first()
     if not device:
         raise HTTPException(404, "Gerät nicht gefunden")
-    for k, v in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+    capabilities = updates.pop("device_capabilities", None)
+    for k, v in updates.items():
         setattr(device, k, v)
+    if capabilities is not None:
+        device.device_capabilities_json = json.dumps(capabilities)
     db.commit()
     db.refresh(device)
     return _enrich(device, db)
@@ -120,6 +133,23 @@ def list_reassessment_due(
             "days_overdue": (date.today() - assessment.reassessment_due).days if assessment.reassessment_due else None,
         })
     return result
+
+
+@router.post("/devices/{device_id}/ping", response_model=DeviceRead)
+def ping_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
+    device = db.query(Device).filter(Device.id == device_id, Device.deleted == False).first()
+    if not device:
+        raise HTTPException(404, "Gerät nicht gefunden")
+
+    ping_monitor_service.ping_device_once(device)
+
+    db.commit()
+    db.refresh(device)
+    return _enrich(device, db)
 
 
 @router.post("/devices/{device_id}/nmos-check")

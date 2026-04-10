@@ -7,12 +7,13 @@
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="/app/i18n.js"></script>
+<script src="/app/app-meta.js"></script>
 </head>
 <body class="bg-slate-100">
 <div id="app" class="flex flex-col min-h-screen bg-slate-100">
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
-      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline inline-flex items-center gap-2"><img data-pibg-logo src="/app/assets/pibg-logo.svg" alt="PiBroadGuard Logo" class="w-5 h-5 rounded-sm"><span>PiBroadGuard</span></a>
       <span class="text-slate-400">/</span>
       <span class="text-slate-200">{{ isEdit ? t('device_form_title_edit', 'Edit Device') : t('device_form_title_new', 'Add New Device') }}</span>
     </div>
@@ -25,6 +26,10 @@
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('fr')" :class="currentLang === 'fr' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">FR</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('it')" :class="currentLang === 'it' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">IT</button>
       </div>
     </div>
   </header>
@@ -134,6 +139,14 @@
           </div>
         </div>
 
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Operating System</label>
+          <select v-model="form.operating_system" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+            <option value="">—</option>
+            <option v-for="os in operatingSystemOptions" :key="os" :value="os">{{ os }}</option>
+          </select>
+        </div>
+
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('device_form_production_criticality', 'Production Criticality') }}</label>
@@ -152,6 +165,47 @@
         </div>
 
         <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Device Capabilities</label>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <label v-for="cap in capabilityOptions" :key="cap.value" class="inline-flex items-center gap-2">
+              <input type="checkbox" :value="cap.value" v-model="form.device_capabilities">
+              <span>{{ cap.label }}</span>
+            </label>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">Mehrfachauswahl möglich – dient als Basis für spätere capability-spezifische Bewertungen.</p>
+        </div>
+
+        <div v-if="(form.device_capabilities || []).includes('nmos')" class="grid grid-cols-1 gap-3 p-3 bg-cyan-50 border border-cyan-200 rounded">
+          <p class="text-xs font-semibold text-cyan-800">NMOS Zusatzinformationen</p>
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">NMOS Registry URL (optional)</label>
+            <input v-model="form.nmos_registry_url" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="http://registry.example.com:3210">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">NMOS Node API URL (optional)</label>
+            <input v-model="form.nmos_node_api_url" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="http://device/x-nmos/node/v1.3">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">NMOS Connection API URL (optional)</label>
+            <input v-model="form.nmos_connection_api_url" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="http://device/x-nmos/connection/v1.1">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input type="checkbox" v-model="form.ping_monitor_enabled">
+              <span>Recurring ping monitoring</span>
+            </label>
+            <p class="text-xs text-slate-500 mt-1">Wenn aktiv, wird das Gerät periodisch gepingt und "Last seen" automatisch gepflegt.</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Ping interval (minutes)</label>
+            <input v-model.number="form.ping_interval_minutes" :disabled="!form.ping_monitor_enabled" type="number" min="1" max="1440" class="w-full border border-slate-300 rounded px-3 py-2 text-sm disabled:bg-slate-100">
+          </div>
+        </div>
+
+        <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('device_form_notes', 'Notes') }}</label>
           <textarea v-model="form.notes" rows="3" class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Additional information..."></textarea>
         </div>
@@ -161,7 +215,7 @@
 
         <div class="flex gap-3 pt-2">
           <button type="submit" :disabled="saving" class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded font-medium text-sm">
-            {{ saving ? 'Saving...' : (isEdit ? t('btn_edit', 'Update') : 'Create Device') }}
+            {{ saving ? 'Saving...' : (isEdit ? t('btn_save', 'Save') : 'Create Device') }}
           </button>
           <a href="/app/index.html" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-6 py-2 rounded font-medium text-sm">{{ t('btn_cancel', 'Cancel') }}</a>
           <button v-if="isEdit" type="button" @click="deleteDevice" class="ml-auto bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded text-sm">{{ t('btn_delete', 'Delete') }}</button>
@@ -170,7 +224,7 @@
     </div>
 
     <!-- Tabbed history section (edit mode only) -->
-    <div v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm">
+    <div v-if="isEdit" class="mt-6 bg-white rounded-lg shadow-sm pibg-tab-window">
       <!-- Tab bar -->
       <div class="border-b border-slate-200 px-6 pt-4 flex items-center justify-between">
         <div class="flex gap-0">
@@ -200,7 +254,7 @@
       </div>
 
       <!-- Assessments tab -->
-      <div v-if="historyTab === 'assessments'" class="p-6">
+      <div v-if="historyTab === 'assessments'" class="p-6 pibg-tab-body">
         <div v-if="historyLoading" class="text-slate-400 text-sm py-4 text-center">Loading...</div>
         <div v-else-if="!assessments.length" class="text-slate-400 text-sm py-4 text-center">No assessments yet.</div>
         <div v-else class="overflow-x-auto">
@@ -275,30 +329,39 @@
       </div>
 
       <!-- Probes tab -->
-      <div v-if="historyTab === 'probes'" class="p-6">
-        <p class="text-xs text-slate-500 mb-4">Lightweight discovery scans run independently — no assessment, no findings, no scoring. For observation only.</p>
+      <div v-if="historyTab === 'probes'" class="p-6 pibg-tab-body">
+        <div class="mb-4 rounded border border-indigo-200 bg-indigo-50 p-3 text-xs text-slate-700">
+          <p class="font-semibold text-indigo-800 mb-1">ℹ️ Was ist ein Device Probe?</p>
+          <p class="mb-2">
+            Ein Device Probe ist ein schneller Reachability-Check für dieses eine Gerät (Ping-only):
+            Er prüft nur die Erreichbarkeit, ohne ein vollständiges Security-Assessment zu starten.
+          </p>
+          <ul class="list-disc pl-5 space-y-0.5">
+            <li><strong>Mit Probe:</strong> schneller Ping-Check (reachable/unreachable), kein Score, keine Findings.</li>
+            <li><strong>Mit Assessment:</strong> vollständige Bewertung mit Regeln, Findings, Risiko-Score und Report.</li>
+            <li><strong>Einsatz:</strong> z. B. nach Gerätetausch, Firmware-Update oder bei Netzwerk-Änderungen.</li>
+          </ul>
+        </div>
 
         <!-- Start probe -->
         <div class="flex items-end gap-3 mb-5 p-3 bg-slate-50 rounded border border-slate-200">
-          <div class="flex-1">
-            <label class="block text-xs font-medium text-slate-600 mb-1">Scan Profile</label>
-            <select v-model="probeProfile" class="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
-              <option v-for="sp in probeProfiles" :key="sp.name" :value="sp.name">{{ sp.label || sp.name }}</option>
-            </select>
+          <div class="flex-1 text-xs text-slate-600">
+            Probe führt nur einen schnellen Reachability-Check via Ping aus (kein Portscan, keine zweite Scan-Engine).
           </div>
           <button @click="startProbe" :disabled="probeRunning"
             class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-4 py-2 rounded text-sm font-medium whitespace-nowrap">
-            {{ probeRunning ? '⟳ Running...' : '▶ Start Probe' }}
+            {{ probeRunning ? '⟳ Running...' : '▶ Ping Probe' }}
           </button>
         </div>
 
         <!-- Active / last probe result -->
         <div v-if="activeProbe" class="mb-5 p-4 rounded border"
-             :class="activeProbe.status === 'running' ? 'bg-yellow-50 border-yellow-200' : activeProbe.status === 'failed' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'">
+             :class="activeProbe.status === 'running' ? 'bg-yellow-50 border-yellow-200' : activeProbe.status === 'failed' ? 'bg-red-50 border-red-200' : activeProbe.status === 'cancelled' ? 'bg-slate-100 border-slate-300' : 'bg-green-50 border-green-200'">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-semibold">
               <span v-if="activeProbe.status === 'running'">⟳ Scan läuft — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
               <span v-else-if="activeProbe.status === 'failed'">❌ Fehlgeschlagen — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
+              <span v-else-if="activeProbe.status === 'cancelled'">⏹ Abgebrochen — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
               <span v-else>✅ Abgeschlossen — {{ activeProbe.profile_label || activeProbe.profile_name }}</span>
             </span>
             <span class="text-xs text-slate-500">{{ fmtDate(activeProbe.created_at) }}</span>
@@ -307,34 +370,8 @@
           <div v-if="activeProbe.status === 'done'">
             <div class="text-sm mb-3 flex flex-wrap gap-4">
               <span>Reachable: <strong :class="activeProbe.reachable === 'yes' ? 'text-green-700' : 'text-red-700'">{{ activeProbe.reachable || '—' }}</strong></span>
-              <span>Ports found: <strong>{{ (activeProbe.ports || []).length }}</strong></span>
-              <span v-if="activeProbe.scan_duration_seconds" class="text-slate-500 text-xs self-center">{{ activeProbe.scan_duration_seconds.toFixed(1) }}s · nmap {{ activeProbe.nmap_version }}</span>
+              <span v-if="activeProbe.scan_duration_seconds" class="text-slate-500 text-xs self-center">{{ activeProbe.scan_duration_seconds.toFixed(2) }}s · {{ activeProbe.nmap_version || 'ping' }}</span>
             </div>
-
-            <!-- Port table -->
-            <div v-if="activeProbe.ports && activeProbe.ports.length" class="overflow-x-auto mb-4 rounded border border-slate-200 bg-white">
-              <table class="w-full text-xs">
-                <thead class="bg-slate-50">
-                  <tr class="border-b border-slate-200 text-slate-500 text-left">
-                    <th class="py-1.5 px-3 font-medium">Port</th>
-                    <th class="py-1.5 px-3 font-medium">State</th>
-                    <th class="py-1.5 px-3 font-medium">Service</th>
-                    <th class="py-1.5 px-3 font-medium">Product / Version</th>
-                    <th class="py-1.5 px-3 font-medium">Extra</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="p in activeProbe.ports" :key="`${p.port}/${p.protocol}`" class="border-b border-slate-50">
-                    <td class="py-1 px-3 font-mono font-semibold">{{ p.port }}/{{ p.protocol }}</td>
-                    <td class="py-1 px-3"><span :class="p.state === 'open' ? 'text-red-600 font-semibold' : 'text-slate-500'">{{ p.state }}</span></td>
-                    <td class="py-1 px-3 text-slate-700">{{ p.service_name || '—' }}</td>
-                    <td class="py-1 px-3 text-slate-600">{{ [p.service_product, p.service_version].filter(Boolean).join(' ') || '—' }}</td>
-                    <td class="py-1 px-3 text-slate-400">{{ p.extra_info || '' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div v-else class="text-xs text-slate-500 mb-4">No open ports detected.</div>
 
             <!-- Observations -->
             <div class="border-t border-slate-200 pt-3">
@@ -353,6 +390,7 @@
           </div>
 
           <div v-if="activeProbe.status === 'failed'" class="text-xs text-red-700 mt-1">{{ activeProbe.error_message }}</div>
+          <div v-if="activeProbe.status === 'cancelled'" class="text-xs text-slate-700 mt-1">{{ activeProbe.error_message || 'Probe cancelled.' }}</div>
         </div>
 
         <!-- Probe history table -->
@@ -366,9 +404,10 @@
                   <th class="py-2 px-3 font-medium">Profile</th>
                   <th class="py-2 px-3 font-medium">Status</th>
                   <th class="py-2 px-3 font-medium">Reachable</th>
-                  <th class="py-2 px-3 font-medium">Ports</th>
+                  <th class="py-2 px-3 font-medium">Probe Type</th>
                   <th class="py-2 px-3 font-medium">Duration</th>
                   <th class="py-2 px-3 font-medium">By</th>
+                  <th class="py-2 px-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -379,13 +418,19 @@
                   <td class="py-2 px-3 text-slate-700 whitespace-nowrap">{{ fmtDate(p.created_at) }}</td>
                   <td class="py-2 px-3 text-slate-700">{{ p.profile_label || p.profile_name }}</td>
                   <td class="py-2 px-3">
-                    <span :class="p.status === 'done' ? 'bg-green-100 text-green-800' : p.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'"
+                    <span :class="p.status === 'done' ? 'bg-green-100 text-green-800' : p.status === 'failed' ? 'bg-red-100 text-red-800' : p.status === 'cancelled' ? 'bg-slate-200 text-slate-700' : 'bg-yellow-100 text-yellow-800'"
                           class="px-2 py-0.5 rounded text-xs font-medium">{{ p.status }}</span>
                   </td>
                   <td class="py-2 px-3 text-slate-700">{{ p.reachable || '—' }}</td>
-                  <td class="py-2 px-3 text-slate-700">{{ p.port_count ?? '—' }}</td>
+                  <td class="py-2 px-3 text-slate-700">{{ p.profile_label || 'Ping' }}</td>
                   <td class="py-2 px-3 text-slate-500 text-xs">{{ p.scan_duration_seconds ? p.scan_duration_seconds.toFixed(1) + 's' : '—' }}</td>
                   <td class="py-2 px-3 text-slate-500 text-xs">{{ p.initiated_by || '—' }}</td>
+                  <td class="py-2 px-3">
+                    <div class="flex items-center gap-2">
+                      <button v-if="p.status === 'running'" @click.stop="cancelProbe(p.id)" class="text-xs text-amber-700 hover:underline" :disabled="probeActionBusy[p.id]">Stop</button>
+                      <button v-if="p.status === 'failed' || p.status === 'cancelled' || p.status === 'done'" @click.stop="deleteProbe(p.id)" class="text-xs text-red-600 hover:underline" :disabled="probeActionBusy[p.id]">Remove</button>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -410,7 +455,7 @@
       </div>
 
       <!-- NMOS Check tab -->
-      <div v-if="historyTab === 'nmos'" class="p-6">
+      <div v-if="historyTab === 'nmos'" class="p-6 pibg-tab-body">
         <p class="text-xs text-slate-500 mb-4">
           Passive NMOS IS-04 security checks (production-safe, no state changes).
           Verifies TLS (BCP-003-01), authentication (IS-10/BCP-003-02) and detects reachable NMOS API endpoints.
@@ -536,14 +581,14 @@
   </main>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
-    <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
-    <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
-    <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>
+    <span data-pibg-meta="author"></span>
+    <span data-pibg-meta="standards"></span>
+    <span data-pibg-meta="version"></span>
   </footer>
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 createApp({
   setup() {
     const params = new URLSearchParams(window.location.search);
@@ -565,6 +610,8 @@ createApp({
     const deviceTypes = ref([]);
     const deviceClasses = ref([]);
     const historyTab = ref('assessments');
+    const hasRunningAssessment = computed(() => assessments.value.some(a => a.status === 'scan_running'));
+    let historyPoll = null;
 
     // NMOS check state
     const nmosRunning = ref(false);
@@ -598,9 +645,8 @@ createApp({
 
     // Probes state
     const probes = ref([]);
-    const probeProfiles = ref([]);
-    const probeProfile = ref('passive');
     const probeRunning = ref(false);
+    const probeActionBusy = ref({});
     const activeProbe = ref(null);
     const activeProbeObservations = ref([]);
     const obsSaveMsg = ref('');
@@ -613,6 +659,13 @@ createApp({
 
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const operatingSystemOptions = ref([]);
+    const capabilityOptions = [
+      { value: 'nmos', label: 'NMOS' },
+      { value: 'ptp', label: 'PTP / ST 2059' },
+      { value: 'st2110', label: 'SMPTE ST 2110' },
+      { value: 'snmp', label: 'SNMP Management' },
+    ];
 
     function t(key, fb) {
       return tr.value[key] !== undefined ? tr.value[key] : (fb !== undefined ? fb : key);
@@ -629,6 +682,13 @@ createApp({
       owner_team: '', notes: '',
       rdns_hostname: '', mac_address: '', mac_vendor: '',
       phpipam_id: null,
+      operating_system: '',
+      device_capabilities: [],
+      nmos_registry_url: '',
+      nmos_node_api_url: '',
+      nmos_connection_api_url: '',
+      ping_monitor_enabled: false,
+      ping_interval_minutes: 5,
     });
 
     async function load() {
@@ -652,8 +712,12 @@ createApp({
         });
         if (resp.ok) {
           const d = await resp.json();
-          success.value = isEdit.value ? 'Device updated.' : 'Device created.';
-          setTimeout(() => window.location.href = `/app/assessment.html?device_id=${d.id}`, 1000);
+          success.value = isEdit.value ? 'Device saved.' : 'Device created.';
+          if (!isEdit.value) {
+            setTimeout(() => window.location.href = `/app/assessment.html?device_id=${d.id}`, 1000);
+          } else {
+            Object.assign(form.value, d);
+          }
         } else {
           const err = await resp.json();
           error.value = err.detail || JSON.stringify(err);
@@ -683,14 +747,27 @@ createApp({
       else error.value = 'Error deleting device';
     }
 
-    async function loadAssessments() {
+    async function loadAssessments(opts = {}) {
+      const silent = !!opts.silent;
       if (!deviceId) return;
-      historyLoading.value = true;
+      if (!silent) historyLoading.value = true;
       try {
         const resp = await fetch(`/api/v1/devices/${deviceId}/assessments`);
-        if (resp.ok) assessments.value = await resp.json();
+        if (resp.ok) {
+          const next = await resp.json();
+          // Nur neu zuweisen, wenn sich tatsächlich etwas geändert hat
+          if (JSON.stringify(next) !== JSON.stringify(assessments.value)) {
+            assessments.value = next;
+          }
+        }
       } catch (e) { /* ignore */ }
-      finally { historyLoading.value = false; }
+      finally { if (!silent) historyLoading.value = false; }
+    }
+
+    function handleWindowRefocus() {
+      if (!deviceId) return;
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      loadAssessments({ silent: true });
     }
 
     async function cloneAssessment(id) {
@@ -727,21 +804,22 @@ createApp({
       return 'bg-slate-100 text-slate-600';
     }
 
-    async function loadProbeProfiles() {
-      try {
-        const resp = await fetch('/api/v1/scan-profiles');
-        if (resp.ok) {
-          probeProfiles.value = await resp.json();
-          if (probeProfiles.value.length) probeProfile.value = probeProfiles.value[0].name;
-        }
-      } catch (e) { /* ignore */ }
-    }
-
     async function loadProbes() {
       if (!deviceId) return;
       try {
         const resp = await fetch(`/api/v1/devices/${deviceId}/probes`);
-        if (resp.ok) probes.value = await resp.json();
+        if (!resp.ok) return;
+
+        probes.value = await resp.json();
+        const running = probes.value.find(p => p.status === 'running');
+        if (running) {
+          probeRunning.value = true;
+          if (!activeProbe.value || activeProbe.value.id !== running.id || activeProbe.value.status !== 'running') {
+            await openProbeDetail(running.id);
+          }
+        } else if (!activeProbe.value || activeProbe.value.status !== 'running') {
+          probeRunning.value = false;
+        }
       } catch (e) { /* ignore */ }
     }
 
@@ -755,9 +833,21 @@ createApp({
         const resp = await fetch(`/api/v1/devices/${deviceId}/probe`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile_name: probeProfile.value }),
+          body: JSON.stringify({}),
         });
-        if (!resp.ok) { probeRunning.value = false; return; }
+        if (!resp.ok) {
+          if (resp.status === 409) {
+            const conflict = await resp.json().catch(() => ({}));
+            const runningProbeId = conflict?.detail?.probe_id;
+            if (runningProbeId) {
+              await openProbeDetail(runningProbeId);
+              await pollProbe(runningProbeId);
+              return;
+            }
+          }
+          probeRunning.value = false;
+          return;
+        }
         const data = await resp.json();
         // Poll until done
         await pollProbe(data.probe_id);
@@ -785,6 +875,7 @@ createApp({
         } catch (e) { /* ignore transient errors */ }
       }
       probeRunning.value = false;
+      await loadProbes();
     }
 
     async function openProbeDetail(probeId) {
@@ -796,6 +887,36 @@ createApp({
           activeProbeObservations.value = (p.observations || []).map(o => typeof o === 'string' ? { text: o } : o);
         }
       } catch (e) { /* ignore */ }
+    }
+
+    async function cancelProbe(probeId) {
+      if (probeActionBusy.value[probeId]) return;
+      probeActionBusy.value[probeId] = true;
+      try {
+        await fetch(`/api/v1/devices/${deviceId}/probe/${probeId}/cancel`, { method: 'POST' });
+        await loadProbes();
+        if (activeProbe.value && activeProbe.value.id === probeId) await openProbeDetail(probeId);
+      } finally {
+        probeActionBusy.value[probeId] = false;
+      }
+    }
+
+    async function deleteProbe(probeId) {
+      if (!confirm('Remove this probe result?')) return;
+      if (probeActionBusy.value[probeId]) return;
+      probeActionBusy.value[probeId] = true;
+      try {
+        const resp = await fetch(`/api/v1/devices/${deviceId}/probe/${probeId}`, { method: 'DELETE' });
+        if (resp.ok) {
+          if (activeProbe.value && activeProbe.value.id === probeId) {
+            activeProbe.value = null;
+            activeProbeObservations.value = [];
+          }
+          await loadProbes();
+        }
+      } finally {
+        probeActionBusy.value[probeId] = false;
+      }
     }
 
     async function saveObservations() {
@@ -826,22 +947,45 @@ createApp({
       } catch (e) { /* ignore – dropdown falls back to empty */ }
     }
 
+    async function loadOperatingSystemOptions() {
+      try {
+        const resp = await fetch('/api/v1/device-os-options');
+        if (resp.ok) operatingSystemOptions.value = await resp.json();
+      } catch (e) { /* ignore */ }
+    }
+
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
-      await Promise.all([loadDeviceTypes(), loadDeviceClasses(), loadProbeProfiles()]);
+      await Promise.all([loadDeviceTypes(), loadDeviceClasses(), loadOperatingSystemOptions()]);
       await load();
       await Promise.all([loadAssessments(), loadProbes()]);
+      window.addEventListener('focus', handleWindowRefocus);
+      document.addEventListener('visibilitychange', handleWindowRefocus);
+      historyPoll = setInterval(() => {
+        if (document.visibilityState && document.visibilityState !== 'visible') return;
+        loadAssessments({ silent: true });
+      }, 5000);
+    });
+
+    onUnmounted(() => {
+      window.removeEventListener('focus', handleWindowRefocus);
+      document.removeEventListener('visibilitychange', handleWindowRefocus);
+      if (historyPoll) clearInterval(historyPoll);
     });
     return { form, isEdit, saving, error, success, ipError, rdnsLoading,
              assessments, historyLoading, deviceTypes, deviceClasses,
+             operatingSystemOptions,
+             capabilityOptions,
              pagedAssessments, asmPage, assessmentsTotalPages, asmPageStart, asmPageEnd,
-             probes, probeProfiles, probeProfile, probeRunning, activeProbe,
+             probes, probeRunning, activeProbe,
+             probeActionBusy,
              activeProbeObservations, obsSaveMsg,
              pagedProbes, probePage, probesTotalPages, probePageStart, probePageEnd,
              historyTab,
              save, lookupRdns, deleteDevice, cloneAssessment, deleteAssessment,
-             startProbe, openProbeDetail, saveObservations,
+             startProbe, openProbeDetail, saveObservations, cancelProbe, deleteProbe,
              nmosRunning, nmosResult, nmosError, nmosRegistryUrl, nmosCheckedAt, runNmosCheck,
+             hasRunningAssessment,
              fmtDate, ratingClass, statusClass,
              t, currentLang, switchLang };
   }

@@ -7,12 +7,13 @@
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="/app/i18n.js"></script>
+<script src="/app/app-meta.js"></script>
 </head>
 <body class="bg-slate-100">
 <div id="app" class="flex flex-col min-h-screen bg-slate-100">
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
-      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline inline-flex items-center gap-2"><img data-pibg-logo src="/app/assets/pibg-logo.svg" alt="PiBroadGuard Logo" class="w-5 h-5 rounded-sm"><span>PiBroadGuard</span></a>
       <span class="text-slate-400">/</span>
       <span class="text-slate-200">{{ t('settings_title', 'Settings') }}</span>
     </div>
@@ -24,6 +25,10 @@
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('fr')" :class="currentLang === 'fr' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">FR</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('it')" :class="currentLang === 'it' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">IT</button>
       </div>
     </div>
   </header>
@@ -292,6 +297,18 @@
           + {{ t('btn_add', 'Add') }}
         </button>
         <p v-if="dtMsg" class="text-green-600 text-xs mt-1">{{ dtMsg }}</p>
+      </div>
+    </div>
+
+    <!-- Device OS options -->
+    <div class="bg-white rounded-lg shadow-sm p-5">
+      <h2 class="font-bold text-slate-800 mb-4">💻 Device Operating Systems</h2>
+      <p class="text-sm text-slate-500 mb-3">Managed list used in the device form dropdown (one entry per line).</p>
+      <textarea v-model="deviceOsOptionsText" rows="7" class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono"
+                placeholder="Proprietary/Others&#10;Windows Desktop&#10;Windows Server"></textarea>
+      <div class="mt-3 flex items-center gap-3">
+        <button @click="saveDeviceOsOptions" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">Save OS options</button>
+        <span v-if="osMsg" :class="osError ? 'text-red-600' : 'text-green-600'" class="text-xs">{{ osMsg }}</span>
       </div>
     </div>
 
@@ -599,9 +616,9 @@ PIBG_PHPIPAM_TOKEN=your-api-token</pre>
   </main>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
-    <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
-    <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
-    <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>
+    <span data-pibg-meta="author"></span>
+    <span data-pibg-meta="standards"></span>
+    <span data-pibg-meta="version"></span>
   </footer>
 </div>
 
@@ -830,6 +847,9 @@ createApp({
     const dtMsg = ref('');
     const editDtId = ref(null);
     const editDtData = ref({ label_de: '', label_en: '' });
+    const deviceOsOptionsText = ref('');
+    const osMsg = ref('');
+    const osError = ref(false);
 
     async function loadDeviceTypes() {
       try {
@@ -866,6 +886,38 @@ createApp({
       await loadDeviceTypes();
     }
 
+    async function loadDeviceOsOptions() {
+      try {
+        const resp = await fetch('/api/v1/device-os-options');
+        if (resp.ok) {
+          const options = await resp.json();
+          deviceOsOptionsText.value = (options || []).join('\n');
+        }
+      } catch (e) { console.error('loadDeviceOsOptions', e); }
+    }
+
+    async function saveDeviceOsOptions() {
+      osMsg.value = ''; osError.value = false;
+      const options = deviceOsOptionsText.value
+        .split('\n')
+        .map(s => s.trim())
+        .filter(Boolean);
+      const resp = await fetch('/api/v1/device-os-options', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ options }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        deviceOsOptionsText.value = (data.options || []).join('\n');
+        osMsg.value = 'OS options saved.';
+      } else {
+        osError.value = true;
+        const err = await resp.json().catch(() => ({}));
+        osMsg.value = err.detail || 'Failed to save OS options.';
+      }
+    }
+
     const phpipamStatus = ref(null);
     async function checkPhpipam() {
       const resp = await fetch('/api/v1/phpipam/status');
@@ -875,7 +927,7 @@ createApp({
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
       // Use allSettled so one failing loader doesn't crash the whole page
-      await Promise.allSettled([loadConn(), loadApiKeys(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam(), loadNetConfig()]);
+      await Promise.allSettled([loadConn(), loadApiKeys(), loadBackups(), loadLogs(), loadNmapCaps(), loadDeviceTypes(), loadDeviceOsOptions(), loadDeviceClasses(), loadScanProfiles(), checkPhpipam(), loadNetConfig()]);
     });
 
     // ── Network Config ─────────────────────────────────────────
@@ -926,7 +978,7 @@ createApp({
       finally { netEdit.value.applying = false; }
     }
 
-    return { conn, connMode, connSaved, apiKeys, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, restoreMsg, restoreError, deleteBackupMsg, deleteBackupError, doRestore, doDeleteBackup, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, editSpId, editSpData, startEditSp, cancelEditSp, saveSp, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
+    return { conn, connMode, connSaved, apiKeys, kevSyncing, kevMsg, kevError, backupDest, backupUsbPath, backupEncrypt, backing, backupMsg, backupError, backups, restoreMsg, restoreError, deleteBackupMsg, deleteBackupError, doRestore, doDeleteBackup, logs, logLines, nmapCaps, deviceTypes, newDt, dtMsg, editDtId, editDtData, startEditDt, saveDt, activateDt, deviceOsOptionsText, osMsg, osError, saveDeviceOsOptions, deviceClasses, newDc, dcMsg, editDcId, editDcData, startEditDc, saveDc, activateDc, scanProfiles, newSp, spMsg, spError, editSpId, editSpData, startEditSp, cancelEditSp, saveSp, phpipamStatus, saveConnMode, checkNow, kevSync, doBackup, loadLogs, formatBytes, addDt, deactivateDt, addDc, deactivateDc, addSp, deactivateSp, checkPhpipam, netConfig, netLoading, netError, netEdit, loadNetConfig, openNetEdit, applyNetConfig, t, currentLang, switchLang };
   }
 }).mount('#app');
 </script>

@@ -6,7 +6,9 @@
 <title>PiBroadGuard – Scheduled Scans</title>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/app/theme.css">
 <script src="/app/i18n.js"></script>
+<script src="/app/app-meta.js"></script>
 </head>
 <body class="bg-slate-100">
 <div id="app" class="flex flex-col min-h-screen bg-slate-100">
@@ -14,11 +16,32 @@
   <!-- Header -->
   <header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shadow">
     <div class="flex items-center gap-3">
-      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline">PiBroadGuard</a>
+      <a href="/app/index.html" class="text-blue-400 font-bold hover:underline inline-flex items-center gap-2"><img data-pibg-logo src="/app/assets/pibg-logo.svg" alt="PiBroadGuard Logo" class="w-5 h-5 rounded-sm"><span>PiBroadGuard</span></a>
       <span class="text-slate-400">/</span>
       <span class="text-slate-200 text-sm">⏰ Scheduled Scans</span>
     </div>
     <div class="flex items-center gap-4">
+      <div class="relative">
+        <button @click="taskCenterOpen = !taskCenterOpen"
+          :class="taskCenterBadgeClass"
+          class="text-xs px-2 py-1 rounded font-semibold border border-slate-600 hover:border-slate-400">
+          {{ taskCenterBadgeLabel }}
+        </button>
+        <div v-if="taskCenterOpen"
+             class="absolute right-0 mt-2 w-80 bg-white text-slate-700 rounded-lg shadow-xl border border-slate-200 p-3 z-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-sm">Task-Center</span>
+            <span class="text-[11px] text-slate-500">Live</span>
+          </div>
+          <div class="text-xs space-y-1">
+            <div class="flex justify-between"><span>Running</span><span class="font-semibold text-green-700">{{ taskRunningCount }}</span></div>
+            <div class="flex justify-between"><span>Queued</span><span class="font-semibold text-amber-600">{{ taskQueuedCount }}</span></div>
+            <div class="flex justify-between"><span>Total</span><span class="font-semibold">{{ taskTotalCount }}</span></div>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-500">{{ taskLastUpdatedLabel }}</div>
+          <a href="/app/index.html#queue-widget" @click="taskCenterOpen = false" class="mt-2 inline-block text-xs text-blue-600 hover:underline">Zur globalen Queue</a>
+        </div>
+      </div>
       <a href="/app/index.html" class="text-slate-400 hover:text-white text-sm">Dashboard</a>
       <a href="/app/rules.html" class="text-slate-400 hover:text-white text-sm">📋 Ruleset</a>
       <a href="/app/settings.html" class="text-slate-400 hover:text-white text-sm">⚙️ Settings</a>
@@ -26,6 +49,10 @@
         <button @click="switchLang('en')" :class="currentLang === 'en' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">EN</button>
         <span class="text-slate-600 text-xs">|</span>
         <button @click="switchLang('de')" :class="currentLang === 'de' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">DE</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('fr')" :class="currentLang === 'fr' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">FR</button>
+        <span class="text-slate-600 text-xs">|</span>
+        <button @click="switchLang('it')" :class="currentLang === 'it' ? 'text-white font-bold' : 'text-slate-400'" class="text-xs hover:text-white px-1">IT</button>
       </div>
     </div>
   </header>
@@ -44,14 +71,14 @@
         <option value="active">Active</option>
         <option value="paused">Paused</option>
       </select>
-      <button @click="showModal = true" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+      <button @click="showModal = true" class="pibg-btn pibg-btn-primary">
         + Schedule Scan
       </button>
     </div>
 
     <!-- Schedules Table -->
-    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div v-if="loading" class="text-center py-12 text-slate-400">Loading...</div>
+    <div class="pibg-card overflow-hidden">
+      <div v-if="loading" class="text-center py-12 pibg-loading">Loading...</div>
       <div v-else-if="filteredSchedules.length === 0" class="text-center py-12 text-slate-400">
         No scheduled scans configured.
         <a href="#" @click.prevent="showModal = true" class="text-blue-600 hover:underline ml-1">Create one →</a>
@@ -102,7 +129,9 @@
               <div class="flex items-center gap-2 flex-wrap">
                 <button v-if="s.active" @click="pauseSchedule(s.id)" class="text-xs text-amber-600 hover:underline" title="Pause">⏸ Pause</button>
                 <button v-else @click="resumeSchedule(s.id)" class="text-xs text-green-600 hover:underline" title="Resume">▶ Resume</button>
-                <button @click="runNow(s.id)" class="text-xs text-blue-600 hover:underline" title="Run now">▶▶ Now</button>
+                <button @click="runNow(s.id)" :disabled="runNowBusyId === s.id" class="text-xs text-blue-600 hover:underline disabled:opacity-50" title="Run now">
+                  {{ runNowBusyId === s.id ? '⏳ Running…' : '▶▶ Now' }}
+                </button>
                 <button @click="deleteSchedule(s.id)" class="text-xs text-red-500 hover:underline" title="Delete">🗑</button>
               </div>
             </td>
@@ -246,8 +275,9 @@
         <button @click="showModal = false; formError = ''" class="px-4 py-2 text-sm border border-slate-300 rounded hover:bg-slate-50">Cancel</button>
         <button @click="createSchedule"
           :disabled="!form.device_id || !form.authorized_by_name || !form.authorized_by_role || !form.confirmed"
-          class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed">
-          ⏰ Create Schedule
+          class="pibg-btn pibg-btn-primary disabled:bg-slate-300 disabled:cursor-not-allowed">
+          <span v-if="createBusy" class="pibg-spinner"></span>
+          {{ createBusy ? 'Creating…' : '⏰ Create Schedule' }}
         </button>
       </div>
       <div v-if="formError" class="mt-2 text-red-600 text-sm">{{ formError }}</div>
@@ -255,14 +285,14 @@
   </div>
 
   <footer class="bg-slate-800 text-slate-400 text-xs px-6 py-3 flex items-center justify-between">
-    <span>{{ t('footer_author', 'PiBroadGuard · Markus Gerber · markus.gerber@npn.ch') }}</span>
-    <span>{{ t('footer_standards', 'IEC 62443-3-2/-4-2 | NIST SP 800-82r3/-115/-30r1') }}</span>
-    <span>{{ t('footer_version', 'v1.8 | March 2026') }}</span>
+    <span data-pibg-meta="author"></span>
+    <span data-pibg-meta="standards"></span>
+    <span data-pibg-meta="version"></span>
   </footer>
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 createApp({
   setup() {
@@ -277,6 +307,12 @@ createApp({
     const formError = ref('');
     const tr = ref({});
     const currentLang = ref(window.PiBGi18n.currentLang());
+    const taskCenterOpen = ref(false);
+    const taskQueueData = ref({ running: [], queued: [] });
+    const taskLastUpdated = ref(null);
+    const runNowBusyId = ref(null);
+    const createBusy = ref(false);
+    let taskPollInterval = null;
 
     const form = ref({
       device_id: '',
@@ -315,6 +351,23 @@ createApp({
     const schPageEnd    = computed(() => Math.min(schPage.value * SCH_PAGE_SIZE, filteredSchedules.value.length));
     const pagedSchedules = computed(() => filteredSchedules.value.slice((schPage.value - 1) * SCH_PAGE_SIZE, schPage.value * SCH_PAGE_SIZE));
     function resetSchPage() { schPage.value = 1; }
+    const taskRunningCount = computed(() => (taskQueueData.value?.running || []).length);
+    const taskQueuedCount = computed(() => (taskQueueData.value?.queued || []).length);
+    const taskTotalCount = computed(() => taskRunningCount.value + taskQueuedCount.value);
+    const taskCenterBadgeLabel = computed(() => {
+      if (taskRunningCount.value > 0) return `🟢 ${taskRunningCount.value} running`;
+      if (taskQueuedCount.value > 0) return `🟡 ${taskQueuedCount.value} queued`;
+      return '⚪ No active tasks';
+    });
+    const taskCenterBadgeClass = computed(() => {
+      if (taskRunningCount.value > 0) return 'bg-green-900 text-green-100';
+      if (taskQueuedCount.value > 0) return 'bg-amber-900 text-amber-100';
+      return 'bg-slate-700 text-slate-200';
+    });
+    const taskLastUpdatedLabel = computed(() => {
+      if (!taskLastUpdated.value) return 'Noch kein Status geladen.';
+      return `Stand: ${new Date(taskLastUpdated.value).toLocaleTimeString()}`;
+    });
 
     function fmtDateTime(dt) {
       if (!dt) return '—';
@@ -348,6 +401,15 @@ createApp({
       ];
     }
 
+    async function loadTaskQueue() {
+      try {
+        const r = await fetch('/api/v1/scan-queue/status');
+        if (!r.ok) return;
+        taskQueueData.value = await r.json();
+        taskLastUpdated.value = Date.now();
+      } catch (e) { /* ignore */ }
+    }
+
     async function createSchedule() {
       formError.value = '';
       const body = {
@@ -372,6 +434,7 @@ createApp({
         if (!form.value.cron_expression) { formError.value = 'Cron expression required'; return; }
         body.cron_expression = form.value.cron_expression;
       }
+      createBusy.value = true;
       try {
         const r = await fetch('/api/v1/schedules', {
           method: 'POST',
@@ -392,6 +455,8 @@ createApp({
         await loadSchedules();
       } catch (e) {
         formError.value = 'Network error: ' + e.message;
+      } finally {
+        createBusy.value = false;
       }
     }
 
@@ -405,8 +470,14 @@ createApp({
     }
     async function runNow(id) {
       if (!confirm('Trigger scan immediately?')) return;
-      await fetch(`/api/v1/schedules/${id}/run-now`, { method: 'POST' });
-      await loadSchedules();
+      runNowBusyId.value = id;
+      try {
+        await fetch(`/api/v1/schedules/${id}/run-now`, { method: 'POST' });
+        await loadSchedules();
+        await loadTaskQueue();
+      } finally {
+        runNowBusyId.value = null;
+      }
     }
     async function deleteSchedule(id) {
       if (!confirm('Delete this schedule?')) return;
@@ -417,9 +488,14 @@ createApp({
     onMounted(async () => {
       tr.value = await window.PiBGi18n.load();
       await Promise.all([loadSchedules(), loadDevices(), loadScanProfiles()]);
+      await loadTaskQueue();
+      taskPollInterval = setInterval(loadTaskQueue, 5000);
+    });
+    onUnmounted(() => {
+      if (taskPollInterval) clearInterval(taskPollInterval);
     });
 
-    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, pagedSchedules, schPage, schTotalPages, schPageStart, schPageEnd, resetSchPage, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, t, currentLang, switchLang };
+    return { schedules, devices, scanProfiles, loading, error, filterDevice, filterStatus, filteredSchedules, pagedSchedules, schPage, schTotalPages, schPageStart, schPageEnd, resetSchPage, showModal, form, formError, fmtDateTime, createSchedule, pauseSchedule, resumeSchedule, runNow, deleteSchedule, runNowBusyId, createBusy, taskCenterOpen, taskRunningCount, taskQueuedCount, taskTotalCount, taskCenterBadgeLabel, taskCenterBadgeClass, taskLastUpdatedLabel, t, currentLang, switchLang };
 
   }
 }).mount('#app');

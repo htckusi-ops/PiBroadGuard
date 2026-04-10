@@ -182,38 +182,36 @@
   "error_auth_required": "Scan-Autorisierung erforderlich",
   "confirm_delete_device": "Gerät wirklich löschen?",
   "confirm_start_scan": "Scan wirklich starten?",
-
   "tooltip_default_creds_exist": "Liefert der Hersteller das Gerät mit einem vordefinierten Standard-Passwort aus (z.B. admin/admin)? Prüfen Sie die Herstellerdokumentation oder das Gerät selbst beim ersten Login.",
   "tooltip_default_creds_changeable": "Erlaubt das Gerät das Ändern des werkseitigen Passworts? Manche Broadcast-Geräte haben Backdoor-Accounts die nicht geändert werden können.",
   "tooltip_individual_accounts": "Unterstützt das Gerät mehrere Benutzerkonten mit individuellen Zugangsdaten? Shared Accounts (ein Login für alle) erschweren die Nachvollziehbarkeit.",
   "tooltip_roles_available": "Können Benutzer mit unterschiedlichen Berechtigungen (z.B. Read-Only vs. Admin) angelegt werden? Relevant um das Prinzip der minimalen Rechte umzusetzen.",
   "tooltip_mfa_possible": "Unterstützt das Gerät Multi-Faktor-Authentifizierung (z.B. TOTP, Hardware-Token)? Bei Management-Interfaces besonders wichtig.",
   "tooltip_central_auth_possible": "Kann das Gerät an eine zentrale Authentifizierungsinfrastruktur angebunden werden (LDAP, Active Directory, RADIUS)? Ermöglicht zentrales User-Management und schnelle Sperrung.",
-
   "tooltip_firmware_updatable": "Kann die Firmware des Geräts durch den Betreiber selbst aktualisiert werden? Bei manchen Geräten ist dies nur durch den Hersteller/Service möglich.",
   "tooltip_security_updates_available": "Stellt der Hersteller reine Sicherheits-Patches bereit, ohne dass ein vollständiges Firmware-Upgrade nötig ist? Reduziert das Risiko und den Aufwand bei kritischen Schwachstellen.",
   "tooltip_security_advisories": "Publiziert der Hersteller strukturierte Sicherheitsmeldungen (Advisories) wenn Schwachstellen bekannt werden? Prüfen Sie die Hersteller-Website auf einen Security-Bereich.",
   "tooltip_lifecycle_documented": "Hat der Hersteller ein klares End-of-Life (keine Updates mehr) oder End-of-Support (kein Hersteller-Support mehr) Datum für dieses Produkt publiziert?",
   "tooltip_update_without_downtime": "Kann ein Firmware-Update eingespielt werden ohne den Sendebetrieb längere Zeit zu unterbrechen? Z.B. durch redundante Systeme, Rolling-Update oder kurze Reboot-Zeit.",
-
   "tooltip_unnecessary_services_disableable": "Erlaubt das Gerät das Abschalten von Diensten die nicht benötigt werden (z.B. Telnet, FTP, SNMP)? Je weniger offene Ports, desto kleiner die Angriffsfläche.",
   "tooltip_web_interface_disableable": "Falls das Management-Interface via HTTP/HTTPS erreichbar ist: Kann es abgeschaltet werden wenn es nicht benötigt wird, oder auf HTTPS beschränkt?",
   "tooltip_insecure_protocols_disableable": "Lassen sich Protokolle wie Telnet, FTP, SNMPv1/v2, unverschlüsseltes HTTP deaktivieren? Beim Hersteller erfragen falls nicht aus der Doku ersichtlich.",
   "tooltip_certificates_replaceable": "Erlaubt das Gerät das Ersetzen des werkseitigen Self-Signed-Zertifikats durch ein eigenes Zertifikat (z.B. von der internen PKI)?",
   "tooltip_tls_configurable": "Kann konfiguriert werden welche TLS-Versionen (mindestens TLS 1.2) und welche Cipher-Suites erlaubt sind? TLS 1.0 und 1.1 gelten als unsicher.",
-
   "tooltip_syslog_supported": "Kann das Gerät Sicherheitsereignisse (Logins, Fehler, Konfigurationsänderungen) an einen zentralen Syslog-Server senden? Wichtig für Detection und Incident Response.",
   "tooltip_snmpv3_supported": "Unterstützt das Gerät SNMPv3 mit Authentifizierung und Verschlüsselung? SNMPv1/v2 übertragen Community-Strings im Klartext.",
   "tooltip_login_logging": "Zeichnet das Gerät erfolgreiche und fehlgeschlagene Login-Versuche auf? Grundvoraussetzung für die Erkennung von Brute-Force-Angriffen.",
   "tooltip_config_change_logging": "Gibt es ein Audit-Log das aufzeichnet wer wann welche Konfigurationsänderung vorgenommen hat? Wichtig für Nachvollziehbarkeit und Forensik.",
-
   "tooltip_production_critical": "Führt ein Ausfall dieses Geräts direkt zu einem Sendeunterbruch oder einem erheblichen Qualitätsverlust im Live-Betrieb? Beeinflusst massgeblich die Risikobewertung.",
   "tooltip_redundancy_available": "Gibt es ein baugleiches Ersatzgerät oder eine redundante Lösung die bei Ausfall automatisch oder manuell übernehmen kann?",
   "tooltip_fallback_possible": "Kann im Fehlerfall auf eine alternative Lösung umgeschaltet werden (z.B. analoges Backup, anderer Signalweg)?",
   "tooltip_management_vlan_possible": "Lässt sich das Management-Interface des Geräts in ein separates, vom Produktionsnetz isoliertes Management-VLAN stellen? Wichtigste kompensierende Massnahme.",
   "tooltip_legacy_services_required": "Sind unsichere Protokolle (Telnet, FTP, SNMPv1) aus betrieblichen Gründen zwingend erforderlich? Falls ja: Kompensationsmassnahmen im nächsten Feld beschreiben.",
-
   "tooltip_psirt_available": "Hat der Hersteller ein Product Security Incident Response Team (PSIRT) oder zumindest einen dokumentierten Kontakt für Sicherheitsmeldungen? Ohne diesen Kanal ist koordinierte Schwachstellenbehebung kaum möglich.",
   "tooltip_hardening_guide_available": "Stellt der Hersteller eine Dokumentation bereit die erklärt wie das Gerät sicher konfiguriert werden soll? Prüfen Sie die Hersteller-Website und fragen Sie beim Support nach.",
-  "tooltip_security_roadmap": "Hat der Hersteller kommuniziert wie er Sicherheitsthemen in zukünftigen Versionen adressieren wird? Zeigt die langfristige Security-Reife des Herstellers."
+  "tooltip_security_roadmap": "Hat der Hersteller kommuniziert wie er Sicherheitsthemen in zukünftigen Versionen adressieren wird? Zeigt die langfristige Security-Reife des Herstellers.",
+  "nav_schedules": "Zeitpläne",
+  "nav_rules": "Regelwerk",
+  "dashboard_next_schedules": "Nächste geplante Scans",
+  "common_show_all": "Alle anzeigen"
 }

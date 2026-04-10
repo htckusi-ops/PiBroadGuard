@@ -1,6 +1,6 @@
 # PiBroadGuard – Device Security Assessment Platform
 
-Standardisiertes Sicherheits-Assessment für Broadcast-Geräte in Medienunternehmen.
+Standardisiertes Sicherheits-Assessment für Broadcast-Geräte in Medienunternehmen (POC).
 Läuft auf dem Raspberry Pi 4 (ARM64) und Standard Linux (x86_64).
 
 ---
@@ -123,8 +123,8 @@ Transport via USB (3-Schritt-Wizard). Optionale AES-256-GCM-Verschlüsselung mit
 ## Schnellstart (Docker)
 
 ```bash
-git clone https://github.com/htckusi-ops/pibroadguard
-cd pibroadguard
+git clone https://github.com/htckusi-ops/PiBroadGuard
+cd PiBroadGuard
 cp .env.example .env
 # .env anpassen (Passwort, optionaler NVD API Key)
 docker compose up -d
@@ -134,8 +134,8 @@ docker compose up -d
 ## Direktinstallation (systemd)
 
 ```bash
-git clone https://github.com/htckusi-ops/pibroadguard
-cd pibroadguard
+git clone https://github.com/htckusi-ops/PiBroadGuard
+cd PiBroadGuard
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env && nano .env
@@ -164,7 +164,7 @@ sudo systemctl enable --now pibroadguard
 ## Update (Docker)
 
 ```bash
-cd pibroadguard
+cd PiBroadGuard
 git pull origin main
 docker compose up -d --build
 docker compose exec pibroadguard alembic upgrade head
@@ -173,7 +173,7 @@ docker compose exec pibroadguard alembic upgrade head
 ## Update (systemd)
 
 ```bash
-cd pibroadguard
+cd PiBroadGuard
 git pull origin main
 source venv/bin/activate
 pip install -r requirements.txt
@@ -255,7 +255,8 @@ GET             /api/v1/scan-queue/status
 GET             /api/v1/device-types
 GET             /api/v1/device-classes
 GET             /api/v1/devices/reassessment-due         # Fälligkeitsliste
-GET/POST        /api/v1/devices/{id}/probes              # Device Probe (schnell, kein Assessment)
+POST            /api/v1/devices/{id}/ping                # Einfacher Reachability-Check (persistiert Last Seen)
+GET/POST        /api/v1/devices/{id}/probes              # Device Probe (Ping-only, kein Assessment)
 POST            /api/v1/devices/{id}/nmos-check          # NMOS-Sicherheitscheck
 GET/POST/PUT/DELETE /api/v1/rules                        # Regelwerk-CRUD
 GET/POST        /api/v1/usb/devices|export|import
@@ -385,7 +386,7 @@ PiBroadGuard verwendet **SQLite** (via SQLAlchemy 2.x). Die Datenbank liegt stan
 
 | Tabelle | Zweck | Wichtige Felder |
 |---------|-------|-----------------|
-| `devices` | Gerät-Stammdaten | `ip_address` (Pflicht), `device_type`, `production_criticality`, `mac_address`, `rdns_hostname`, `phpipam_id` |
+| `devices` | Gerät-Stammdaten | `ip_address` (Pflicht), `device_type`, `production_criticality`, `mac_address`, `rdns_hostname`, `phpipam_id`, `device_capabilities_json` (Mehrfachauswahl), optionale NMOS-URLs (`nmos_registry_url`, `nmos_node_api_url`, `nmos_connection_api_url`) |
 | `device_classes` | Geräteklassen (z.B. Broadcast, IT) | `name`, `label_de/en`, `risk_weight` |
 | `device_types` | Gerätetypen (konfigurierbar) | `name`, `label_de/en`, `sort_order` |
 | `assessments` | Sicherheitsbewertung | `scan_mode` (assessment/discovery), `overall_rating`, 5× Score, `decision` |
@@ -401,7 +402,7 @@ PiBroadGuard verwendet **SQLite** (via SQLAlchemy 2.x). Die Datenbank liegt stan
 | `ics_advisory_cache` | CISA ICS Advisories | `advisory_id`, `vendor`, `product`, `cve_ids` (JSON), `advisory_url`, `fetched_at` |
 | `scan_profiles` | Nmap-Profile (YAML-Flags) | `nmap_flags` (JSON), `timeout_seconds`, `built_in`, `is_discovery` |
 | `scheduled_scans` | Geplante Scans | `trigger_type` (once/interval/cron), `interval_unit/value`, `start_hour/minute` |
-| `probe_results` | Schnelle Geräte-Probes | `ports_json`, `reachable`, `observations_json`, `raw_xml` |
+| `probe_results` | Schnelle Geräte-Probes (Ping-only) | `reachable`, `scan_duration_seconds`, `observations_json` |
 | `system_settings` | Laufzeit-Konfiguration | Key-Value: `connectivity_mode`, `last_backup_at`, `encryption_enabled` |
 | `import_log` | USB/Datei-Import-Protokoll | `package_id`, `source_host`, `package_checksum`, `status` |
 

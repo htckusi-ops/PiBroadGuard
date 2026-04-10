@@ -278,6 +278,20 @@ Später optional:
 
 ---
 
+### 10.1 Capability-basierte Geräteklassifikation
+
+Zusätzlich zu Gerätetyp und Kritikalität unterstützt PiBroadGuard eine
+**Mehrfachauswahl von Geräte-Capabilities** (z.B. NMOS, PTP/ST 2059, ST 2110, SNMP).
+Damit können spätere Assessments gezielt capability-spezifische Fragen und Regeln
+aktivieren, ohne das Datenmodell pro Standard neu zu erweitern.
+
+Für NMOS-fähige Geräte können optional strukturierte Endpunkte hinterlegt werden:
+`nmos_registry_url`, `nmos_node_api_url`, `nmos_connection_api_url`.
+Diese Felder ergänzen den bereits implementierten passiven NMOS-Sicherheitscheck
+(IS-04/IS-10, BCP-003) und vereinfachen reproduzierbare Prüfungen.
+
+---
+
 ---
 
 ## 11. Integrationen

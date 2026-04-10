@@ -49,7 +49,20 @@ def create_assessment(
     device = db.query(Device).filter(Device.id == device_id, Device.deleted == False).first()
     if not device:
         raise HTTPException(404, "Gerät nicht gefunden")
-    assessment = Assessment(device_id=device_id, scan_profile=body.scan_profile, status="draft")
+    assessment = Assessment(
+        device_id=device_id,
+        scan_profile=body.scan_profile,
+        status="draft",
+        overall_rating="unrated",
+        technical_score=0,
+        operational_score=0,
+        compensation_score=0,
+        lifecycle_score=0,
+        vendor_score=0,
+        manual_nmos_enabled=True,
+        manual_ptp_enabled=True,
+        manual_network_arch_enabled=True,
+    )
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
@@ -168,7 +181,14 @@ def get_manual_findings(assessment_id: int, db: Session = Depends(get_db), user:
             scan_mode = "discovery"
 
     result = {}
+    category_enabled = {
+        "nmos": bool(getattr(assessment, "manual_nmos_enabled", True)),
+        "ptp_timing": bool(getattr(assessment, "manual_ptp_enabled", True)),
+        "network_arch": bool(getattr(assessment, "manual_network_arch_enabled", True)),
+    }
     for category, questions in QUESTION_CATALOG.items():
+        if category in category_enabled and not category_enabled[category]:
+            continue
         if scan_mode == "discovery":
             # Discovery mode: only show scan_effects questions
             if category != "scan_effects":
@@ -199,8 +219,21 @@ def save_manual_findings(
     db: Session = Depends(get_db),
     user: str = Depends(verify_credentials),
 ):
-    _get_assessment_or_404(assessment_id, db)
+    assessment = _get_assessment_or_404(assessment_id, db)
+    enabled = {
+        "nmos": bool(getattr(assessment, "manual_nmos_enabled", True)),
+        "ptp_timing": bool(getattr(assessment, "manual_ptp_enabled", True)),
+        "network_arch": bool(getattr(assessment, "manual_network_arch_enabled", True)),
+    }
+    disabled_categories = [cat for cat, is_on in enabled.items() if not is_on]
+    if disabled_categories:
+        db.query(ManualFinding).filter(
+            ManualFinding.assessment_id == assessment_id,
+            ManualFinding.category.in_(disabled_categories),
+        ).delete(synchronize_session=False)
     for item in body:
+        if item.category in enabled and not enabled[item.category]:
+            continue
         existing = db.query(ManualFinding).filter(
             ManualFinding.assessment_id == assessment_id,
             ManualFinding.question_key == item.question_key,
@@ -399,6 +432,9 @@ def clone_assessment(
         status="draft",
         scan_profile=src.scan_profile,
         reviewer=src.reviewer,
+        manual_nmos_enabled=src.manual_nmos_enabled,
+        manual_ptp_enabled=src.manual_ptp_enabled,
+        manual_network_arch_enabled=src.manual_network_arch_enabled,
     )
     db.add(new_a)
     db.flush()  # get new_a.id

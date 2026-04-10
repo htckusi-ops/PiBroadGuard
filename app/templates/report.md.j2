@@ -60,7 +60,14 @@
 ---
 
 {% if grouped_manual %}
-## Manuelle Befragung
+{% set ns = namespace(total=0, answered=0) %}
+{% for _cat, _entries in grouped_manual.items() %}
+{% for _e in _entries %}
+{% set ns.total = ns.total + 1 %}
+{% if _e.answer_value %}{% set ns.answered = ns.answered + 1 %}{% endif %}
+{% endfor %}
+{% endfor %}
+## Manuelle Befragung ({{ ns.answered }}/{{ ns.total }} beantwortet)
 
 {% for cat, entries in grouped_manual.items() %}
 ### {{ category_labels.get(cat, cat) }}
@@ -68,8 +75,8 @@
 | Frage | Antwort | Kommentar |
 |-------|---------|-----------|
 {% for mf in entries %}
-{% set ans_map = {"yes": "✅ Ja", "no": "❌ Nein", "partial": "⚠️ Teilweise", "unknown": "— Unbekannt"} %}
-| {{ question_labels.get(mf.question_key, mf.question_key) }} | {{ ans_map.get(mf.answer_value or "", "—") }} | {{ mf.comment or "" }}{% if mf.source %} *({{ mf.source }})*{% endif %} |
+{% set ans_map = {"yes": "✅ Ja", "no": "❌ Nein", "partial": "⚠️ Teilweise", "unknown": "— Unbekannt", "__unsupported__": "⛔ Nicht unterstützt"} %}
+| {{ question_labels.get(mf.question_key, mf.question_key) }} | {{ ans_map.get(mf.answer_value or "", "⚪ Unbeantwortet") }} | {{ mf.comment or "" }}{% if mf.source %} *({{ mf.source }})*{% endif %} |
 {% endfor %}
 
 {% endfor %}
