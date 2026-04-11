@@ -749,5 +749,17 @@ Zusätzlich zu CVSS bietet PiBroadGuard den **EPSS-Score** von FIRST.org an:
 | **CVE-Findings im Report** | Erscheinen im Finding-Tab zusammen mit regelwerk-basierten Findings; unterscheidbar am `rule_key`-Präfix `cve_` |
 
 ---
+## Lizenz
 
+Dieses Projekt steht unter der GNU General Public License Version 3 (GPL-3.0-only).
+Der vollständige Lizenztext befindet sich in der Datei [LICENSE](LICENSE).
+
+## Disclaimer
+
+PiBroadGuard wurde von Markus Gerber privat in der Freizeit und als unabhängiges Nebenprojekt entwickelt.
+
+Die Software wird in einem beruflichen Umfeld zu Test-, Ausbildungs-, Evaluations- und Monitoring-Zwecken verwendet. Diese Nutzung ändert den privaten, nicht im Auftrag entstandenen Ursprung des Projekts nicht.
+
+Jegliche Rechte oder Nutzungen, die über die Bedingungen der GPL v3 hinausgehen, bedürfen einer ausdrücklichen schriftlichen Vereinbarung mit dem Autor.
+---
 *PiBroadGuard v1.12 – Device Security Assessment Platform | April 2026 | Markus Gerber · markus.gerber@npn.ch*
