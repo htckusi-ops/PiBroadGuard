@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     pibg_phpipam_url: str = ""
     pibg_phpipam_app_id: str = "pibroadguard"
     pibg_phpipam_token: str = ""
+    
+    # CORS
+    pibg_cors_origins: str = "*"
 
     # UI metadata (central single source of truth)
     pibg_app_author: str = "PiBroadGuard · Markus Gerber · markus.gerber@npn.ch"
@@ -72,6 +75,11 @@ class Settings(BaseSettings):
     @property
     def password(self) -> str:
         return self.pibg_password
+    
+    @property
+    def cors_origins(self) -> list[str]:
+        raw = self.pibg_cors_origins or ""
+        return [o.strip() for o in raw.split(",") if o.strip()]
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
